@@ -55,7 +55,9 @@ export type ClientToHost =
   | { t: 'uncommit_turn'; turn: number }
   | { t: 'hash_report'; turn: number; hash: string }
   | { t: 'resync_request'; haveSeq: number }
-  | { t: 'chat_send'; text: string; to: number };
+  | { t: 'chat_send'; text: string; to: number }
+  | { t: 'auction_commit'; hash: string }
+  | { t: 'auction_reveal'; bids: Record<string, number>; nonce: string };
 
 export type HostToClient =
   | {
@@ -77,7 +79,22 @@ export type HostToClient =
       snapshot: { turn: number; seq: number; stateJson: string; hash: string } | null;
       commands: LogCommand[];
     }
-  | { t: 'chat_deliver'; id: number; turn: number; from: number; to: number; text: string };
+  | { t: 'chat_deliver'; id: number; turn: number; from: number; to: number; text: string }
+  | {
+      t: 'auction_begin';
+      /** contested pick ids -> holders (playerIds) */
+      contested: Record<string, number[]>;
+      /** players expected to commit a sealed bid */
+      bidders: number[];
+      deadlineMs: number;
+    }
+  | { t: 'auction_commits'; hashes: Record<string, string>; deadlineMs: number }
+  | {
+      t: 'auction_result';
+      outcomes: Array<{ pickId: string; winner: number | null; price: number }>;
+      /** playerId -> final raceJson after contested-pick removal */
+      players: Record<string, string>;
+    };
 
 export type ProtocolMessage = ClientToHost | HostToClient;
 

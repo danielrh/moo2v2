@@ -5,6 +5,7 @@
 // writer); HostCore keeps the full log in memory for resync serving.
 
 import type { EngineAdapter, GameStartPayload } from './engineAdapter';
+import { findContested, resolveAuction, type AuctionOutcome } from './auction';
 import { LocalHostLink } from './link';
 import {
   PROTOCOL_VERSION,
@@ -36,6 +37,9 @@ export interface HostCoreOptions<S> {
   resumeLog?: LogCommand[];
 }
 
+/** commit/reveal phase length for the sealed-bid pick auction */
+export const AUCTION_PHASE_MS = 45_000;
+
 export class HostCore<S> {
   readonly localLink: LocalHostLink;
   private readonly transport: NetTransport;
@@ -55,6 +59,15 @@ export class HostCore<S> {
   private unsubs: Array<() => void> = [];
   private battleTimer: ReturnType<typeof setTimeout> | null = null;
   private battleOrdersTimeoutMs = 60_000;
+  private auction: {
+    seed: string;
+    contested: Record<string, number[]>;
+    bidders: number[];
+    phase: 'commit' | 'reveal';
+    commits: Map<number, string>;
+    reveals: Map<number, { bids: Record<string, number>; nonce: string }>;
+    timer: ReturnType<typeof setTimeout> | null;
+  } | null = null;
 
   constructor(opts: HostCoreOptions<S>) {
     this.transport = opts.transport;
@@ -129,6 +142,10 @@ export class HostCore<S> {
         return this.sendResync(from, msg.haveSeq);
       case 'chat_send':
         return this.onChat(from, msg);
+      case 'auction_commit':
+        return this.onAuctionCommit(from, msg.hash);
+      case 'auction_reveal':
+        return this.onAuctionReveal(from, msg.bids, msg.nonce);
       default:
         return;
     }
@@ -229,16 +246,96 @@ export class HostCore<S> {
     this.broadcastLobby();
   }
 
-  /** Host-triggered game start; seq 0 is the game_start system command. */
+  /** Host-triggered game start; seq 0 is the game_start system command.
+   * With pick bidding on, contested picks go to sealed-bid auction first. */
   startGame(seed: string): void {
     if (this.started) throw new Error('already started');
+    if (this.settings.modes.pickBidding && !this.auction) {
+      const contested = findContested(this.roster().map((p) => ({ id: p.id, raceJson: p.raceJson })));
+      const bidders = [...new Set(Object.values(contested).flat())].sort((a, b) => a - b);
+      if (bidders.length > 0) {
+        this.auction = {
+          seed,
+          contested,
+          bidders,
+          phase: 'commit',
+          commits: new Map(),
+          reveals: new Map(),
+          timer: null,
+        };
+        this.broadcast({ t: 'auction_begin', contested, bidders, deadlineMs: AUCTION_PHASE_MS });
+        this.armAuctionTimer();
+        return;
+      }
+    }
+    this.beginGame(seed, null);
+  }
+
+  private beginGame(seed: string, auctionOutcomes: AuctionOutcome[] | null): void {
+    if (this.auction?.timer) clearTimeout(this.auction.timer);
+    this.auction = null;
     const payload: GameStartPayload = {
       seed,
       settings: this.settings,
       players: this.roster().map((p) => ({ id: p.id, name: p.name, raceJson: p.raceJson })),
       dataVersion: this.dataVersion,
+      ...(auctionOutcomes ? { auction: auctionOutcomes } : {}),
     };
     this.accept({ turn: 0, playerId: -1, kind: 'game_start', payload });
+  }
+
+  // ----- sealed-bid pick auction -----
+
+  private armAuctionTimer(): void {
+    if (!this.auction) return;
+    if (this.auction.timer) clearTimeout(this.auction.timer);
+    this.auction.timer = setTimeout(() => {
+      if (!this.auction) return;
+      this.auction.timer = null;
+      if (this.auction.phase === 'commit') this.startRevealPhase();
+      else this.finishAuction();
+    }, AUCTION_PHASE_MS);
+  }
+
+  private onAuctionCommit(from: number, hash: string): void {
+    if (!this.auction || this.auction.phase !== 'commit') return;
+    if (!this.auction.bidders.includes(from) || this.auction.commits.has(from)) return;
+    this.auction.commits.set(from, hash);
+    if (this.auction.commits.size >= this.auction.bidders.length) this.startRevealPhase();
+  }
+
+  private startRevealPhase(): void {
+    if (!this.auction) return;
+    this.auction.phase = 'reveal';
+    const hashes: Record<string, string> = {};
+    for (const [id, h] of this.auction.commits) hashes[String(id)] = h;
+    this.broadcast({ t: 'auction_commits', hashes, deadlineMs: AUCTION_PHASE_MS });
+    this.armAuctionTimer();
+  }
+
+  private onAuctionReveal(from: number, bids: Record<string, number>, nonce: string): void {
+    if (!this.auction || this.auction.phase !== 'reveal') return;
+    if (!this.auction.commits.has(from) || this.auction.reveals.has(from)) return;
+    this.auction.reveals.set(from, { bids, nonce });
+    if (this.auction.reveals.size >= this.auction.commits.size) this.finishAuction();
+  }
+
+  private finishAuction(): void {
+    if (!this.auction) return;
+    const { seed, contested, commits, reveals } = this.auction;
+    const result = resolveAuction({
+      contested,
+      players: this.roster().map((p) => ({ id: p.id, raceJson: p.raceJson })),
+      reveals,
+      commits,
+    });
+    // losers' race configs are rewritten before game_start records them
+    for (const [idStr, raceJson] of Object.entries(result.players)) {
+      const seat = this.seats.get(Number(idStr));
+      if (seat) seat.raceJson = raceJson;
+    }
+    this.broadcast({ t: 'auction_result', outcomes: result.outcomes, players: result.players });
+    this.beginGame(seed, result.outcomes);
   }
 
   // ----- sequencing -----

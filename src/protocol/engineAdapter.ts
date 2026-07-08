@@ -10,6 +10,8 @@ export interface GameStartPayload {
   settings: GameSettings;
   players: Array<{ id: number; name: string; raceJson: string | null }>;
   dataVersion: string;
+  /** pick-bidding mode: the sealed-bid auction outcome (audit record) */
+  auction?: Array<{ pickId: string; winner: number | null; price: number }>;
 }
 
 export interface EngineAdapter<S = unknown> {

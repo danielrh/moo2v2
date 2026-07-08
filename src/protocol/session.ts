@@ -3,6 +3,7 @@
 // state (authoritative + locally pending commands), persists the log, and
 // surfaces everything the UI needs through a version counter + events.
 
+import { bidHash } from './auction';
 import type { EngineAdapter, GameStartPayload } from './engineAdapter';
 import type { HostLink } from './link';
 import type { GameSettings, HostToClient, LogCommand, PlayerRoster } from './messages';
@@ -21,7 +22,8 @@ export type SessionEvent =
   | { type: 'rejected'; clientId: string; reason: string }
   | { type: 'chat'; id: number; turn: number; from: number; to: number; text: string }
   | { type: 'desync'; turn: number }
-  | { type: 'version-reject'; reason: string };
+  | { type: 'version-reject'; reason: string }
+  | { type: 'auction'; phase: 'commit' | 'reveal' | 'done' };
 
 interface PendingCommand {
   clientId: string;
@@ -72,6 +74,14 @@ export class GameSession<S> {
 
   private rosterCache: PlayerRoster[] = [];
   private settingsCache: GameSettings | null = null;
+  private auctionCache: {
+    phase: 'commit' | 'reveal' | 'done';
+    contested: Record<string, number[]>;
+    bidders: number[];
+    committed: boolean;
+    outcomes: Array<{ pickId: string; winner: number | null; price: number }> | null;
+  } | null = null;
+  private pendingReveal: { bids: Record<string, number>; nonce: string } | null = null;
   private committedCache: number[] = [];
   private startedFlag = false;
   private listeners: Array<(ev: SessionEvent) => void> = [];
@@ -235,6 +245,36 @@ export class GameSession<S> {
           );
         }
         this.bump({ type: 'chat', id: msg.id, turn: msg.turn, from: msg.from, to: msg.to, text: msg.text });
+        return;
+      }
+      case 'auction_begin': {
+        this.auctionCache = {
+          phase: 'commit',
+          contested: msg.contested,
+          bidders: msg.bidders,
+          committed: false,
+          outcomes: null,
+        };
+        this.pendingReveal = null;
+        this.bump({ type: 'auction', phase: 'commit' });
+        return;
+      }
+      case 'auction_commits': {
+        if (this.auctionCache) this.auctionCache.phase = 'reveal';
+        // reveal automatically: the commits are now public, our bid is bound
+        if (this.pendingReveal) {
+          this.link.send({ t: 'auction_reveal', bids: this.pendingReveal.bids, nonce: this.pendingReveal.nonce });
+        }
+        this.bump({ type: 'auction', phase: 'reveal' });
+        return;
+      }
+      case 'auction_result': {
+        if (this.auctionCache) {
+          this.auctionCache.phase = 'done';
+          this.auctionCache.outcomes = msg.outcomes;
+        }
+        this.pendingReveal = null;
+        this.bump({ type: 'auction', phase: 'done' });
         return;
       }
       default:
