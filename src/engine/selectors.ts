@@ -32,6 +32,8 @@ export interface ColonyRow {
   buildable: string[];
   buildings: string[];
   outpost: boolean;
+  /** sticky-build mode: parked production per switched-away item */
+  stickyInvested: Record<string, number>;
 }
 
 export function colonyRows(state: GameState, empireId: number): ColonyRow[] {
@@ -80,6 +82,7 @@ export function colonyRow(state: GameState, colony: Colony): ColonyRow {
     jobs,
     output,
     activeItem: active,
+    stickyInvested: colony.stickyInvested,
     queue: colony.queue.map((q) => q.item),
     storedProd: colony.storedProd,
     activeCost,

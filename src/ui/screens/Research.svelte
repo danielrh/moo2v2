@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { selectors } from '@engine/index';
+  import { selectors, traitsOf } from '@engine/index';
+  import { applicationsOfField, fieldByNum, fieldById } from '@engine/data/index';
   import { app, getActive } from '../state.svelte';
 
   const session = () => getActive()!.session;
@@ -30,6 +31,25 @@
   function start(fieldNum: number, target: string | null) {
     session().submit('set_research', { fieldNum, targetApp: target });
   }
+
+  // creative-variant: buy applications from completed fields, one at a time
+  const creativeVariant = $derived(gs?.settings.modes.creativeVariant === true && !!empire && traitsOf(empire).creative);
+  const purchasable = $derived.by(() => {
+    if (!creativeVariant || !empire || !gs) return [];
+    const out: Array<{ id: string; name: string; fieldId: string; cost: number }> = [];
+    for (const num of empire.completedFields) {
+      const field = fieldByNum.get(num);
+      if (!field) continue;
+      for (const a of applicationsOfField(field.id)) {
+        if (empire.knownApps.includes(a.id) || empire.research.extraQueue.includes(a.id)) continue;
+        out.push({ id: a.id, name: a.name, fieldId: field.id, cost: fieldById.get(field.id)?.cost ?? 0 });
+      }
+    }
+    return out.sort((x, y) => x.cost - y.cost || x.id.localeCompare(y.id));
+  });
+  function queueExtra(appId: string, remove = false) {
+    session().submit('queue_extra_research', { appId, remove });
+  }
 </script>
 
 {#if empire && summary}
@@ -42,6 +62,35 @@
       — {empire.research.accumRP} RP banked
     {/if}
   </p>
+
+  {#if creativeVariant}
+    <div class="field" data-testid="creative-variant">
+      <b>Creative applications</b>
+      <p class="dim">
+        Buy skipped applications from completed fields — each costs the full field price, one per turn.
+        {#if empire.research.extraQueue.length}
+          Queue: {empire.research.extraQueue.join(' → ')} ({empire.research.extraAccumRP} RP toward the first)
+        {/if}
+      </p>
+      {#each empire.research.extraQueue as q (q)}
+        <button class="mini" onclick={() => queueExtra(q, true)}>✕ {q}</button>
+      {/each}
+      <select
+        data-testid="extra-research"
+        value=""
+        onchange={(e) => {
+          const v = (e.target as HTMLSelectElement).value;
+          if (v) queueExtra(v);
+          (e.target as HTMLSelectElement).value = '';
+        }}
+      >
+        <option value="">+ buy application…</option>
+        {#each purchasable as p (p.id)}
+          <option value={p.id}>{p.name} ({p.cost} RP, {p.fieldId.replaceAll('_', ' ')})</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
 
   <div class="subjects">
     {#each bySubject as [subject, fields] (subject)}
