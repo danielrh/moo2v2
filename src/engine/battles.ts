@@ -380,6 +380,8 @@ function bombard(state: GameState, battle: PendingBattle, events: TurnEvent[]): 
     }
   }
   bombDamage = Math.floor(bombDamage);
+  // stellar safety shield: half of the barrage is deflected
+  if (colony.buildings.includes('stellar_safety_shield')) bombDamage = Math.floor(bombDamage / 2);
   const rng = rngFor(state.seed, state.turn, 'bombard', battle.id);
   let popKilled = 0;
   let buildingsDestroyed: string[] = [];

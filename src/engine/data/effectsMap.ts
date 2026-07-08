@@ -96,17 +96,17 @@ export const EFFECTS: Record<string, EffectSpec> = {
   supercomputer: { kind: 'building', modifiers: [col('sci_flat', 10), col('sci_coeff', 2)] },
   holo_simulator: { kind: 'building', modifiers: [col('morale_pct', 20)] },
   emissions_guidance_system: { kind: 'weapon', handler: 'combat' },
-  rangemaster_target_unit: { kind: 'ship_special', stub: 'range-penalty reduction (Phase 6 combat specials)' },
+  rangemaster_target_unit: { kind: 'ship_special', handler: 'combat' }, // range band one step closer
   cyber_security_link: { kind: 'empire_tech', modifiers: [emp('spy_defense', 10)] },
   autolab: { kind: 'building', modifiers: [col('sci_flat', 30)] },
-  structural_analyzer: { kind: 'ship_special', stub: 'armor analysis debuff (Phase 6 combat specials)' },
+  structural_analyzer: { kind: 'ship_special', handler: 'combat' }, // beam damage x2
   android_farmers: { kind: 'system', stub: 'android population units (Phase 6)' },
   android_workers: { kind: 'system', stub: 'android population units (Phase 6)' },
   android_scientists: { kind: 'system', stub: 'android population units (Phase 6)' },
   virtual_reality_network: { kind: 'building', modifiers: [col('morale_pct', 20)], handler: 'economy' },
   galactic_cybernet: { kind: 'building', modifiers: [col('sci_flat', 15), col('sci_coeff', 3)] },
   pleasure_dome: { kind: 'building', modifiers: [col('morale_pct', 30)] },
-  achilles_targeting_unit: { kind: 'ship_special', stub: 'armor bypass targeting (Phase 6 combat specials)' },
+  achilles_targeting_unit: { kind: 'ship_special', handler: 'combat' }, // beams bypass armor
 
   // ---------------- construction ----------------
   colony_base: { kind: 'unlock', handler: 'economy' }, // settles the innermost free planet in-system
@@ -116,29 +116,29 @@ export const EFFECTS: Record<string, EffectSpec> = {
   marine_barracks: { kind: 'building', handler: 'economy' }, // morale fix; ground garrison Phase 6
   armor_barracks: { kind: 'building', handler: 'economy' },
   anti_missile_rocket: { kind: 'weapon', handler: 'combat' },
-  fighter_bays: { kind: 'weapon', stub: 'fighter squadrons (Phase 6 combat)' },
-  heavy_fighter_bays: { kind: 'weapon', stub: 'fighter squadrons (Phase 6 combat)' },
-  bomber_bays: { kind: 'weapon', stub: 'fighter squadrons (Phase 6 combat)' },
+  fighter_bays: { kind: 'weapon', stub: 'carrier ops omitted by the combat redesign (permanent design decision)' },
+  heavy_fighter_bays: { kind: 'weapon', stub: 'carrier ops omitted by the combat redesign (permanent design decision)' },
+  bomber_bays: { kind: 'weapon', stub: 'carrier ops omitted by the combat redesign (permanent design decision)' },
   reinforced_hull: { kind: 'ship_special', handler: 'shipdesign' },
   automated_factory: { kind: 'building', modifiers: [col('prod_flat', 5), col('prod_coeff', 1)] },
-  missile_base: { kind: 'building', stub: 'colony missile battery joins defense (Phase 6)' },
-  heavy_armor: { kind: 'ship_special', stub: 'triple armor absorb (Phase 6 combat specials)' },
+  missile_base: { kind: 'building', handler: 'combat' }, // +4 best missiles on the defense platform (battles.ts)
+  heavy_armor: { kind: 'ship_special', handler: 'combat' }, // armor HP x3
   battle_pods: { kind: 'ship_special', handler: 'shipdesign' },
   troop_pods: { kind: 'ship_special', stub: 'marine capacity (Phase 6 boarding)' },
   survival_pods: { kind: 'ship_special', stub: 'leader rescue (Phase 6 leaders)' },
   space_port: { kind: 'building', modifiers: [col('money_coeff_halves', 1)] },
-  fighter_garrison: { kind: 'building', stub: 'colony fighter defense (Phase 6)' },
+  fighter_garrison: { kind: 'building', stub: 'carrier ops omitted by the combat redesign (permanent design decision)' },
   robo_miner_plant: { kind: 'building', modifiers: [col('prod_flat', 10), col('prod_coeff', 2)] },
   powered_armor: { kind: 'ground_unit', stub: 'ground combat (Phase 6)' },
-  fast_missile_racks: { kind: 'ship_special', stub: 'double missile volleys (Phase 6 combat specials)' },
-  advanced_damage_control: { kind: 'ship_special', stub: 'self repair (Phase 6 combat specials)' },
+  fast_missile_racks: { kind: 'ship_special', handler: 'combat' }, // missiles cycle 2x
+  advanced_damage_control: { kind: 'ship_special', handler: 'combat' }, // full repair after each battle
   assault_shuttle: { kind: 'weapon', stub: 'boarding shuttles (Phase 6)' },
   titan_construction: { kind: 'unlock', handler: 'shipdesign' },
   doom_star_construction: { kind: 'unlock', handler: 'shipdesign' },
-  ground_batteries: { kind: 'building', stub: 'colony beam battery joins defense (Phase 6)' },
+  ground_batteries: { kind: 'building', handler: 'combat' }, // +6 heavy beams on the defense platform (battles.ts)
   battleoids: { kind: 'ground_unit', stub: 'ground combat (Phase 6)' },
   recyclotron: { kind: 'building', handler: 'economy' }, // +1 prod/pop unit, pollution-free (economy.ts)
-  automated_repair_unit: { kind: 'ship_special', stub: 'in-combat repair (Phase 6 combat specials)' },
+  automated_repair_unit: { kind: 'ship_special', handler: 'combat' }, // ~0.5% structure/tick in combat
   artificial_planet: { kind: 'project', stub: 'asteroid/gas giant conversion (Phase 6)' },
   robotic_factory: { kind: 'building', handler: 'economy' }, // +5..+25 prod by minerals
   deep_core_mine: { kind: 'building', modifiers: [col('prod_flat', 15), col('prod_coeff', 3)] },
@@ -154,9 +154,9 @@ export const EFFECTS: Record<string, EffectSpec> = {
   class_x_shield: { kind: 'ship_component', handler: 'shipdesign' },
   mass_driver: { kind: 'weapon', handler: 'combat' },
   gauss_cannon: { kind: 'weapon', handler: 'combat' },
-  ecm_jammer: { kind: 'ship_special', stub: 'missile evasion (Phase 6 combat specials)' },
-  multi_wave_ecm_jammer: { kind: 'ship_special', stub: 'missile evasion (Phase 6 combat specials)' },
-  wide_area_jammer: { kind: 'ship_special', stub: 'fleet missile evasion (Phase 6 combat specials)' },
+  ecm_jammer: { kind: 'ship_special', handler: 'combat' }, // 40% missile evasion
+  multi_wave_ecm_jammer: { kind: 'ship_special', handler: 'combat' }, // 70% missile evasion
+  wide_area_jammer: { kind: 'ship_special', handler: 'combat' }, // 40% fleet-wide missile evasion
   anti_grav_harness: { kind: 'ground_unit', stub: 'ground combat (Phase 6)' },
   inertial_stabilizer: { kind: 'ship_special', handler: 'shipdesign' },
   gyro_destabilizer: { kind: 'weapon', stub: 'special weapon class (Phase 6 combat specials)' },
@@ -164,20 +164,20 @@ export const EFFECTS: Record<string, EffectSpec> = {
   planetary_stellar_safety_shield: { kind: 'building', stub: 'colony shield vs bombardment (Phase 6)' },
   flux_shield: { kind: 'building', stub: 'colony shield vs bombardment (Phase 6)' },
   nanite_factory: { kind: 'building', modifiers: [col('prod_flat', 5)] }, // TUNABLE: +5 prod (classic values unpublished)
-  warp_dissipater: { kind: 'ship_special', stub: 'blocks retreat (Phase 6 combat specials)' },
+  warp_dissipater: { kind: 'ship_special', handler: 'combat' }, // enemy cannot retreat
   stealth_field: { kind: 'ship_special', modifiers: [emp('stealth', 10)], stub: 'fleet concealment (Phase 6 intel)' },
   stealth_suit: { kind: 'empire_tech', modifiers: [emp('spy_offense', 10)] },
   personal_shield: { kind: 'ground_unit', stub: 'ground combat (Phase 6)' },
   pulsar: { kind: 'weapon', stub: 'special weapon class (Phase 6 combat specials)' },
   warp_interdictor: { kind: 'building', stub: 'slows hostile FTL nearby (Phase 6 movement)' },
-  lightning_field: { kind: 'ship_special', stub: 'missile destruction field (Phase 6 combat specials)' },
-  hard_shields: { kind: 'ship_special', stub: 'flat +3 shield, immune shield-piercing (Phase 6 combat specials)' },
-  multi_phased_shields: { kind: 'ship_special', stub: '+50% shield pool (Phase 6 combat specials)' },
+  lightning_field: { kind: 'ship_special', handler: 'combat' }, // 50% incoming missiles destroyed
+  hard_shields: { kind: 'ship_special', handler: 'combat' }, // +3 flat, immune to shield-piercing
+  multi_phased_shields: { kind: 'ship_special', handler: 'combat' }, // +50% shield pool
   planetary_flux_shield: { kind: 'building', stub: 'colony shield vs bombardment (Phase 6)' },
   planetary_barrier_shield: { kind: 'building', stub: 'colony shield vs bombardment (Phase 6)' },
-  displacement_device: { kind: 'ship_special', stub: '33% miss chance (Phase 6 combat specials)' },
+  displacement_device: { kind: 'ship_special', handler: 'combat' }, // 33% of incoming fire misses
   sub_space_teleporter: { kind: 'ship_special', stub: 'teleport movement (Phase 6 combat specials)' },
-  inertia_nullifier: { kind: 'ship_special', stub: 'agility boost (Phase 6 combat specials)' },
+  inertia_nullifier: { kind: 'ship_special', handler: 'combat' }, // +4 combat speed
   stasis_field: { kind: 'weapon', stub: 'special weapon class (Phase 6 combat specials)' },
   phasing_cloak: { kind: 'ship_special', stub: 'cloaking (Phase 6 combat specials)' },
   cloaking_device: { kind: 'ship_special', stub: 'cloaking (Phase 6 combat specials)' },
@@ -228,18 +228,18 @@ export const EFFECTS: Record<string, EffectSpec> = {
   outpost_ship: { kind: 'unlock', handler: 'pipeline' },
   transport: { kind: 'unlock', handler: 'pipeline' },
   freighter_fleet: { kind: 'unlock', handler: 'pipeline' },
-  augmented_engines: { kind: 'ship_special', stub: '+5 combat speed (Phase 6 combat specials)' },
+  augmented_engines: { kind: 'ship_special', handler: 'combat' }, // +5 combat speed
   ion_pulse_cannon: { kind: 'weapon', handler: 'combat' },
-  shield_capacitor: { kind: 'ship_special', stub: '+70% shield regen (Phase 6 combat specials)' },
+  shield_capacitor: { kind: 'ship_special', handler: 'combat' }, // shield regen 3% -> 5%/tick
   anti_matter_torpedo: { kind: 'weapon', handler: 'combat' },
   proton_torpedoes: { kind: 'weapon', handler: 'combat' },
   plasma_torpedoes: { kind: 'weapon', handler: 'combat' },
   transporters: { kind: 'ship_special', stub: 'marine transport (Phase 6 boarding)' },
   food_replicators: { kind: 'building', handler: 'economy' }, // 2 prod -> 1 food to cover shortages (economy.ts)
-  high_energy_focus: { kind: 'ship_special', stub: '+50% beam damage (Phase 6 combat specials)' },
+  high_energy_focus: { kind: 'ship_special', handler: 'combat' }, // +50% beam damage
   energy_absorber: { kind: 'ship_special', stub: 'damage absorption (Phase 6 combat specials)' },
   megafluxers: { kind: 'empire_tech', handler: 'shipdesign' },
-  hyper_x_capacitors: { kind: 'ship_special', stub: 'beams fire twice (Phase 6 combat specials)' },
+  hyper_x_capacitors: { kind: 'ship_special', handler: 'combat' }, // beams cycle 2x
 
   // ---------------- sociology ----------------
   space_academy: { kind: 'building', handler: 'leaders' }, // +1 leader XP/turn empire-wide (leaders.ts)

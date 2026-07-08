@@ -30,9 +30,7 @@ export const PROJECT_BUILDABLES = new Set([
  * effect entries in effectsMap carry matching stub notes. */
 const DEFERRED = new Set([
   'artificial_planet',
-  'missile_base', // colony defense batteries land with the combat-specials batch
-  'ground_batteries',
-  'fighter_garrison',
+  'fighter_garrison', // carrier ops omitted by the combat redesign (documented)
   'dimensional_portal', // Antaran assault (later in Phase 6)
   'flux_shield', // superseded shield tiers stay data-only (planetary shield covers defense)
   'planetary_flux_shield',
