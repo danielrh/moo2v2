@@ -260,7 +260,7 @@ export class GameSession<S> {
         return;
       }
       case 'auction_commits': {
-        if (this.auctionCache) this.auctionCache.phase = 'reveal';
+        if (this.auctionCache) this.auctionCache = { ...this.auctionCache, phase: 'reveal' };
         // reveal automatically: the commits are now public, our bid is bound
         if (this.pendingReveal) {
           this.link.send({ t: 'auction_reveal', bids: this.pendingReveal.bids, nonce: this.pendingReveal.nonce });
@@ -270,8 +270,7 @@ export class GameSession<S> {
       }
       case 'auction_result': {
         if (this.auctionCache) {
-          this.auctionCache.phase = 'done';
-          this.auctionCache.outcomes = msg.outcomes;
+          this.auctionCache = { ...this.auctionCache, phase: 'done', outcomes: msg.outcomes };
         }
         this.pendingReveal = null;
         this.bump({ type: 'auction', phase: 'done' });
@@ -451,8 +450,9 @@ export class GameSession<S> {
     crypto.getRandomValues(rand);
     const nonce = [...rand].map((x) => x.toString(16)).join('');
     this.pendingReveal = { bids, nonce };
-    this.auctionCache.committed = true;
+    this.auctionCache = { ...this.auctionCache, committed: true };
     this.link.send({ t: 'auction_commit', hash: bidHash(bids, nonce) });
+    this.bump({ type: 'auction', phase: 'commit' });
   }
 
   getCommitted(): readonly number[] {
