@@ -4,6 +4,7 @@
 // ROUNDUP semantics for the non-negative quantities involved).
 
 import { buildableById } from './data/index';
+import { colonyAccum, type ColonyAccum } from './effects';
 import { ceilDiv, floorDiv, roundDiv } from './imath';
 import { isqrt } from './isqrt';
 import { gravitySteps, resolveTraits, type RaceTraits } from './race';
@@ -60,7 +61,7 @@ const CLIMATE_POP_PCT: Record<Climate, number> = {
   gaia: 100,
 };
 
-export function maxPopulation(planet: Planet, traits: RaceTraits, colony?: Colony): number {
+export function maxPopulation(planet: Planet, traits: RaceTraits, bonusPop = 0): number {
   let pct = CLIMATE_POP_PCT[planet.climate];
   if (traits.aquatic) {
     if (planet.climate === 'ocean' || planet.climate === 'terran') pct = 100;
@@ -72,10 +73,15 @@ export function maxPopulation(planet: Planet, traits: RaceTraits, colony?: Colon
   const sizeMult = planet.sizeClass * 5; // tiny 5 .. huge 25
   let max = roundDiv(sizeMult * pct, 100);
   if (traits.subterranean) max += 2 * planet.sizeClass;
-  if (colony) {
-    if (has(colony, 'habitat_domes')) max += 2;
-  }
-  return max;
+  return max + bonusPop;
+}
+
+/** Max population including building/tech bonuses (habitat domes, city planning). */
+export function colonyMaxPop(state: GameState, colony: Colony): number {
+  const empire = empireOf(state, colony.owner);
+  const acc = colonyAccum(state, colony, empire);
+  const planet = state.planets.find((p) => p.id === colony.planetId)!;
+  return maxPopulation(planet, traitsOf(empire), acc.maxPop);
 }
 
 // ---------- F3/F4/F5: per-colonist coefficients ----------
@@ -111,49 +117,10 @@ const MINERAL_PROD: Record<Minerals, number> = {
   ultra_rich: 8,
 };
 
-// building coefficient / flat tables (F2 + SW-Calc constants)
-const FARM_COEFF_BUILDINGS: Array<[string, number]> = [
-  ['soil_enrichment', 1],
-  ['weather_controller', 2],
-  ['astro_university', 1],
-];
-const FARM_FLAT_BUILDINGS: Array<[string, number]> = [
-  ['hydroponic_farm', 2],
-  ['subterranean_farms', 4],
-];
-const PROD_COEFF_BUILDINGS: Array<[string, number]> = [
-  ['automated_factory', 1],
-  ['robo_miner_plant', 2],
-  ['deep_core_mine', 3],
-  ['astro_university', 1],
-];
-const PROD_FLAT_BUILDINGS: Array<[string, number]> = [
-  ['automated_factory', 5],
-  ['robo_miner_plant', 10],
-  ['deep_core_mine', 15],
-];
-const SCI_COEFF_BUILDINGS: Array<[string, number]> = [
-  ['research_lab', 1],
-  ['supercomputer', 2],
-  ['galactic_cybernet', 3],
-  ['astro_university', 1],
-];
-const SCI_FLAT_BUILDINGS: Array<[string, number]> = [
-  ['research_lab', 5],
-  ['supercomputer', 10],
-  ['galactic_cybernet', 15],
-  ['autolab', 30],
-];
-
-function buildingSum(colony: Colony, table: Array<[string, number]>): number {
-  let s = 0;
-  for (const [id, v] of table) if (has(colony, id)) s += v;
-  return s;
-}
 
 // ---------- F10: morale ----------
 
-export function moralePct(state: GameState, colony: Colony): number {
+export function moralePct(state: GameState, colony: Colony, acc?: ColonyAccum): number {
   const empire = empireOf(state, colony.owner);
   const traits = traitsOf(empire);
   if (traits.government === 'unification') return 0; // immune either way
@@ -161,8 +128,7 @@ export function moralePct(state: GameState, colony: Colony): number {
   if (traits.government === 'dictatorship' || traits.government === 'feudal') {
     if (!has(colony, 'marine_barracks') && !has(colony, 'armor_barracks')) morale -= 20;
   }
-  if (has(colony, 'holo_simulator')) morale += 20;
-  if (has(colony, 'pleasure_dome')) morale += 30;
+  morale += (acc ?? colonyAccum(state, colony, empire)).moralePct;
   if (knows(empire, 'civic_insight') && traits.government === 'dictatorship') morale += 10;
   return morale;
 }
@@ -213,9 +179,10 @@ export function colonyOutput(state: GameState, colony: Colony): ColonyOutput {
 function computeOutput(state: GameState, colony: Colony, planet: Planet): ColonyOutput {
   const owner = empireOf(state, colony.owner);
   const ownerTraits = traitsOf(owner);
-  const morale = moralePct(state, colony);
+  const acc = colonyAccum(state, colony, owner);
+  const morale = moralePct(state, colony, acc);
   const popUnits = colonyPopUnits(colony);
-  const maxPop = maxPopulation(planet, ownerTraits, colony);
+  const maxPop = maxPopulation(planet, ownerTraits, acc.maxPop);
 
   // per-kind: base (Σ colonists × coeff) and per-colonist penalties
   let farmBase = 0;
@@ -234,10 +201,10 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
 
     const farmCoeff = Math.max(
       0,
-      foodPerFarmerBase(planet.climate, gTraits.aquatic) + gTraits.farming + buildingSum(colony, FARM_COEFF_BUILDINGS),
+      foodPerFarmerBase(planet.climate, gTraits.aquatic) + gTraits.farming + acc.farmCoeff,
     );
-    const prodCoeff = Math.max(1, MINERAL_PROD[planet.minerals] + gTraits.industry + buildingSum(colony, PROD_COEFF_BUILDINGS));
-    let sciCoeff = Math.max(1, 3 + gTraits.science + buildingSum(colony, SCI_COEFF_BUILDINGS));
+    const prodCoeff = Math.max(1, MINERAL_PROD[planet.minerals] + gTraits.industry + acc.prodCoeff);
+    let sciCoeff = Math.max(1, 3 + gTraits.science + acc.sciCoeff);
     if (planet.special === 'ancient_artifacts') sciCoeff += 2;
 
     const gFarm = g.farmers * farmCoeff;
@@ -265,7 +232,7 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
 
   // farming: unification/morale multiplier, then flat buildings
   const farmWorker = roundDiv(farmBase * (100 + cTotalPct('farm', ownerTraits, morale)), 100) - farmPenalty;
-  const food = Math.max(0, farmWorker) + buildingSum(colony, FARM_FLAT_BUILDINGS);
+  const food = Math.max(0, farmWorker) + acc.farmFlat;
 
   // production before pollution
   const prodWorkerRaw = roundDiv(prodBase * (100 + cTotalPct('prod', ownerTraits, morale)), 100) - prodPenalty;
@@ -273,10 +240,8 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
 
   // F8 pollution (flat building production exempt)
   let pollution = 0;
-  if (!has(colony, 'core_waste_dump')) {
-    let divisor = 1;
-    if (has(colony, 'pollution_processor')) divisor *= 2;
-    if (has(colony, 'atmospheric_renewer')) divisor *= 4;
+  if (!acc.pollutionZero) {
+    const divisor = acc.pollutionDivisorMult;
     let tolNum = 0;
     let tolDen = 0;
     for (const g of colony.groups) {
@@ -287,27 +252,26 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
     }
     if (tolDen > 0 && tolNum > 0) {
       let absorb = 2 * planet.sizeClass;
-      if (knows(owner, 'nano_disassemblers')) absorb *= 2;
+      if (acc.pollutionAbsorbX2) absorb *= 2;
       const scaled = roundDiv(prodWorker * tolNum, divisor * tolDen);
       pollution = Math.max(0, ceilDiv(Math.max(0, scaled - absorb), 2));
     }
   }
-  const prodGross = Math.max(0, prodWorker + buildingSum(colony, PROD_FLAT_BUILDINGS) - pollution);
+  const prodGross = Math.max(0, prodWorker + acc.prodFlat - pollution);
   const prodConsumed = ceilDiv(prodNeedHalves, 2);
   const prodLack = Math.max(0, prodConsumed - prodGross);
   const prod = Math.max(0, prodGross - prodConsumed);
 
   // research
   const sciWorker = roundDiv(sciBase * (100 + cTotalPct('sci', ownerTraits, morale)), 100) - sciPenalty;
-  const research = Math.max(0, sciWorker) + buildingSum(colony, SCI_FLAT_BUILDINGS);
+  const research = Math.max(0, sciWorker) + acc.sciFlat;
 
   // ---------- F7 money ----------
   const special = planet.special === 'gem_deposits' ? 10 : planet.special === 'gold_deposits' ? 5 : 0;
   const popIncome = roundDiv(popUnits * (2 + ownerTraits.bcHalves), 2);
   let bonusIncome = 0;
   const baseForBonus = special + popIncome;
-  if (has(colony, 'stock_exchange')) bonusIncome += floorDiv(baseForBonus * 2, 2); // ×1
-  if (has(colony, 'galactic_currency_exchange')) bonusIncome += floorDiv(baseForBonus, 2); // ×0.5
+  if (acc.moneyCoeffHalves > 0) bonusIncome += floorDiv(baseForBonus * acc.moneyCoeffHalves, 2);
   if (ownerTraits.government === 'democracy') bonusIncome += floorDiv(baseForBonus, 2); // ×0.5
   if (ownerTraits.government !== 'unification') {
     bonusIncome += roundDiv(popIncome * morale, 100);
@@ -390,24 +354,20 @@ export function groupGrowthK(
   const owner = empireOf(state, colony.owner);
   const ownerTraits = traitsOf(owner);
   const gTraits = group.race === colony.owner ? ownerTraits : groupTraits(state, group.race, ownerTraits);
+  const acc = colonyAccum(state, colony, owner);
   const c = groupUnits(group);
   const free = Math.max(0, maxPop - totalUnits);
   if (c <= 0) return group.popK > 0 && free > 0 ? 20 : 0; // fractional seed group still grows slowly
-  if (free <= 0 && group.popK >= c * 1000) {
-    // full planet: no natural growth (housing/growth center still apply below via 0 base)
-  }
   const basic = maxPop > 0 ? isqrt(floorDiv(2000 * c * free, maxPop)) : 0;
 
-  let bonusPct = gTraits.growthPct;
-  if (knows(owner, 'universal_wellness_protocol')) bonusPct += 50;
-  else if (knows(owner, 'wellness_systems')) bonusPct += 25;
+  let bonusPct = gTraits.growthPct + acc.growthPct;
   // housing: % = floor(housingPP * 40 / colonists-of-this-race)
   if (colony.housingPPPrev > 0 && c > 0) {
     bonusPct += floorDiv(colony.housingPPPrev * 40, c);
   }
 
   let inc = floorDiv(basic * (100 + Math.max(-90, bonusPct)), 100);
-  if (has(colony, 'population_growth_center')) inc += 100;
+  inc += acc.growthFlatK;
 
   // food shortage penalty (colony-wide lack attributed to this group's share)
   if (colony.foodLackPrev > 0 || colony.prodLackPrev > 0) {
