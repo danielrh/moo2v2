@@ -248,22 +248,27 @@ room code (server field: local `http://127.0.0.1:8787` or default public server)
 
 ### Phase 6a — Host save/load game files (URGENT, inserted 2026-07-08) ✅ when: save downloads a binary file; loading it re-hosts the identical game (hash-verified); corruption/tamper/version mismatches are rejected with clear errors; e2e covers the full save→reload→load→client-rejoin cycle
 
-- [ ] `storage/savefile.ts`: binary format = magic `MOO2SAVE` + version byte + gzip(canonical
+- [x] `storage/savefile.ts`: binary format = magic `MOO2SAVE` + version byte + gzip(canonical
       JSON SaveEnvelope: game row, players, full command log, latest snapshot). Plain-JSON
       envelopes also accepted (debugging).
-- [ ] Robust load validation: magic/version check, gunzip + JSON errors surfaced clearly,
+- [x] Robust load validation: magic/version check, gunzip + JSON errors surfaced clearly,
       structural checks (gapless seq from 0, game_start first, seed format), engine/data
       version equality, and **full deterministic replay verification** (fold the log, compare
-      the final hash to the snapshot hash) before any import.
-- [ ] Save UI (host only, game header): download `.moo2save`; secondary raw `.sqlite3`
-      download via sqlocal getDatabaseFile.
-- [ ] Load UI (Home screen): file dialog → decode/verify → import into the entered room's
-      store (room_code overridden = manual re-host) → resume path restores the game; joining
-      clients resync automatically.
-- [ ] Tests: unit round-trip + corrupted-magic/truncated/tampered-payload/version-mismatch
-      rejection; node integration (headless game → export → encode → decode → import →
-      host resume → hash equality); Playwright e2e (play turns → Save download → fresh room →
-      Load upload → re-host → second browser rejoins → hashes agree).
+      the final hash to the snapshot hash) before any import. Layered `SaveFileError` stages
+      (magic/version/compression/json/structure/engine_version/data_version/replay).
+- [x] Save UI (host only, game header): download `.moo2save` (re-verified before writing);
+      secondary raw `.sqlite3` download via sqlocal getDatabaseFile.
+- [x] Load UI (Home screen): file dialog → decode/verify → import into the entered room's
+      store (room_code overridden = manual re-host, loader becomes seat 0; other active games
+      in the room marked abandoned) → resume path restores the game; joining clients resync
+      automatically. Deviation: after a successful load the UI auto-connects, so the
+      "loaded turn N" note is transient — the e2e asserts restored turn + state hash instead.
+- [x] Tests: unit round-trip + corrupted-magic/truncated/tampered-payload/version-mismatch
+      rejection (tests/storage/savefile.test.ts, 6 tests incl. node headless-game →
+      export → encode → decode → import → host resume → hash equality); Playwright e2e
+      (e2e/saveload.spec.ts: play turns → Save download → fresh room → Load upload →
+      re-host hash-identical → second browser rejoins + resyncs → play continues →
+      corrupted file rejected with clear error).
 
 ### Phase 6 — Full game systems ✅ when: headless 4-player 200-turn game exercises everything with stable hashes; each victory condition reachable in a scripted fixture
 
