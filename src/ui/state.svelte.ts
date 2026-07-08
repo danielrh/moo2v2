@@ -13,6 +13,12 @@ export interface ReplayEntry {
   watched: boolean;
 }
 
+export interface ReportEntry {
+  turn: number;
+  kind: string;
+  payload: Record<string, unknown>;
+}
+
 export const app = $state({
   screen: 'home' as 'home' | 'lobby' | 'game',
   error: '',
@@ -22,6 +28,8 @@ export const app = $state({
   replays: [] as ReplayEntry[],
   /** replay currently open in the battle viewer */
   viewing: null as ReplayEntry | null,
+  /** turn-event feed visible to this player (newest last) */
+  reports: [] as ReportEntry[],
 });
 
 // Not reactive on purpose: session/transport are external objects.
@@ -46,6 +54,7 @@ export function bindActive(active: ActiveGame): void {
       app.chat.push({ id: ev.id, from: ev.from, text: ev.text });
       if (app.chat.length > 100) app.chat.shift();
     } else if (ev.type === 'turn-advanced') {
+      const me = active.session.playerId;
       for (const e of active.session.lastTurnEvents) {
         if (e.kind === 'battle_replay') {
           const p = e.payload as { battleId: string; seed: string; input: unknown; summary: Record<string, unknown> };
@@ -53,6 +62,11 @@ export function bindActive(active: ActiveGame): void {
             app.replays.push({ ...p, turn: ev.turn - 1, watched: false });
             if (app.replays.length > 20) app.replays.shift();
           }
+          continue;
+        }
+        if (e.visibleTo === -1 || e.visibleTo === me) {
+          app.reports.push({ turn: ev.turn - 1, kind: e.kind, payload: e.payload as Record<string, unknown> });
+          if (app.reports.length > 300) app.reports.shift();
         }
       }
     }

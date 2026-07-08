@@ -8,10 +8,12 @@
   import Fleets from './Fleets.svelte';
   import Designer from './Designer.svelte';
   import Empires from './Empires.svelte';
+  import Reports from './Reports.svelte';
   import BattleOrdersDialog from '../battle/BattleOrdersDialog.svelte';
   import BattleViewer from '../battle/BattleViewer.svelte';
 
-  let tab = $state<'colonies' | 'map' | 'research' | 'fleets' | 'designer' | 'empires'>('colonies');
+  let tab = $state<'colonies' | 'map' | 'research' | 'fleets' | 'designer' | 'empires' | 'reports'>('colonies');
+  let seenReports = $state(0);
   let chatText = $state('');
 
   const session = () => getActive()!.session;
@@ -121,6 +123,14 @@
     <button class:active={tab === 'fleets'} data-testid="tab-fleets" onclick={() => (tab = 'fleets')}>Fleets</button>
     <button class:active={tab === 'designer'} data-testid="tab-designer" onclick={() => (tab = 'designer')}>Designer</button>
     <button class:active={tab === 'empires'} data-testid="tab-empires" onclick={() => (tab = 'empires')}>Empires</button>
+    <button
+      class:active={tab === 'reports'}
+      data-testid="tab-reports"
+      onclick={() => {
+        tab = 'reports';
+        seenReports = app.reports.length;
+      }}
+    >Reports{app.reports.length > seenReports ? ` (${app.reports.length - seenReports})` : ''}</button>
     {#if app.replays.some((r) => !r.watched)}
       <button class="replays" data-testid="new-replays" onclick={() => (tab = 'empires')}>
         ⚔ {app.replays.filter((r) => !r.watched).length} new battle{app.replays.filter((r) => !r.watched).length > 1 ? 's' : ''}
@@ -141,6 +151,8 @@
       <Fleets />
     {:else if tab === 'designer'}
       <Designer />
+    {:else if tab === 'reports'}
+      <Reports />
     {:else}
       <Empires />
     {/if}

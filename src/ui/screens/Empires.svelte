@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { areAtWar } from '@engine/index';
+  import { leaderById, salaryOf, MAX_LEADERS_PER_KIND, countKind } from '@engine/leaders';
+  import type { ProposalKind } from '@engine/types';
   import { playerColor } from '../colors';
   import { app, getActive } from '../state.svelte';
 
@@ -9,31 +10,100 @@
     return session().getPlanned();
   });
   const selfId = $derived(session().playerId);
+  const me = $derived(gs ? gs.empires.find((e) => e.id === selfId) : undefined);
   const others = $derived(gs ? gs.empires.filter((e) => e.id !== selfId) : []);
+  const livingOthers = $derived(others.filter((e) => !e.eliminated));
 
-  function relation(other: number): { status: string; offered: boolean; theyOffered: boolean } {
-    if (!gs) return { status: 'peace', offered: false, theyOffered: false };
+  let note = $state('');
+  function submit(kind: string, payload: unknown) {
+    note = '';
+    const res = session().submit(kind, payload);
+    if (res.error) note = res.error;
+  }
+
+  // ---------- relations ----------
+  function relation(other: number): { status: string; offered: boolean; theyOffered: boolean; treaties: string } {
+    if (!gs) return { status: 'peace', offered: false, theyOffered: false, treaties: '' };
     const [a, b] = other < selfId ? [other, selfId] : [selfId, other];
     const rel = gs.relations.find((r) => r.a === a && r.b === b);
+    const t: string[] = [];
+    if (rel?.treaties.nap) t.push('non-aggression');
+    if (rel?.treaties.alliance) t.push('alliance');
+    if (rel?.treaties.trade) t.push('trade');
+    if (rel?.treaties.research) t.push('research');
     return {
       status: rel?.status ?? 'peace',
       offered: rel?.peaceOfferedBy.includes(selfId) ?? false,
       theyOffered: rel?.peaceOfferedBy.includes(other) ?? false,
+      treaties: t.join(', '),
     };
   }
 
-  function declareWar(target: number) {
-    session().submit('declare_war', { target });
+  // ---------- proposals ----------
+  let proposalTo = $state(-1);
+  let proposalKind = $state<ProposalKind>('trade');
+  let giftBc = $state(100);
+  let giveApp = $state('');
+  let wantApp = $state('');
+  const PROPOSALS: Array<{ kind: ProposalKind; label: string }> = [
+    { kind: 'peace', label: 'Peace' },
+    { kind: 'non_aggression', label: 'Non-aggression pact' },
+    { kind: 'alliance', label: 'Alliance' },
+    { kind: 'trade', label: 'Trade treaty' },
+    { kind: 'research', label: 'Research treaty' },
+    { kind: 'gift_bc', label: 'Gift (BC)' },
+    { kind: 'tech_exchange', label: 'Technology exchange' },
+    { kind: 'surrender', label: 'Surrender to them' },
+  ];
+  const partner = $derived(gs && proposalTo >= 0 ? gs.empires.find((e) => e.id === proposalTo) : undefined);
+  const incoming = $derived(gs ? gs.proposals.filter((p) => p.to === selfId) : []);
+  const outgoing = $derived(gs ? gs.proposals.filter((p) => p.from === selfId) : []);
+
+  function sendProposal() {
+    const payload: Record<string, unknown> = { to: proposalTo, kind: proposalKind };
+    if (proposalKind === 'gift_bc') payload['giveBc'] = giftBc;
+    if (proposalKind === 'tech_exchange') {
+      payload['giveApp'] = giveApp;
+      payload['wantApp'] = wantApp;
+    }
+    submit('diplo_propose', payload);
   }
-  function offerPeace(target: number) {
-    session().submit('offer_peace', { target });
+  function nameOf(id: number): string {
+    return gs?.empires.find((e) => e.id === id)?.name ?? `#${id}`;
   }
+  function describeProposal(p: (typeof incoming)[number]): string {
+    const label = PROPOSALS.find((x) => x.kind === p.kind)?.label ?? p.kind;
+    if (p.kind === 'gift_bc') return `${label}: ${p.giveBc} BC`;
+    if (p.kind === 'tech_exchange') return `${label}: their ${p.giveApp} for your ${p.wantApp}`;
+    return label;
+  }
+
+  // ---------- council ----------
+  const council = $derived(gs?.council.pending ?? null);
+  const myVote = $derived(council ? council.votes[String(selfId)] : undefined);
+
+  // ---------- leaders ----------
+  const myOffers = $derived.by(() => {
+    if (!gs) return [];
+    return gs.leaderOffers.filter((o) => o.empireId === selfId && o.expiresTurn > gs.turn);
+  });
+  const myColonies = $derived(gs ? gs.colonies.filter((c) => c.owner === selfId && !c.outpost) : []);
+
+  // ---------- spies ----------
+  let spyTarget = $state<number | null>(null);
+  let spyMode = $state<'steal' | 'sabotage'>('steal');
+
+  // ---------- antarans ----------
+  const portalColony = $derived(myColonies.find((c) => c.buildings.includes('dimensional_portal')));
 </script>
 
-{#if gs}
+{#if gs && me}
+  {#if note}<p class="error" data-testid="empire-note">{note}</p>{/if}
+
+  <h3>Relations</h3>
   <table>
     <thead>
-      <tr><th>Empire</th><th>Race</th><th>Status</th><th>Actions</th></tr>
+      <tr><th>Empire</th><th>Race</th><th>Status</th><th>Treaties</th><th>Actions</th></tr>
     </thead>
     <tbody>
       {#each others as e (e.id)}
@@ -46,12 +116,13 @@
             {rel.offered ? ' (peace offered)' : ''}
             {rel.theyOffered ? ' (they seek peace)' : ''}
           </td>
+          <td>{rel.treaties}</td>
           <td>
             {#if !e.eliminated}
               {#if rel.status === 'peace'}
-                <button data-testid="declare-war-{e.id}" onclick={() => declareWar(e.id)}>Declare war</button>
+                <button data-testid="declare-war-{e.id}" onclick={() => submit('declare_war', { target: e.id })}>Declare war</button>
               {:else if !rel.offered}
-                <button data-testid="offer-peace-{e.id}" onclick={() => offerPeace(e.id)}>Offer peace</button>
+                <button data-testid="offer-peace-{e.id}" onclick={() => submit('offer_peace', { target: e.id })}>Offer peace</button>
               {/if}
             {/if}
           </td>
@@ -59,6 +130,128 @@
       {/each}
     </tbody>
   </table>
+
+  <h3>Diplomacy</h3>
+  {#if incoming.length}
+    <ul data-testid="incoming-proposals">
+      {#each incoming as p (p.id)}
+        <li>
+          {nameOf(p.from)} proposes: {describeProposal(p)} (expires turn {p.expiresTurn})
+          <button data-testid="accept-{p.id}" onclick={() => submit('diplo_respond', { proposalId: p.id, accept: true })}>Accept</button>
+          <button data-testid="reject-{p.id}" onclick={() => submit('diplo_respond', { proposalId: p.id, accept: false })}>Reject</button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+  {#if livingOthers.length}
+    <div class="compose">
+      <select data-testid="proposal-to" bind:value={proposalTo}>
+        <option value={-1}>choose empire…</option>
+        {#each livingOthers as e (e.id)}<option value={e.id}>{e.name}</option>{/each}
+      </select>
+      <select data-testid="proposal-kind" bind:value={proposalKind}>
+        {#each PROPOSALS as p (p.kind)}<option value={p.kind}>{p.label}</option>{/each}
+      </select>
+      {#if proposalKind === 'gift_bc'}
+        <input type="number" min="1" bind:value={giftBc} style="width:6rem" />
+      {/if}
+      {#if proposalKind === 'tech_exchange' && partner}
+        <select bind:value={giveApp}>
+          <option value="">give…</option>
+          {#each me.knownApps.filter((a) => !partner.knownApps.includes(a)) as a (a)}<option value={a}>{a}</option>{/each}
+        </select>
+        <select bind:value={wantApp}>
+          <option value="">want…</option>
+          {#each partner.knownApps.filter((a) => !me.knownApps.includes(a)) as a (a)}<option value={a}>{a}</option>{/each}
+        </select>
+      {/if}
+      <button data-testid="send-proposal" disabled={proposalTo < 0} onclick={sendProposal}>Propose</button>
+    </div>
+  {/if}
+  {#if outgoing.length}
+    <p class="dim">outstanding: {outgoing.map((p) => `${describeProposal(p)} → ${nameOf(p.to)}`).join('; ')}</p>
+  {/if}
+
+  {#if council}
+    <h3>Galactic Council</h3>
+    <p data-testid="council">
+      The council convenes! Candidates: {council.candidates.map(nameOf).join(' and ')}.
+      {myVote !== undefined ? `You voted: ${myVote === -1 ? 'abstain' : nameOf(myVote)}` : ''}
+    </p>
+    {#each council.candidates as c (c)}
+      <button data-testid="vote-{c}" onclick={() => submit('cast_vote', { candidate: c })}>Vote {nameOf(c)}</button>
+    {/each}
+    <button data-testid="vote-abstain" onclick={() => submit('cast_vote', { candidate: -1 })}>Abstain</button>
+  {/if}
+
+  <h3>Leaders ({countKind(me, 'colony')}/{MAX_LEADERS_PER_KIND} colony, {countKind(me, 'ship')}/{MAX_LEADERS_PER_KIND} ship)</h3>
+  {#if myOffers.length}
+    <ul data-testid="leader-offers">
+      {#each myOffers as o (o.leaderId)}
+        {@const row = leaderById.get(o.leaderId)}
+        <li>
+          <b>{row?.name}</b> {row?.title} — {row?.kind} leader,
+          {row?.skills.map((s) => `${s.skill.replaceAll('_', ' ')}${s.enhanced ? '★' : ''}`).join(', ')}
+          — {o.priceBc} BC (expires turn {o.expiresTurn})
+          <button data-testid="hire-{o.leaderId}" onclick={() => submit('hire_leader', { leaderId: o.leaderId })}>Hire</button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+  {#if me.leaders.length}
+    <table data-testid="leader-roster">
+      <thead><tr><th>Leader</th><th>Level</th><th>Skills</th><th>Salary</th><th>Assignment</th><th></th></tr></thead>
+      <tbody>
+        {#each me.leaders as l (l.leaderId)}
+          {@const row = leaderById.get(l.leaderId)}
+          <tr>
+            <td>{row?.name} <span class="dim">{row?.title}</span></td>
+            <td>{l.level} <span class="dim">({l.xp} xp)</span></td>
+            <td>{row?.skills.map((s) => `${s.skill.replaceAll('_', ' ')}${s.enhanced ? '★' : ''}`).join(', ')}</td>
+            <td>{row ? salaryOf(row) : 0} BC/t</td>
+            <td>
+              {#if row?.kind === 'colony'}
+                <select
+                  data-testid="assign-{l.leaderId}"
+                  value={l.colonyId ?? -1}
+                  onchange={(e) => {
+                    const v = Number((e.target as HTMLSelectElement).value);
+                    submit('assign_leader', { leaderId: l.leaderId, colonyId: v < 0 ? null : v });
+                  }}
+                >
+                  <option value={-1}>unassigned</option>
+                  {#each myColonies as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
+                </select>
+              {:else}
+                fleet-wide
+              {/if}
+            </td>
+            <td><button onclick={() => submit('dismiss_leader', { leaderId: l.leaderId })}>Dismiss</button></td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  {:else}
+    <p class="dim">No leaders in your employ. Offers arrive from time to time — Famous and charismatic help.</p>
+  {/if}
+
+  <h3>Agents ({me.spies.count}/10)</h3>
+  <div class="compose">
+    <select data-testid="spy-target" bind:value={spyTarget}>
+      <option value={null}>all defensive</option>
+      {#each livingOthers as e (e.id)}<option value={e.id}>vs {e.name}</option>{/each}
+    </select>
+    <select data-testid="spy-mode" bind:value={spyMode}>
+      <option value="steal">steal technology</option>
+      <option value="sabotage">sabotage</option>
+    </select>
+    <button data-testid="spy-apply" onclick={() => submit('set_spy_orders', { target: spyTarget, mode: spyMode })}>Set orders</button>
+    <span class="dim">
+      current: {me.spies.target === null ? 'defensive' : `${me.spies.mode} vs ${nameOf(me.spies.target)}`}
+      — train more agents from the colony build list
+    </span>
+  </div>
+
   {#if app.replays.length}
     <h3>Battle replays</h3>
     <ul>
@@ -70,11 +263,30 @@
       {/each}
     </ul>
   {/if}
+
+  <h3>Danger zone</h3>
+  <div class="compose">
+    {#if gs.settings.modes.antarans}
+      <button
+        data-testid="attack-antarans"
+        disabled={!portalColony || gs.antarans.assaultBy !== null}
+        title={portalColony ? 'Send the fleet at your portal through to the Antaran home' : 'requires a dimensional portal'}
+        onclick={() => portalColony && submit('attack_antarans', { colonyId: portalColony.id })}
+      >⚔ Attack the Antarans</button>
+    {/if}
+    <button
+      data-testid="resign"
+      onclick={() => {
+        if (confirm('Concede the game? Your empire dissolves permanently.')) submit('resign', {});
+      }}
+    >🏳 Resign</button>
+  </div>
 {/if}
 
 <style>
   table {
     border-collapse: collapse;
+    margin-bottom: 0.6rem;
   }
   td,
   th {
@@ -88,5 +300,22 @@
     height: 0.7rem;
     border-radius: 50%;
     margin-right: 0.3rem;
+  }
+  .compose {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+  }
+  .dim {
+    opacity: 0.6;
+    font-size: 0.85rem;
+  }
+  .error {
+    color: #ff7b7b;
+  }
+  h3 {
+    margin: 1rem 0 0.4rem;
   }
 </style>
