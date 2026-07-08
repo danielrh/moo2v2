@@ -170,26 +170,31 @@ room code (server field: local `http://127.0.0.1:8787` or default public server)
 
 ### Phase 3 — Simulation core (prompt item 3) ✅ when: 2-bot 50-turn determinism (replay==live hash); 20-turn economy golden; node-vs-browser hash parity; 2 humans can play an economy-only game
 
-- [ ] Galaxy generation from seed (🔍 star-class/planet distribution odds; homeworld setup)
-- [ ] GameState types + canonical serialize/deserialize + hash integration
-- [ ] Command set: set_jobs, set_build_queue, buy_production, rename_colony, set_tax_rate,
-      set_research, queue_extra_research, create_design/obsolete_design, move_ships,
-      set_fleet_policy, colonize, build_outpost, scrap_ship, board_transports, commit metadata,
-      debug commands (flag-gated, logged)
-- [ ] Pipeline S0–S6 + S11-lite (event buffer) + S13
-- [ ] Colony economy per §04 order: jobs → gravity/climate → raw output → picks → buildings/
-      leaders → government/morale → pollution/cleanup → net; empire rollup (tax, trade goods,
-      freighters, maintenance, CP overage, deficits)
-      (🔍 growth curve, 🔍 morale table, 🔍 pollution arithmetic, 🔍 tax slider, 🔍 buy-cost curve, 🔍 freighter/food rules)
-- [ ] Research S4: field progression, pre-selected target app, creative (vanilla = all apps),
-      uncreative (seeded random app), **creative-variant mode**, hyper-advanced repeatables
-- [ ] **Sticky-build mode** semantics in S3 + queue commands; production overflow; buyout
-- [ ] Colonization/outposts; point-to-point FTL with fuel range; command points; maintenance
-- [ ] `selectors.ts` for every number the UI shows (income, ETAs, turns-to-build, ranges)
-- [ ] Headless bot driver + expander/techer policies (`src/headless`)
-- [ ] UI v1: colonies spreadsheet (columns, inline jobs/build editing, commit bar), galaxy map
-      (pan/zoom/move orders), research screen, minimal empire screen
-- [ ] Determinism suites: fuzz replay, snapshot-restore equivalence, node-vs-browser parity
+- [x] Galaxy generation from seed (star counts per Book-Mapgen; color/planet weight tables are
+      documented TUNABLE defaults, F13; homeworlds match race picks incl. gravity/size/minerals/artifacts)
+- [x] GameState types (integer-only) + canonical serialize/hash integration
+- [x] Command set: set_jobs, set_build_queue, buy_production, set_research,
+      queue_extra_research, move_ships, colonize, build_outpost, scrap_ship, debug_* (flag-gated).
+      Deferred: rename_colony (cosmetic), board_transports/send_population (Phase 6 invasion),
+      create_design/set_fleet_policy (Phase 4). set_tax_rate REMOVED — no tax slider exists (F7).
+- [x] Pipeline S0–S6 + S12 (elimination/conquest) + S13; S7-S11 arrive Phases 4-6
+- [x] Colony economy per §04 order — formulas F1-F14 sourced + golden-locked (growth sqrt curve,
+      morale, pollution, buy-cost piecewise, money incl. building %s, climate/mineral/maxpop
+      tables, gravity penalties, freighter food redistribution, trade goods/housing)
+- [x] Research S4: one active field, pre-selected target app, creative-all/uncreative-random,
+      **creative-variant purchases** (full field cost each, one per turn), hyper-advanced repeatables
+      (25000 + 10000/level), RP pool carries on switch (documented)
+- [x] **Sticky-build mode** in set_build_queue (progress parks on switched-away item) + normal-mode carryover; overflow chains completions; buyout with per-turn lockout
+- [x] Colonization/outposts; point-to-point FTL (fuel range from support stars, drives 2-7 pc/t +2 transdimensional, wormholes 1t); building maintenance w/ climate penalty (ship CP/maintenance in Phase 4)
+- [x] `selectors.ts`: colonyRows/empireSummary/researchChoices/galaxyView/fleetRows/moveOptions
+- [x] Headless bot driver (`src/headless/bots.ts`): expander policy + runHeadlessGame/replayGame
+- [x] UI v1: colonies spreadsheet (jobs steppers, build dropdown + queue, buy, per-colony nets),
+      SVG galaxy map (select/move/colonize), research screen (fields by subject + target radio),
+      fleets table, empire header bar (BC/food/RP/research ETA/commit)
+- [x] Determinism suites: 2-seed 40-turn bot games with replay==live, identical reruns,
+      snapshot-restore equivalence, apply-purity, real-engine node↔browser hash parity (e2e)
+- [x] Full e2e: two browsers play real turns (race select → orders via spreadsheet → commit →
+      hash agreement → reload-resume mid-game → continue) in ~8s
 
 ### Phase 4 — Combat (prompt item 4) ✅ when: battle fixtures golden-locked; 20–40% equal-tech damage envelope passes; e2e battle renders and skips in 2 browsers; multi-turn sieges work headless
 
