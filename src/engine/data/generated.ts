@@ -4345,11 +4345,11 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "effectSummaryLen": 168
   },
   {
-    "id": "research_laboratory",
+    "id": "research_lab",
     "name": "Research Laboratory",
     "subject": "computers",
     "fieldId": "optronics",
-    "techId": null,
+    "techId": 152,
     "effectSummaryLen": 171
   },
   {
@@ -4401,11 +4401,11 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "effectSummaryLen": 136
   },
   {
-    "id": "planetary_supercomputer",
+    "id": "supercomputer",
     "name": "Planetary Supercomputer",
     "subject": "computers",
     "fieldId": "positronics",
-    "techId": null,
+    "techId": 178,
     "effectSummaryLen": 142
   },
   {
@@ -4553,11 +4553,11 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "effectSummaryLen": 231
   },
   {
-    "id": "anti_missile_rockets",
+    "id": "anti_missile_rocket",
     "name": "Anti-Missile Rockets",
     "subject": "construction",
     "fieldId": "advanced_engineering",
-    "techId": null,
+    "techId": 13,
     "effectSummaryLen": 214
   },
   {
@@ -4577,11 +4577,11 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "effectSummaryLen": 154
   },
   {
-    "id": "automated_factories",
+    "id": "automated_factory",
     "name": "Automated Factories",
     "subject": "construction",
     "fieldId": "advanced_construction",
-    "techId": null,
+    "techId": 20,
     "effectSummaryLen": 141
   },
   {
@@ -4649,19 +4649,19 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "effectSummaryLen": 222
   },
   {
-    "id": "robo_mining_plant",
+    "id": "robominers",
     "name": "Robo Mining Plant",
     "subject": "construction",
     "fieldId": "robotics",
-    "techId": null,
+    "techId": 155,
     "effectSummaryLen": 162
   },
   {
-    "id": "battle_station",
+    "id": "battlestation",
     "name": "Battle Station",
     "subject": "construction",
     "fieldId": "robotics",
-    "techId": null,
+    "techId": 23,
     "effectSummaryLen": 138
   },
   {
@@ -4689,11 +4689,11 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "effectSummaryLen": 112
   },
   {
-    "id": "assault_shuttles",
+    "id": "assault_shuttle",
     "name": "Assault Shuttles",
     "subject": "construction",
     "fieldId": "servo_mechanics",
-    "techId": null,
+    "techId": 17,
     "effectSummaryLen": 184
   },
   {
@@ -4745,11 +4745,11 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "effectSummaryLen": 139
   },
   {
-    "id": "robominers",
+    "id": "robotic_factory",
     "name": "Robotic Factory",
     "subject": "construction",
     "fieldId": "advanced_robotics",
-    "techId": 155,
+    "techId": null,
     "effectSummaryLen": 107
   },
   {
@@ -4769,7 +4769,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "effectSummaryLen": 146
   },
   {
-    "id": "core_waste_dumps",
+    "id": "core_waste_dump",
     "name": "Core Waste Dumps",
     "subject": "construction",
     "fieldId": "tectonic_engineering",
@@ -4793,11 +4793,11 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "effectSummaryLen": 159
   },
   {
-    "id": "heavy_fighters",
+    "id": "heavy_fighter_bays",
     "name": "Heavy Fighters",
     "subject": "construction",
     "fieldId": "superscalar_construction",
-    "techId": null,
+    "techId": 83,
     "effectSummaryLen": 193
   },
   {
@@ -4881,11 +4881,11 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "effectSummaryLen": 176
   },
   {
-    "id": "warp_dissipator",
+    "id": "warp_dissipater",
     "name": "Warp Dissipator",
     "subject": "force_fields",
     "fieldId": "magneto_gravitics",
-    "techId": null,
+    "techId": 197,
     "effectSummaryLen": 156
   },
   {
@@ -4917,15 +4917,15 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "name": "Pulsar",
     "subject": "force_fields",
     "fieldId": "warp_fields",
-    "techId": null,
+    "techId": 148,
     "effectSummaryLen": 168
   },
   {
-    "id": "warp_field_interdicter",
+    "id": "warp_interdictor",
     "name": "Warp Field Interdicter",
     "subject": "force_fields",
     "fieldId": "warp_fields",
-    "techId": null,
+    "techId": 198,
     "effectSummaryLen": 186
   },
   {
@@ -5017,19 +5017,19 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "effectSummaryLen": 126
   },
   {
-    "id": "subspace_teleporter",
+    "id": "sub_space_teleporter",
     "name": "Subspace Teleporter",
     "subject": "force_fields",
     "fieldId": "transwarp_fields",
-    "techId": null,
+    "techId": 182,
     "effectSummaryLen": 152
   },
   {
-    "id": "inertial_nullifier",
+    "id": "inertia_nullifier",
     "name": "Inertial Nullifier",
     "subject": "force_fields",
     "fieldId": "transwarp_fields",
-    "techId": null,
+    "techId": 89,
     "effectSummaryLen": 204
   },
   {
@@ -5228,7 +5228,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "id": "disruptor_cannon",
     "name": "Disruptor Cannon",
     "subject": "physics",
-    "fieldId": "multi_dimensiomal_physics",
+    "fieldId": "multi_dimensional_physics",
     "techId": 54,
     "effectSummaryLen": 155
   },
@@ -5236,7 +5236,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "id": "dimensional_portal",
     "name": "Dimensional Portal",
     "subject": "physics",
-    "fieldId": "multi_dimensiomal_physics",
+    "fieldId": "multi_dimensional_physics",
     "techId": 53,
     "effectSummaryLen": 186
   },
@@ -5513,11 +5513,11 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "effectSummaryLen": 189
   },
   {
-    "id": "alien_control_center",
+    "id": "alien_management_center",
     "name": "Alien Control Center",
     "subject": "sociology",
     "fieldId": "xeno_relations",
-    "techId": null,
+    "techId": 8,
     "effectSummaryLen": 151
   },
   {
@@ -5540,7 +5540,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "id": "confederation",
     "name": "Confederation",
     "subject": "sociology",
-    "fieldId": "advanced_government",
+    "fieldId": "advanced_governments",
     "techId": null,
     "effectSummaryLen": 0
   },
@@ -5548,7 +5548,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "id": "imperium",
     "name": "Imperium",
     "subject": "sociology",
-    "fieldId": "advanced_government",
+    "fieldId": "advanced_governments",
     "techId": null,
     "effectSummaryLen": 123
   },
@@ -5556,7 +5556,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "id": "federation",
     "name": "Federation",
     "subject": "sociology",
-    "fieldId": "advanced_government",
+    "fieldId": "advanced_governments",
     "techId": null,
     "effectSummaryLen": 0
   },
@@ -5564,7 +5564,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "id": "galactic_unification",
     "name": "Galactic Unification",
     "subject": "sociology",
-    "fieldId": "advanced_government",
+    "fieldId": "advanced_governments",
     "techId": null,
     "effectSummaryLen": 0
   },

@@ -234,19 +234,30 @@ const fxTable = findTable(fxTables, ['Field', 'Tier (cost)', 'Item', 'Effect']);
 
 // Field display name -> field id (strip "(General)/(Avg)/(Adv)" markers and costs).
 const FIELD_ALIASES = {
-  // display-name base -> field id (only where snake() of display differs)
+  multi_dimensiomal_physics: 'multi_dimensional_physics', // typo in source md
+  advanced_government: 'advanced_governments',
 };
-// Application display name -> tech-table id (where snake() differs).
+// Application display name -> canonical id (tech-table/buildable id where snake() differs).
 const APP_ALIASES = {
   merculite_missile: 'merculite_missiles',
   phasor: 'phasors',
   pulson_missile: 'pulson_missiles',
-  spy_network: 'spies',
-  freighters: 'freighters',
   plasma_torpedo: 'plasma_torpedoes',
   proton_torpedo: 'proton_torpedoes',
-  anti_matter_torpedo: 'anti_matter_torpedo',
-  robotic_factory: 'robominers',
+  research_laboratory: 'research_lab',
+  anti_missile_rockets: 'anti_missile_rocket',
+  automated_factories: 'automated_factory',
+  robo_mining_plant: 'robominers',
+  battle_station: 'battlestation',
+  assault_shuttles: 'assault_shuttle',
+  heavy_fighters: 'heavy_fighter_bays',
+  warp_dissipator: 'warp_dissipater',
+  warp_field_interdicter: 'warp_interdictor',
+  subspace_teleporter: 'sub_space_teleporter',
+  inertial_nullifier: 'inertia_nullifier',
+  alien_control_center: 'alien_management_center',
+  planetary_supercomputer: 'supercomputer',
+  core_waste_dumps: 'core_waste_dump', // matches buildable id
 };
 
 const fieldById = new Map(fields.map((f) => [f.id, f]));
@@ -272,21 +283,44 @@ const applications = fxTable.rows.map(([subjectName, tierCell, itemCell, effect]
   let appId = snake(name);
   if (APP_ALIASES[appId]) appId = APP_ALIASES[appId];
   const tech = techById.get(appId);
+  // Numeric public ids conflict across the source tables (e.g. 43 and 72 are each
+  // claimed twice), so string ids are the canonical join key everywhere; techId is
+  // reference metadata only. Fall back to the weapon table's number when the tech
+  // table lacks the row (e.g. pulsar = 148).
+  const weapon = weapons.find((w) => w.id === appId || w.id + 's' === appId);
   return {
     id: appId,
     name,
     subject: snake(subjectName),
     fieldId: field ? field.id : fieldId,
-    techId: tech ? tech.techId : null,
+    techId: tech ? tech.techId : weapon && weapon.techId !== 0 ? weapon.techId : null,
     effectSummaryLen: effect.length, // prose lives in mechanics docs; engine keeps structure only
   };
 });
+
+// Cross-check: where an application also has a tech-table row, compare field
+// placement (application rows are authoritative; disagreements are documented).
+for (const a of applications) {
+  const t = techById.get(a.id);
+  if (t) {
+    const f = byNum.get(t.fieldNum);
+    if (f && f.id !== a.fieldId) {
+      warnings.push(`field placement differs for ${a.id}: effects=${a.fieldId} tech_table=${f.id}`);
+    }
+  }
+}
 
 // Cross-check: tech-table entries whose field has applications listed but that
 // never matched an application row (informational).
 const appIds = new Set(applications.map((a) => a.id));
 for (const t of techs) {
   if (!appIds.has(t.id)) warnings.push(`tech-table id has no matching application row: ${t.id}`);
+}
+if (process.argv.includes('--diff')) {
+  console.log('--- applications with NO tech-table row:');
+  for (const a of applications) {
+    if (!techById.has(a.id)) console.log(`   ${a.id}  [${a.fieldId}]`);
+  }
 }
 
 // dedupe warnings
