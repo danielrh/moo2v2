@@ -7,7 +7,7 @@ import type { EngineAdapter, GameStartPayload } from './engineAdapter';
 import type { HostLink } from './link';
 import type { GameSettings, HostToClient, LogCommand, PlayerRoster } from './messages';
 import { PROTOCOL_VERSION } from './messages';
-import type { GameStore } from '@storage/repo';
+import type { SessionStore } from './persistence';
 
 const SNAPSHOT_EVERY_TURNS = 10;
 
@@ -32,7 +32,7 @@ interface PendingCommand {
 export interface SessionOptions<S> {
   link: HostLink;
   engine: EngineAdapter<S>;
-  store: GameStore | null;
+  store: SessionStore | null;
   playerId: number;
   name: string;
   engineVersion: string;
@@ -54,7 +54,7 @@ export class GameSession<S> {
 
   private link: HostLink;
   private readonly engine: EngineAdapter<S>;
-  private readonly store: GameStore | null;
+  private readonly store: SessionStore | null;
   private readonly name: string;
   private readonly engineVersion: string;
   private readonly dataVersion: string;
@@ -153,6 +153,11 @@ export class GameSession<S> {
 
   requestResync(): void {
     this.link.send({ t: 'resync_request', haveSeq: this.lastSeq });
+  }
+
+  /** Re-introduce ourselves (call when the host peer reconnects/restarts). */
+  resendHello(): void {
+    this.hello();
   }
 
   // ----- inbound -----

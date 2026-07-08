@@ -7,7 +7,7 @@ import { RemoteHostLink } from './link';
 import type { GameSettings, LogCommand } from './messages';
 import { GameSession } from './session';
 import type { NetTransport } from './transport';
-import type { GameStore } from '@storage/repo';
+import type { SessionStore } from './persistence';
 
 export interface PeerIdentity {
   name: string;
@@ -25,7 +25,7 @@ export interface HostedGame<S> {
 export function createHostedGame<S>(opts: {
   transport: NetTransport;
   engine: EngineAdapter<S>;
-  store: GameStore | null;
+  store: SessionStore | null;
   settings: GameSettings;
   identity: PeerIdentity;
   resume?: { gameId: string; log: LogCommand[] };
@@ -78,7 +78,7 @@ export function createHostedGame<S>(opts: {
 export function joinGame<S>(opts: {
   transport: NetTransport;
   engine: EngineAdapter<S>;
-  store: GameStore | null;
+  store: SessionStore | null;
   identity: PeerIdentity;
   resume?: { gameId: string; lastSeq: number; state: S | null };
 }): GameSession<S> {

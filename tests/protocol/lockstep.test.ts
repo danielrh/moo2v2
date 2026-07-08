@@ -234,9 +234,8 @@ describe('resync + persistence', () => {
     const gid = 'g-0123456789abcdef';
     const log = await store0!.readCommands(gid);
     hub.leave(0);
-    const t0b = new MemoryHub(2); // fresh hub is unrealistic; reuse original instead
-    void t0b;
-    const t0 = hub.reconnectHost();
+    await hub.settle();
+    const t0 = hub.rejoinSlot(0);
     const resumed = createHostedGame<StubState>({
       transport: t0,
       engine: stubEngine,

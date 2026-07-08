@@ -237,7 +237,20 @@ export class HostCore<S> {
 
   private fold(cmd: LogCommand): void {
     if (cmd.kind === 'game_start') {
-      this.state = this.engine.init(cmd.payload as GameStartPayload);
+      const start = cmd.payload as GameStartPayload;
+      this.state = this.engine.init(start);
+      // Seat roster is part of game_start so a resumed host (fresh HostCore
+      // folding the persisted log) still broadcasts to every player.
+      for (const p of start.players) {
+        const existing = this.seats.get(p.id);
+        this.seats.set(p.id, {
+          name: p.name,
+          ready: true,
+          raceJson: p.raceJson,
+          connected: existing?.connected ?? p.id === 0,
+          hello: existing?.hello ?? p.id === 0,
+        });
+      }
     } else if (this.state) {
       this.state = this.engine.apply(this.state, cmd);
       if (cmd.kind === 'advance_turn' && this.state) {
