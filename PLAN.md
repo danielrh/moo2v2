@@ -137,20 +137,22 @@ room code (server field: local `http://127.0.0.1:8787` or default public server)
 
 ### Phase 1 — Data foundations + SQLite (prompt item 1) ✅ when: data suite cross-checks all counts/costs vs mechanics docs; a command log written+replayed in browser (OPFS) AND node; hash goldens stable node+chromium
 
-- [ ] `src/engine/data/`: picks + governments (from game_mechanics §02), buildings (§04 table),
-      tech fields (82, linked-list integrity), techs (~180), tech applications with effect
-      metadata scaffold (~190 from tech/technology_effects.md), hulls, weapons + weapon mods
-      (§06), command points/ranges, races (13 stock), leaders (roster; magnitudes 🔍 Phase 6),
-      monsters, antarans, planet specials, climates/sizes/minerals/gravity constants
-- [ ] 🔍 Non-weapon component tables (armor/shields/computers/drives/specials space+cost by hull size) — source + transcribe
-- [ ] Data bug resolutions documented in `src/engine/data/README.md` (tech_id 24 duplicate, tech_id 0 placeholders, duplicate "Starlight Projector")
-- [ ] `rng.ts` (sfc32 + stream derivation), `isqrt.ts`, `hash.ts` (xxhash64), `canonical.ts` (sorted-key JSON bytes)
-- [ ] `DATA_VERSION` = runtime hash of canonical tables
-- [ ] Kysely schema + migrations; `createDatabase(env)` factory: sqlocal (browser) / better-sqlite3 (node); sql.js fallback stub acceptable until Phase 8
-- [ ] Repositories: appendCommands/readLog/snapshots/turnHashes/turnEvents/battleReplays/chat/prefs
-- [ ] Save export/import JSON envelope
-- [ ] Data validation test suite (counts, costs, linked-list, cross-file consistency)
-- [ ] Browser OPFS smoke (Playwright): open dev route, write+read+replay a log via sqlocal
+- [x] `src/engine/data/`: generator (`scripts/gen-data.mjs`) parses mechanics tables into
+      `generated.ts` (53 picks, 82 fields w/ derived subjects, 173 techs, 191 applications,
+      69 buildables, 9 hulls, 45 weapons, 14 mods, CP/scan/stealth/budget constants); curated
+      `index.ts` adds lookups, pick exclusivity+budget validation, 13 stock presets (original
+      names, mapped row-by-row to races.md). String ids are the canonical join key;
+      APPLICATION_ROWS authoritative for tree structure. Leaders/monsters/antarans stat blocks:
+      hand-transcription deferred to Phase 6 (consuming phase).
+- [ ] 🔍 Non-weapon component tables (armor/shields/computers/drives/specials space+cost) — moved to Phase 4 (consuming phase: ship designer)
+- [x] Data bug resolutions in `src/engine/data/README.md` (tech_id 24 + tech_id 10 duplicates → 224/225; tech_id 0 placeholders; numeric-id conflicts 43/72 → string ids canonical; Starlight Projector collision; source typo)
+- [x] `rng.ts` (sfc32 + xxhash-derived streams), `isqrt.ts` (exact), `hash.ts` (xxhash32 w/ spec vectors, 16-hex fingerprints), `canonical.ts` (sorted keys, integer-only tripwire)
+- [x] `DATA_VERSION` = runtime hash of canonical tables
+- [x] Kysely schema + migrations; `storage/node.ts` (better-sqlite3) + `storage/browser.ts` (sqlocal/OPFS, per-game DB files); sql.js fallback deferred to Phase 8
+- [x] `GameStore` repositories: commands/snapshots(gzip)/turnHashes/turnEvents/battleReplays/chat/prefs
+- [x] Save export/import JSON envelope (tested round-trip)
+- [x] Data validation test suite (counts, goldens, linked-list, referential integrity, preset legality) — 36 tests green; `gen-data.mjs --check` runs in CI to catch drift
+- [x] Browser OPFS smoke (Playwright): #storage-smoke route writes+reads log+snapshot via sqlocal; node↔chromium parity asserted for DATA_VERSION, canonical hash, and RNG stream
 
 ### Phase 2 — Multiplayer core (prompt item 2) ✅ when: two real browsers via local lobbylink advance a stub game in lockstep with hash checks; tab reload resumes via resume-token + resync
 

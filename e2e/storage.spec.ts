@@ -12,8 +12,6 @@ const PARITY_FIXTURE = {
 
 test('sqlocal/OPFS storage works in-browser and hashes match node', async ({ page }) => {
   await page.goto('/#storage-smoke');
-  const resultText = await page.getByTestId('smoke-result').textContent({ timeout: 30_000 });
-  expect(resultText).not.toBe('running...');
   await expect(page.getByTestId('smoke-result')).not.toHaveText('running...', { timeout: 30_000 });
   const result = JSON.parse((await page.getByTestId('smoke-result').textContent())!) as Record<string, unknown>;
 
