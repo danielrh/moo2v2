@@ -16,6 +16,8 @@ import { canonicalStringify } from '@engine/canonical';
 import { gzip, gunzip } from './gzip';
 import type { SaveEnvelope } from './repo';
 
+export type { SaveEnvelope };
+
 export const SAVE_MAGIC = 'MOO2SAVE';
 export const SAVE_VERSION = 1;
 
