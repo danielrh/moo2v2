@@ -235,8 +235,9 @@ export function designStats(state: GameState, empire: Empire, design: Omit<ShipD
 
   const beamAttack =
     design.computer * 25 + (design.specials.includes('battle_scanner') ? 50 : 0) + traits.shipAttackPct;
+  // half the hull's defense column keeps to-hit in a playable 20-60% window
   const beamDefense =
-    hull.strategic.defBonus +
+    floorDiv(hull.strategic.defBonus, 2) +
     combatSpeed * 2 +
     (design.specials.includes('inertial_stabilizer') ? 25 : 0) +
     traits.shipDefensePct;

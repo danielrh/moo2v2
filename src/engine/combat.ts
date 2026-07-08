@@ -18,8 +18,9 @@ export const FP = 256; // fixed-point scale
 export const FIELD_W = 512 * FP;
 export const FIELD_H = 384 * FP;
 export const MAX_TICKS = 400;
-/** master pace knob: percent of base rate-of-fire (tuned by the balance harness) */
-export const COMBAT_PACE = 100;
+/** master pace knob: percent of base rate-of-fire (tuned by the balance harness
+ * to land equal-tech passes in the 20-40% fleet-damage envelope) */
+export const COMBAT_PACE = 250;
 
 export type Stance = 'charge' | 'hold_range' | 'standoff' | 'evade_retreat';
 export type TargetPriority = 'nearest' | 'biggest' | 'smallest' | 'warships' | 'bases';
@@ -125,6 +126,7 @@ interface Sim {
   retreated: boolean;
   crossed: boolean;
   shield: number;
+  shieldRegenAcc: number;
   armor: number;
   structure: number;
   targetIdx: number;
@@ -174,6 +176,7 @@ export function runBattle(
     retreated: false,
     crossed: false,
     shield: init.shieldPool,
+    shieldRegenAcc: 0,
     armor: init.startingArmor,
     structure: init.startingStructure,
     targetIdx: -1,
@@ -240,22 +243,24 @@ export function runBattle(
       const target = s.targetIdx >= 0 ? sims[s.targetIdx] : undefined;
       let dx = 0;
       let dy = 0;
-      const stepToward = (tx: number, ty: number, sign: 1 | -1) => {
+      const BRAWL = 30 * FP; // charge closes to point-blank and holds, no overshoot
+      const stepToward = (tx: number, ty: number, sign: 1 | -1, stopAt = 0) => {
         const ddx = tx - s.x;
         const ddy = ty - s.y;
         const d = Math.max(1, idist(Math.abs(ddx), Math.abs(ddy)));
-        dx = roundDiv(ddx * speed * sign, d);
-        dy = roundDiv(ddy * speed * sign, d);
+        const travel = sign === 1 ? Math.min(speed, Math.max(0, d - stopAt)) : speed;
+        dx = roundDiv(ddx * travel * sign, d);
+        dy = roundDiv(ddy * travel * sign, d);
       };
       switch (s.stance) {
         case 'charge':
-          if (target && active(target)) stepToward(target.x, target.y, 1);
+          if (target && active(target)) stepToward(target.x, target.y, 1, BRAWL);
           else dx = dir * speed;
           break;
         case 'hold_range': {
           if (target && active(target)) {
             const d = idist(Math.abs(target.x - s.x), Math.abs(target.y - s.y));
-            if (d > 200 * FP) stepToward(target.x, target.y, 1);
+            if (d > 200 * FP) stepToward(target.x, target.y, 1, 200 * FP);
             else if (d < 150 * FP) stepToward(target.x, target.y, -1);
           } else dx = dir * speed;
           break;
@@ -280,7 +285,10 @@ export function runBattle(
           s.retreated = true;
         }
       }
-      if (s.init.side === 0 && s.x >= FIELD_W - 8 * FP) s.crossed = true;
+      // "crossed" = an attacker with no remaining target drifting off the far edge
+      if (s.init.side === 0 && s.x >= FIELD_W - 8 * FP && (s.targetIdx < 0 || !sims[s.targetIdx] || !active(sims[s.targetIdx]!))) {
+        s.crossed = true;
+      }
       s.x = clamp(s.x, 2 * FP, FIELD_W - 2 * FP);
     }
 
@@ -391,10 +399,15 @@ export function runBattle(
       }
     }
 
-    // --- shield regen (3%/tick) ---
+    // --- shield regen (3%/tick via fractional accumulator) ---
     for (const s of sims) {
       if (s.alive && s.init.shieldPool > 0 && s.shield < s.init.shieldPool) {
-        s.shield = Math.min(s.init.shieldPool, s.shield + Math.max(1, ceilDiv(s.init.shieldPool * 3, 100)));
+        s.shieldRegenAcc += s.init.shieldPool * 3;
+        if (s.shieldRegenAcc >= 100) {
+          const whole = Math.floor(s.shieldRegenAcc / 100);
+          s.shieldRegenAcc -= whole * 100;
+          s.shield = Math.min(s.init.shieldPool, s.shield + whole);
+        }
       }
     }
 

@@ -24,6 +24,7 @@ export default defineConfig({
       'tests/protocol/**/*.test.ts',
       'tests/storage/**/*.test.ts',
       'tests/determinism/**/*.test.ts',
+      'tests/balance/**/*.test.ts',
     ],
     // The sandbox has 2 CPUs; keep contention low.
     maxWorkers: 2,

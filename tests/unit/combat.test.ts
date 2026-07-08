@@ -40,7 +40,7 @@ function frigateInit(shipId: number, side: 0 | 1, opts?: Partial<CombatShipInit>
     hullIdx: 1,
     isBase: false,
     beamAttack: 25,
-    beamDefense: 50 + 8,
+    beamDefense: 25 + 8,
     speed: 4,
     armorHp: 4,
     structureHp: 4,

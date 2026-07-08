@@ -11,8 +11,8 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "node scripts/check-boundaries.mjs && vitest run",
     "test:watch": "vitest",
-    "test:game": "vitest run --config vitest.game.config.ts",
-    "test:balance": "vitest run --config vitest.balance.config.ts",
+    "test:game": "vitest run tests/determinism",
+    "test:balance": "MOO2_BALANCE=1 vitest run tests/balance",
     "test:e2e": "playwright test",
     "lobby:server": "bash scripts/run-lobby-server.sh"
   },
