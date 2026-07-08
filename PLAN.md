@@ -156,16 +156,17 @@ room code (server field: local `http://127.0.0.1:8787` or default public server)
 
 ### Phase 2 — Multiplayer core (prompt item 2) ✅ when: two real browsers via local lobbylink advance a stub game in lockstep with hash checks; tab reload resumes via resume-token + resync
 
-- [ ] `protocol/transport.ts`: NetTransport interface; `lobbylinkTransport.ts` adapter; `memoryTransport.ts` fake
-- [ ] Host sequencer (gapless seq, host self-submit) + client apply loop
-- [ ] `hello`/`welcome`/version-reject handshake
-- [ ] `cmd_submit/accept/reject` + optimistic apply/rollback in `GameSession`
-- [ ] `commit_turn`/`uncommit_turn`/`commit_status`; `advance_turn` as system command over a stub sim (counter + hash)
-- [ ] `hash_report`/`desync_notice`/`resync_request`/`resync_data` (gzip snapshot + command tail; chunk > 8 MiB)
-- [ ] Chat send/deliver + persistence
-- [ ] Reconnect/rejoin/seat-claim handling; host-pause UX stub ("waiting for host")
-- [ ] Protocol vitest suite over memory transport (sequencing, rollback, resync, rejoin)
-- [ ] Playwright e2e smoke: create/join/advance/reload with real WebRTC through local Go server
+- [x] `protocol/transport.ts` NetTransport; `lobbylinkTransport.ts` adapter; `memoryTransport.ts` hub w/ disconnect/rejoin simulation
+- [x] `HostCore` sequencer (gapless seq, LocalHostLink for host's own session, seat roster restored from game_start on resume) + `GameSession` fold loop
+- [x] `hello`/`welcome`/version-reject (protocol + data-version checks; post-start unknown-seat rejection)
+- [x] `cmd_submit/accept/reject` + optimistic planned state w/ rollback; client-side validation first
+- [x] `commit_turn`/`uncommit`/`commit_status`; `advance_turn` fires when all seats committed (stub counter engine behind `EngineAdapter` seam — real engine swaps in Phase 3)
+- [x] `hash_report` per turn → `desync_notice` → auto `resync_request`/`resync_data` (command tail; gap detection also triggers resync; snapshot-based fast path + gzip deferred to Phase 8 perf budget)
+- [x] Chat send/deliver + persistence (post-start)
+- [x] Reconnect/rejoin: resume tokens (sessionStorage per tab), gameId derived from seed, per-room sqlite DB, session resume from snapshot+tail, host restart resume from persisted log, client re-hello on host rejoin
+- [x] Protocol vitest suite over memory transport (9 scenarios: lobby, versions, start, optimistic, reject, commit/advance, resync, dual persistence, host restart)
+- [x] Playwright e2e: 2 browser contexts, real WebRTC via local Go lobbylink — lobby/start/lockstep/hash-agreement/chat/reload-resume all pass (~7s)
+- [x] Structural `SessionStore` interface keeps protocol layer storage-free (boundary-enforced)
 
 ### Phase 3 — Simulation core (prompt item 3) ✅ when: 2-bot 50-turn determinism (replay==live hash); 20-turn economy golden; node-vs-browser hash parity; 2 humans can play an economy-only game
 

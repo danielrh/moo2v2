@@ -318,9 +318,14 @@ export class GameSession<S> {
   }
 
   private persist(fn: () => Promise<unknown>): void {
-    this.persistChain = this.persistChain.then(fn).catch((e) => {
-      console.error('[session] persistence error:', e);
-    });
+    this.persistChain = this.persistChain
+      .then(() => fn())
+      .then(
+        () => undefined,
+        (e) => {
+          console.error('[session] persistence error:', e);
+        },
+      );
   }
 
   /** Await outstanding persistence (tests / graceful shutdown). */
@@ -337,7 +342,7 @@ export class GameSession<S> {
   getPlanned(): S | null {
     if (!this.authState) return null;
     if (!this.plannedDirty && this.plannedCache) return this.plannedCache;
-    let s = this.authState;
+    let s: S = this.authState;
     const turn = this.engine.turnOf(s);
     for (const p of this.pending) {
       if (p.turn !== turn) continue;
