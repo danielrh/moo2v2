@@ -22,6 +22,8 @@ export interface RoomParams {
   code: string;
   name: string;
   playerCount: number;
+  /** enable logged debug commands (testing) — host setting */
+  debug?: boolean;
 }
 
 export interface ActiveGame {
@@ -97,7 +99,7 @@ export async function enterRoom(params: RoomParams): Promise<ActiveGame> {
       transport,
       engine: gameEngine as unknown as EngineAdapter<GameState>,
       store,
-      settings: { ...DEFAULT_SETTINGS, playerCount: params.playerCount },
+      settings: { ...DEFAULT_SETTINGS, playerCount: params.playerCount, debugCommands: params.debug ?? false },
       identity,
       ...(resume && resume.log.length ? { resume: { gameId: resume.gameId, log: resume.log } } : {}),
     });

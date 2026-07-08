@@ -123,7 +123,8 @@
     if (ready && frames.length) drawFrame(frames[frameIdx]!);
   }
   function close() {
-    replay.watched = true;
+    const entry = app.replays.find((r) => r.battleId === replay.battleId);
+    if (entry) entry.watched = true;
     app.version++;
     onclose();
   }

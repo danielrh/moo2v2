@@ -16,7 +16,7 @@
     app.error = '';
     app.connecting = true;
     try {
-      const active = await enterRoom({ server, code, name, playerCount });
+      const active = await enterRoom({ server, code, name, playerCount, debug: q.get('debug') === '1' });
       bindActive(active);
     } catch (e) {
       app.error = e instanceof Error ? e.message : String(e);
