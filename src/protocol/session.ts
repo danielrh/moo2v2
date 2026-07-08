@@ -432,6 +432,29 @@ export class GameSession<S> {
     return this.settingsCache;
   }
 
+  /** Sealed-bid pick auction state (pick-bidding mode), null outside one. */
+  getAuction(): {
+    phase: 'commit' | 'reveal' | 'done';
+    contested: Record<string, number[]>;
+    bidders: number[];
+    committed: boolean;
+    outcomes: Array<{ pickId: string; winner: number | null; price: number }> | null;
+  } | null {
+    return this.auctionCache;
+  }
+
+  /** Commit sealed bids for the contested picks we hold; the reveal is sent
+   * automatically once every commit is public. */
+  submitBids(bids: Record<string, number>): void {
+    if (!this.auctionCache || this.auctionCache.phase !== 'commit' || this.auctionCache.committed) return;
+    const rand = new Uint32Array(4);
+    crypto.getRandomValues(rand);
+    const nonce = [...rand].map((x) => x.toString(16)).join('');
+    this.pendingReveal = { bids, nonce };
+    this.auctionCache.committed = true;
+    this.link.send({ t: 'auction_commit', hash: bidHash(bids, nonce) });
+  }
+
   getCommitted(): readonly number[] {
     return this.committedCache;
   }

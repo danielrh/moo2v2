@@ -15,6 +15,8 @@
   let tab = $state<'colonies' | 'map' | 'research' | 'fleets' | 'designer' | 'empires' | 'reports'>('colonies');
   let seenReports = $state(0);
   let chatText = $state('');
+  let chatTo = $state(-1); // -1 = everyone, else a playerId (DM)
+  let showHelp = $state(false);
 
   const session = () => getActive()!.session;
   const gs = $derived.by(() => {
@@ -61,9 +63,14 @@
     else session().commitTurn();
   }
   function sendChat() {
-    if (chatText.trim()) session().sendChat(chatText.trim());
+    if (chatText.trim()) session().sendChat(chatText.trim(), chatTo);
     chatText = '';
   }
+  const chatVisible = $derived.by(() => {
+    void app.version;
+    const me = session().playerId;
+    return app.chat.filter((m) => (chatTo === -1 ? m.to === -1 : m.to !== -1 && (m.from === chatTo || m.to === chatTo || m.from === me)));
+  });
 
   let saveNote = $state('');
   async function saveGame() {
@@ -164,15 +171,37 @@
     <BattleViewer replay={app.viewing} onclose={() => (app.viewing = null)} />
   {/if}
   <footer>
-    <input data-testid="chat-input" bind:value={chatText} placeholder="chat…" onkeydown={(e) => e.key === 'Enter' && sendChat()} />
+    <select data-testid="chat-to" bind:value={chatTo} title="everyone or a direct message">
+      <option value={-1}>all</option>
+      {#each roster.filter((p) => p.id !== session().playerId) as p (p.id)}
+        <option value={p.id}>DM {p.name}</option>
+      {/each}
+    </select>
+    <input data-testid="chat-input" bind:value={chatText} placeholder={chatTo === -1 ? 'chat…' : 'direct message…'} onkeydown={(e) => e.key === 'Enter' && sendChat()} />
     <button data-testid="chat-send" onclick={sendChat}>Send</button>
     <span class="chatlog" data-testid="chat-log">
-      {#each app.chat.slice(-3) as m (m.id)}
-        <span>#{m.from}: {m.text}</span>
+      {#each chatVisible.slice(-3) as m (m.id)}
+        <span class:dm={m.to !== -1}>#{m.from}{m.to !== -1 ? '→' + m.to : ''}: {m.text}</span>
       {/each}
     </span>
+    <button class="helpbtn" data-testid="help" onclick={() => (showHelp = !showHelp)}>?</button>
     <span class="hash" data-testid="state-hash">{authHash}</span>
   </footer>
+  {#if showHelp}
+    <div class="help" data-testid="help-panel">
+      <h3>Quick reference <button onclick={() => (showHelp = false)}>✕</button></h3>
+      <ul>
+        <li><b>Colonies</b> — the spreadsheet runs your empire: assign jobs (±), pick builds, buy with BC. Click headers to sort; tick rows for bulk builds.</li>
+        <li><b>Turns</b> are simultaneous: everything resolves when every player commits. Uncommit any time before the last player commits.</li>
+        <li><b>Food</b> feeds colonists (2 per unit ×½); shortages starve growth. Freighters move surplus between colonies — blockades cut deliveries.</li>
+        <li><b>Research</b> works one field at a time; pick the application before it completes. Creative races take whole fields (or buy applications in the variant mode).</li>
+        <li><b>Ships</b> travel star-to-star within fuel range (shaded on the map). Battles are a single pass: set stance/targeting/retreat before the clash.</li>
+        <li><b>☠ stars</b> are guarded by monsters — clear the keeper to colonize. Orion holds the Guardian and the best worlds in the galaxy.</li>
+        <li><b>Leaders</b> offer their services on the Empires tab; colony leaders boost one colony, ship officers the whole fleet.</li>
+        <li><b>Victory</b>: conquer everyone, win the council vote (⅔ of population), or build the dimensional portal and beat the Antarans at home.</li>
+      </ul>
+    </div>
+  {/if}
 {:else}
   <p>waiting for game state…</p>
 {/if}
@@ -231,5 +260,30 @@
   }
   button.committed {
     background: #2c5a2c;
+  }
+  .dm {
+    color: #d7a7ff;
+  }
+  .helpbtn {
+    margin-left: 0.5rem;
+  }
+  .help {
+    position: fixed;
+    bottom: 3rem;
+    right: 1rem;
+    width: 28rem;
+    max-height: 60vh;
+    overflow-y: auto;
+    background: #141830;
+    border: 1px solid #26304f;
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+    z-index: 20;
+  }
+  .help h3 {
+    display: flex;
+    justify-content: space-between;
+    margin: 0.2rem 0 0.5rem;
   }
 </style>

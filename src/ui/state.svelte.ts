@@ -24,7 +24,7 @@ export const app = $state({
   error: '',
   connecting: false,
   version: 0,
-  chat: [] as Array<{ id: number; from: number; text: string }>,
+  chat: [] as Array<{ id: number; from: number; to: number; text: string }>,
   replays: [] as ReplayEntry[],
   /** replay currently open in the battle viewer */
   viewing: null as ReplayEntry | null,
@@ -51,7 +51,7 @@ export function bindActive(active: ActiveGame): void {
       app.error = ev.reason;
       app.screen = 'home';
     } else if (ev.type === 'chat') {
-      app.chat.push({ id: ev.id, from: ev.from, text: ev.text });
+      app.chat.push({ id: ev.id, from: ev.from, to: ev.to, text: ev.text });
       if (app.chat.length > 100) app.chat.shift();
     } else if (ev.type === 'turn-advanced') {
       const me = active.session.playerId;

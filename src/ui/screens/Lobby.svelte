@@ -22,6 +22,27 @@
   const preset = $derived(RACE_PRESETS.find((r) => r.id === presetId));
   const validation = $derived(validatePicks(customPicks));
 
+  // ---- sealed-bid pick auction (pick-bidding mode) ----
+  const auction = $derived.by(() => {
+    void app.version;
+    return getActive()?.session.getAuction() ?? null;
+  });
+  const myContested = $derived.by(() => {
+    if (!auction) return [];
+    return Object.entries(auction.contested)
+      .filter(([, holders]) => holders.includes(selfId))
+      .map(([pickId]) => ({ pickId, base: pickById.get(pickId)?.cost ?? 0 }));
+  });
+  let bids = $state<Record<string, number>>({});
+  function sendBids() {
+    const out: Record<string, number> = {};
+    for (const c of myContested) out[c.pickId] = Math.max(c.base, Math.floor(bids[c.pickId] ?? c.base));
+    getActive()?.session.submitBids(out);
+  }
+  function empireName(id: number): string {
+    return roster.find((p) => p.id === id)?.name ?? `#${id}`;
+  }
+
   // picks grouped for the custom builder (governments first, then by cost desc)
   const governments = PICK_ROWS.filter((p) => (GOVERNMENTS as readonly string[]).includes(p.id));
   const traits = PICK_ROWS.filter((p) => !(GOVERNMENTS as readonly string[]).includes(p.id)).sort(
@@ -195,10 +216,41 @@
   {/if}
 </div>
 
+{#if auction}
+  <fieldset class="modes" data-testid="auction">
+    <legend>Pick auction — sealed bids</legend>
+    {#if auction.phase === 'commit'}
+      {#if myContested.length && !auction.committed}
+        <p>Contested picks you hold — bid pick points (minimum = base cost; the premium comes out of your budget). Losers forfeit the pick.</p>
+        {#each myContested as c (c.pickId)}
+          <label>
+            {c.pickId} (base {c.base}):
+            <input type="number" data-testid="bid-{c.pickId}" min={c.base} value={bids[c.pickId] ?? c.base}
+              oninput={(e) => (bids = { ...bids, [c.pickId]: Number((e.target as HTMLInputElement).value) })} style="width:4rem" />
+          </label>
+        {/each}
+        <button data-testid="submit-bids" onclick={sendBids}>Seal bids</button>
+      {:else if auction.committed}
+        <p data-testid="auction-waiting">Bids sealed — waiting for the other bidders…</p>
+      {:else}
+        <p data-testid="auction-waiting">None of your picks are contested — waiting for the auction…</p>
+      {/if}
+    {:else if auction.phase === 'reveal'}
+      <p data-testid="auction-waiting">All bids sealed — revealing…</p>
+    {:else if auction.outcomes}
+      <ul data-testid="auction-results">
+        {#each auction.outcomes as o (o.pickId)}
+          <li>{o.pickId}: {o.winner === null ? 'no valid bids — everyone keeps it' : `${empireName(o.winner)} wins at ${o.price} points`}</li>
+        {/each}
+      </ul>
+    {/if}
+  </fieldset>
+{/if}
+
 {#if selfId !== 0}
   <button data-testid="ready" onclick={toggleReady} disabled={custom && !validation.ok}>{ready ? 'Unready' : 'Ready'}</button>
 {:else}
-  <button data-testid="start" onclick={start} disabled={!allReady || (custom && !validation.ok)}>Start game</button>
+  <button data-testid="start" onclick={start} disabled={!allReady || (custom && !validation.ok) || !!auction}>Start game</button>
   <p class="hint">start enables when all other players are ready</p>
 {/if}
 
