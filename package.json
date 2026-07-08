@@ -1,0 +1,36 @@
+{
+  "name": "moo2v2",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Web-based 4X game with MOO2-compatible mechanics: P2P multiplayer (lobbylink/WebRTC), SQLite event-sourced persistence, spreadsheet-first UI, one-pass visual combat.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "node scripts/check-boundaries.mjs && vitest run",
+    "test:watch": "vitest",
+    "test:game": "vitest run --config vitest.game.config.ts",
+    "test:balance": "vitest run --config vitest.balance.config.ts",
+    "test:e2e": "playwright test",
+    "lobby:server": "bash scripts/run-lobby-server.sh"
+  },
+  "dependencies": {
+    "kysely": "^0.29.3",
+    "pixi.js": "^8.19.0",
+    "sqlocal": "^0.18.0",
+    "svelte": "^5.56.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@sveltejs/vite-plugin-svelte": "^7.2.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.19.0",
+    "better-sqlite3": "^12.11.1",
+    "svelte-check": "^4.4.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.1.3",
+    "vitest": "^4.1.10"
+  }
+}
