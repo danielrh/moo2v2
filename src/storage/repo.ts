@@ -263,6 +263,7 @@ export class GameStore {
           payload: canonicalStringify(e.payload),
         })),
       )
+      .onConflict((oc) => oc.columns(['game_id', 'turn', 'idx']).doNothing())
       .execute();
   }
 

@@ -26,6 +26,8 @@ export interface EngineAdapter<S = unknown> {
   deserialize(json: string): S;
   /** Build the advance_turn system command payload for the current state. */
   advancePayload(state: S): unknown;
+  /** Optional: deterministic events produced by the latest advance_turn apply. */
+  takeEvents?(): Array<{ visibleTo: number; kind: string; payload: Record<string, unknown> }>;
 }
 
 // ---------- Phase 2 stub: a lockstep counter game ----------

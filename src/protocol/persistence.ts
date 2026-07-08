@@ -35,4 +35,9 @@ export interface SessionStore {
     gameId: string,
     msg: { id: number; turn: number; from: number; to: number; text: string; sentAt: string },
   ): Promise<void>;
+  appendTurnEvents(
+    gameId: string,
+    turn: number,
+    events: Array<{ idx: number; visibleTo: number; kind: string; payload: unknown }>,
+  ): Promise<void>;
 }

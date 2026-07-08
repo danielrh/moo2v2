@@ -75,6 +75,8 @@ export class GameSession<S> {
   private startedFlag = false;
   private listeners: Array<(ev: SessionEvent) => void> = [];
   private persistChain: Promise<void> = Promise.resolve();
+  /** deterministic events from the most recent turn resolution (for reports UI) */
+  lastTurnEvents: Array<{ visibleTo: number; kind: string; payload: Record<string, unknown> }> = [];
 
   constructor(opts: SessionOptions<S>) {
     this.link = opts.link;
@@ -280,8 +282,16 @@ export class GameSession<S> {
       const newTurn = this.engine.turnOf(this.authState);
       const hash = this.engine.hash(this.authState);
       this.link.send({ t: 'hash_report', turn: newTurn - 1, hash });
+      const events = this.engine.takeEvents?.() ?? [];
+      if (events.length) {
+        this.lastTurnEvents = events;
+      }
       if (this.store && this.gameId) {
         const gameId = this.gameId;
+        if (events.length) {
+          const rows = events.map((e, idx) => ({ idx, visibleTo: e.visibleTo, kind: e.kind, payload: e.payload }));
+          this.persist(() => this.store!.appendTurnEvents(gameId, newTurn - 1, rows));
+        }
         this.persist(() => this.store!.saveTurnHash(gameId, newTurn - 1, hash));
         if ((newTurn - 1) % SNAPSHOT_EVERY_TURNS === 0) {
           const json = this.engine.serialize(this.authState);
