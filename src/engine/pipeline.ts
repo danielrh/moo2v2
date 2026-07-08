@@ -4,7 +4,8 @@
 // Phase 3 implements S0-S6 + S12/S13; encounters/combat (S7-S10) and empire
 // upkeep systems (S11) arrive in Phases 4-6.
 
-import { buildableById } from './data/index';
+import { buildableById, CP_SOURCES, CP_USAGE } from './data/index';
+import { detectBattles, resolveBattle } from './battles';
 import { colonyOutput, colonyPopUnits, groupGrowthK, maxPopulation, traitsOf } from './economy';
 import { normalizeJobsForGroup } from './commands';
 import { rngFor } from './rng';
@@ -15,6 +16,8 @@ export interface AdvanceResult {
   events: TurnEvent[];
 }
 
+/** advance_turn: S1-S7. If battles are detected the state pauses in the
+ * battle_orders phase; the resolve_combat system command finishes the turn. */
 export function advanceTurn(state: GameState): AdvanceResult {
   const events: TurnEvent[] = [];
 
@@ -24,11 +27,97 @@ export function advanceTurn(state: GameState): AdvanceResult {
   s4_research(state, outputs, events);
   // S5 spawn happens inside s3 (completions instantiate immediately at the colony's star)
   s6_movement(state, events);
-  // S7-S11: later phases
+
+  // S7 encounters
+  const battles = detectBattles(state);
+  if (battles.length > 0) {
+    state.pendingBattles = battles;
+    state.phase = 'battle_orders';
+    for (const b of battles) {
+      events.push({
+        visibleTo: -1,
+        kind: 'battle_pending',
+        payload: { battleId: b.id, starId: b.starId, attacker: b.attacker, defender: b.defender },
+      });
+    }
+    return { events };
+  }
+
+  finishTurn(state, events);
+  return { events };
+}
+
+/** resolve_combat: S9-S13 after the battle-orders sub-phase (or immediately
+ * when no battles were pending). */
+export function resolveCombat(state: GameState): AdvanceResult {
+  const events: TurnEvent[] = [];
+  for (const battle of state.pendingBattles) {
+    resolveBattle(state, battle, events);
+  }
+  state.pendingBattles = [];
+  state.phase = 'planning';
+  finishTurn(state, events);
+  return { events };
+}
+
+function finishTurn(state: GameState, events: TurnEvent[]): void {
+  s10_shipUpkeep(state, events);
+  s11_diplomacyUpkeep(state);
   s12_victory(state, events);
   s13_endTurn(state);
+}
 
-  return { events };
+// ---------- S10-lite: ship repair + command point upkeep ----------
+
+function s10_shipUpkeep(state: GameState, events: TurnEvent[]): void {
+  // repair at own colony stars
+  for (const ship of state.ships) {
+    if ((ship.dmgStructure > 0 || ship.dmgArmor > 0) && ship.location.kind === 'star') {
+      const starId = ship.location.starId;
+      const repaired = state.colonies.some(
+        (c) => c.owner === ship.owner && !c.outpost && state.planets.some((p) => p.id === c.planetId && p.starId === starId),
+      );
+      if (repaired) {
+        ship.dmgStructure = 0;
+        ship.dmgArmor = 0;
+      }
+    }
+  }
+  // command points: overage costs 10 BC per point (documented combat-redesign rule)
+  for (const empire of state.empires) {
+    if (empire.eliminated) continue;
+    let sources = 0;
+    for (const colony of state.colonies) {
+      if (colony.owner !== empire.id) continue;
+      if (!colony.outpost) sources += CP_SOURCES['colony'] ?? 1;
+      if (colony.buildings.includes('star_base')) sources += CP_SOURCES['star_base'] ?? 2;
+      if (colony.buildings.includes('battle_station')) sources += CP_SOURCES['battlestation'] ?? 4;
+      if (colony.buildings.includes('star_fortress')) sources += CP_SOURCES['star_fortress'] ?? 6;
+    }
+    if (empire.picks.includes('warlord')) sources += CP_SOURCES['warlord_pick_bonus'] ?? 2;
+    let usage = 0;
+    for (const ship of state.ships) {
+      if (ship.owner !== empire.id || ship.designId === null) continue;
+      const design = empire.designs.find((d) => d.id === ship.designId);
+      if (design) usage += CP_USAGE[design.hull] ?? 0;
+    }
+    const over = usage - sources;
+    if (over > 0) {
+      empire.bc -= over * 10;
+      events.push({ visibleTo: empire.id, kind: 'cp_overage', payload: { over, bc: over * 10 } });
+    }
+  }
+}
+
+// ---------- S11-lite: peace handshakes ----------
+
+function s11_diplomacyUpkeep(state: GameState): void {
+  for (const rel of state.relations) {
+    if (rel.status === 'war' && rel.peaceOfferedBy.includes(rel.a) && rel.peaceOfferedBy.includes(rel.b)) {
+      rel.status = 'peace';
+      rel.peaceOfferedBy = [];
+    }
+  }
 }
 
 // ---------- S1 population ----------

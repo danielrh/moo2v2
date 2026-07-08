@@ -95,6 +95,17 @@ export interface EmpireResearch {
   hyperLevels: Record<string, number>;
 }
 
+export interface EmpireDesign {
+  id: number;
+  name: string;
+  hull: string;
+  computer: number;
+  shield: number;
+  specials: string[];
+  weapons: Array<{ weapon: string; count: number; mods: string[] }>;
+  obsolete: boolean;
+}
+
 export interface Empire {
   id: number; // playerId
   name: string;
@@ -107,6 +118,7 @@ export interface Empire {
   knownApps: string[]; // sorted application ids
   completedFields: number[]; // sorted field nums
   exploredStars: number[]; // sorted starIds
+  designs: EmpireDesign[];
   eliminated: boolean;
 }
 
@@ -119,13 +131,32 @@ export type ShipLocation =
 export interface Ship {
   id: number;
   owner: number;
-  /** Phase 3: fixed kinds; Phase 4 adds designId for warships */
   shipKind: ShipKind | 'design';
   designId: number | null;
   location: ShipLocation;
   /** transports carry colonists (units) */
   cargoPopUnits: number;
   cargoRace: number;
+  /** battle damage carried between fights (0 = undamaged) */
+  dmgStructure: number;
+  dmgArmor: number;
+}
+
+export interface RelationEntry {
+  a: number; // lower empire id
+  b: number;
+  status: 'peace' | 'war';
+  peaceOfferedBy: number[]; // sorted; both present -> peace restored at S11
+}
+
+export interface PendingBattle {
+  id: string;
+  starId: number;
+  attacker: number;
+  defender: number;
+  /** orders keyed by side; null until submitted (host fills defaults on timeout) */
+  ordersA: unknown | null;
+  ordersD: unknown | null;
 }
 
 export interface GameStateSettings {
@@ -153,6 +184,10 @@ export interface GameState {
   empires: Empire[];
   colonies: Colony[];
   ships: Ship[];
+  /** 'planning' normally; 'battle_orders' pauses resolution awaiting orders */
+  phase: 'planning' | 'battle_orders';
+  pendingBattles: PendingBattle[];
+  relations: RelationEntry[];
   winner: number | null;
 }
 
