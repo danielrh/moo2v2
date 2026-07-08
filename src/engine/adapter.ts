@@ -12,9 +12,9 @@ import {
 } from './data/index';
 import { applyCommand, validateCommand, type EngineCommand } from './commands';
 import { generateGalaxy } from './galaxy';
-import { advanceTurn } from './pipeline';
+import { advanceTurn, resolveCombat } from './pipeline';
 import { resolveTraits } from './race';
-import type { Colony, GameState, GameStateSettings, TurnEvent } from './types';
+import type { Colony, GameState, GameStateSettings, PendingBattle, TurnEvent } from './types';
 
 /** Race configuration carried in game_start player entries (raceJson). */
 export interface RaceConfig {
@@ -65,6 +65,9 @@ export function initGame(start: EngineGameStart): GameState {
     empires: [],
     colonies: [],
     ships: [],
+    phase: 'planning',
+    pendingBattles: [],
+    relations: [],
     winner: null,
   };
 
@@ -99,10 +102,25 @@ export function initGame(start: EngineGameStart): GameState {
       knownApps: [...startApps].sort(),
       completedFields: [...startFieldNums].sort((a, b) => a - b),
       exploredStars: [],
+      designs: [],
       eliminated: false,
     });
   }
   state.empires.sort((a, b) => a.id - b.id);
+
+  // starter warship design: a laser frigate everyone can build on day one
+  for (const empire of state.empires) {
+    empire.designs.push({
+      id: state.nextId++,
+      name: 'Patrol Frigate',
+      hull: 'frigate',
+      computer: empire.knownApps.includes('electronic_computer') ? 1 : 0,
+      shield: empire.knownApps.includes('class_i_shield') ? 1 : 0,
+      specials: [],
+      weapons: [{ weapon: 'laser_cannon', count: 2, mods: [] }],
+      obsolete: false,
+    });
+  }
 
   // home colonies: 8 units, balanced jobs, starting buildings by mode
   for (let i = 0; i < start.players.length; i++) {
@@ -148,6 +166,8 @@ export function initGame(start: EngineGameStart): GameState {
       location: { kind: 'star', starId: star.id },
       cargoPopUnits: 0,
       cargoRace: empire.id,
+      dmgStructure: 0,
+      dmgArmor: 0,
     });
     state.ships.push({
       id: state.nextId++,
@@ -157,6 +177,8 @@ export function initGame(start: EngineGameStart): GameState {
       location: { kind: 'star', starId: star.id },
       cargoPopUnits: 0,
       cargoRace: empire.id,
+      dmgStructure: 0,
+      dmgArmor: 0,
     });
   }
   state.colonies.sort((a, b) => a.id - b.id);
@@ -192,8 +214,24 @@ export const gameEngine = {
       this.lastEvents = result.events;
       return next;
     }
+    if (cmd.kind === 'resolve_combat') {
+      const result = resolveCombat(next);
+      this.lastEvents = [...this.lastEvents, ...result.events];
+      return next;
+    }
     applyCommand(next, cmd as EngineCommand);
     return next;
+  },
+
+  /** protocol hook: sequencer pauses turn advancement outside 'planning' */
+  phaseOf(state: GameState): string {
+    return state.phase;
+  },
+
+  /** protocol hook: battles awaiting orders (host emits resolve_combat when
+   * all are filled or the order timeout expires) */
+  pendingBattles(state: GameState): PendingBattle[] {
+    return state.pendingBattles;
   },
 
   turnOf(state: GameState): number {

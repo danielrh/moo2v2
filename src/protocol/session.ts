@@ -15,6 +15,7 @@ export type SessionEvent =
   | { type: 'lobby' }
   | { type: 'started' }
   | { type: 'state' }
+  | { type: 'battle-phase' }
   | { type: 'turn-advanced'; turn: number }
   | { type: 'commit-status'; turn: number; committed: number[] }
   | { type: 'rejected'; clientId: string; reason: string }
@@ -75,6 +76,7 @@ export class GameSession<S> {
   private startedFlag = false;
   private listeners: Array<(ev: SessionEvent) => void> = [];
   private persistChain: Promise<void> = Promise.resolve();
+  private lastReportedTurn = 0;
   /** deterministic events from the most recent turn resolution (for reports UI) */
   lastTurnEvents: Array<{ visibleTo: number; kind: string; payload: Record<string, unknown> }> = [];
 
@@ -277,28 +279,33 @@ export class GameSession<S> {
     }
 
     if (cmd.kind === 'game_start') {
+      this.lastReportedTurn = this.authState ? this.engine.turnOf(this.authState) : 1;
       this.bump({ type: 'started' });
-    } else if (cmd.kind === 'advance_turn' && this.authState) {
+    } else if ((cmd.kind === 'advance_turn' || cmd.kind === 'resolve_combat') && this.authState) {
       const newTurn = this.engine.turnOf(this.authState);
-      const hash = this.engine.hash(this.authState);
-      this.link.send({ t: 'hash_report', turn: newTurn - 1, hash });
       const events = this.engine.takeEvents?.() ?? [];
-      if (events.length) {
-        this.lastTurnEvents = events;
-      }
-      if (this.store && this.gameId) {
-        const gameId = this.gameId;
-        if (events.length) {
-          const rows = events.map((e, idx) => ({ idx, visibleTo: e.visibleTo, kind: e.kind, payload: e.payload }));
-          this.persist(() => this.store!.appendTurnEvents(gameId, newTurn - 1, rows));
+      if (events.length) this.lastTurnEvents = events;
+      if (newTurn > this.lastReportedTurn) {
+        // the turn boundary actually happened (advance may pause for battles)
+        this.lastReportedTurn = newTurn;
+        const hash = this.engine.hash(this.authState);
+        this.link.send({ t: 'hash_report', turn: newTurn - 1, hash });
+        if (this.store && this.gameId) {
+          const gameId = this.gameId;
+          if (events.length) {
+            const rows = events.map((e, idx) => ({ idx, visibleTo: e.visibleTo, kind: e.kind, payload: e.payload }));
+            this.persist(() => this.store!.appendTurnEvents(gameId, newTurn - 1, rows));
+          }
+          this.persist(() => this.store!.saveTurnHash(gameId, newTurn - 1, hash));
+          if ((newTurn - 1) % SNAPSHOT_EVERY_TURNS === 0) {
+            const json = this.engine.serialize(this.authState);
+            this.persist(() => this.store!.saveSnapshot(gameId, newTurn - 1, cmd.seq, json, hash));
+          }
         }
-        this.persist(() => this.store!.saveTurnHash(gameId, newTurn - 1, hash));
-        if ((newTurn - 1) % SNAPSHOT_EVERY_TURNS === 0) {
-          const json = this.engine.serialize(this.authState);
-          this.persist(() => this.store!.saveSnapshot(gameId, newTurn - 1, cmd.seq, json, hash));
-        }
+        if (!quiet) this.bump({ type: 'turn-advanced', turn: newTurn });
+      } else if (!quiet && cmd.kind === 'advance_turn') {
+        this.bump({ type: 'battle-phase' });
       }
-      if (!quiet) this.bump({ type: 'turn-advanced', turn: newTurn });
     }
     if (!quiet) this.bump({ type: 'state' });
   }

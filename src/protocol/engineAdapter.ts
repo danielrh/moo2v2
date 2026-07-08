@@ -28,6 +28,10 @@ export interface EngineAdapter<S = unknown> {
   advancePayload(state: S): unknown;
   /** Optional: deterministic events produced by the latest advance_turn apply. */
   takeEvents?(): Array<{ visibleTo: number; kind: string; payload: Record<string, unknown> }>;
+  /** Optional: current resolution phase ('planning' unless paused for input). */
+  phaseOf?(state: S): string;
+  /** Optional: battles awaiting orders during the battle_orders phase. */
+  pendingBattles?(state: S): Array<{ id: string; attacker: number; defender: number; ordersA: unknown; ordersD: unknown }>;
 }
 
 // ---------- Phase 2 stub: a lockstep counter game ----------

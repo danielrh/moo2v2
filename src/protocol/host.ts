@@ -53,12 +53,15 @@ export class HostCore<S> {
   private chatSeq = -1;
   private turnHashes = new Map<number, string>();
   private unsubs: Array<() => void> = [];
+  private battleTimer: ReturnType<typeof setTimeout> | null = null;
+  private battleOrdersTimeoutMs = 60_000;
 
   constructor(opts: HostCoreOptions<S>) {
     this.transport = opts.transport;
     this.engine = opts.engine;
     this.gameId = opts.gameId;
     this.settings = opts.settings;
+    this.battleOrdersTimeoutMs = opts.settings.battleOrdersTimeoutMs || 60_000;
     this.engineVersion = opts.engineVersion;
     this.dataVersion = opts.dataVersion;
     this.localLink = new LocalHostLink((msg) => this.route(0, msg));
@@ -73,6 +76,8 @@ export class HostCore<S> {
 
     if (opts.resumeLog?.length) {
       for (const cmd of opts.resumeLog) this.fold(cmd);
+      this.battleOrdersTimeoutMs = this.settings.battleOrdersTimeoutMs || 60_000;
+      this.checkBattlePhase(); // resumed mid battle-orders phase: restart the clock
     }
 
     this.unsubs.push(this.transport.onMessage((from, msg) => this.route(from, msg as ClientToHost)));
@@ -101,6 +106,7 @@ export class HostCore<S> {
 
   close(): void {
     for (const u of this.unsubs) u();
+    if (this.battleTimer) clearTimeout(this.battleTimer);
   }
 
   // ----- message routing -----
@@ -276,6 +282,41 @@ export class HostCore<S> {
       // clientId only meaningful for the submitter's optimistic dedupe
       this.sendTo(id, { t: 'cmd_accept', cmd, ...(id === submitter && clientId ? { clientId } : {}) });
     }
+    this.checkBattlePhase();
+  }
+
+  /** battle_orders sub-phase driver: when resolution paused for orders, emit
+   * resolve_combat once every battle has both sides' orders, or on timeout
+   * (the engine substitutes defaults for missing orders). */
+  private checkBattlePhase(): void {
+    if (!this.state || !this.engine.pendingBattles || !this.engine.phaseOf) return;
+    if (this.engine.phaseOf(this.state) !== 'battle_orders') {
+      if (this.battleTimer) {
+        clearTimeout(this.battleTimer);
+        this.battleTimer = null;
+      }
+      return;
+    }
+    const battles = this.engine.pendingBattles(this.state);
+    const allReady = battles.every((b) => b.ordersA !== null && b.ordersD !== null);
+    if (allReady) {
+      if (this.battleTimer) {
+        clearTimeout(this.battleTimer);
+        this.battleTimer = null;
+      }
+      this.accept({ turn: this.currentTurn(), playerId: -1, kind: 'resolve_combat', payload: {} });
+      this.broadcast({ t: 'commit_status', turn: this.currentTurn(), committed: [] });
+      return;
+    }
+    if (!this.battleTimer) {
+      this.battleTimer = setTimeout(() => {
+        this.battleTimer = null;
+        if (this.state && this.engine.phaseOf && this.engine.phaseOf(this.state) === 'battle_orders') {
+          this.accept({ turn: this.currentTurn(), playerId: -1, kind: 'resolve_combat', payload: {} });
+          this.broadcast({ t: 'commit_status', turn: this.currentTurn(), committed: [] });
+        }
+      }, this.battleOrdersTimeoutMs);
+    }
   }
 
   private onSubmit(from: number, msg: Extract<ClientToHost, { t: 'cmd_submit' }>): void {
@@ -304,6 +345,7 @@ export class HostCore<S> {
 
   private maybeAdvance(): void {
     if (!this.state) return;
+    if (this.engine.phaseOf && this.engine.phaseOf(this.state) !== 'planning') return;
     const seated = [...this.seats.keys()];
     if (seated.length < 1) return;
     if (!seated.every((id) => this.committed.has(id))) return;
