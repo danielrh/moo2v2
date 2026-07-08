@@ -1,6 +1,7 @@
 <script lang="ts">
-  // Galaxy map v1 (SVG): pan/zoom, star selection, fleet movement, colonize.
-  import { selectors } from '@engine/index';
+  // Galaxy map v2 (SVG): star selection, fleet movement, colonize, fuel-range
+  // shading, monster lairs, blockade badges.
+  import { selectors, inRange, isBlockaded } from '@engine/index';
   import { MAP_SIZE } from '@engine/galaxy';
   import { playerColor, STAR_COLORS } from '../colors';
   import { app, getActive } from '../state.svelte';
@@ -12,6 +13,34 @@
   });
   const view = $derived.by(() => (gs ? selectors.galaxyView(gs, session().playerId) : []));
   const fleets = $derived.by(() => (gs ? selectors.fleetRows(gs, session().playerId) : []));
+  const reachable = $derived.by(() => {
+    if (!gs) return new Set<number>();
+    const out = new Set<number>();
+    for (const star of gs.stars) {
+      if (inRange(gs, session().playerId, star)) out.add(star.id);
+    }
+    return out;
+  });
+  const monstersByStar = $derived.by(() => {
+    const m = new Map<number, string[]>();
+    if (!gs) return m;
+    for (const mon of gs.monsters) {
+      m.set(mon.starId, [...(m.get(mon.starId) ?? []), mon.kind]);
+    }
+    return m;
+  });
+  const blockadedStars = $derived.by(() => {
+    const out = new Set<number>();
+    if (!gs) return out;
+    for (const c of gs.colonies) {
+      if (c.owner !== session().playerId || c.outpost) continue;
+      if (isBlockaded(gs, c)) {
+        const p = gs.planets.find((x) => x.id === c.planetId);
+        if (p) out.add(p.starId);
+      }
+    }
+    return out;
+  });
 
   let selectedStarId = $state<number | null>(null);
   let selectedShipIds = $state<number[]>([]);
@@ -57,6 +86,9 @@
         {#if v.star.id === selectedStarId}
           <circle r="34" fill="none" stroke="#8fb8ff" stroke-width="3" />
         {/if}
+        {#if !reachable.has(v.star.id)}
+          <circle r="24" fill="none" stroke="#5a3030" stroke-width="2" stroke-dasharray="4 6" />
+        {/if}
         <circle r="14" fill={STAR_COLORS[v.star.color]} opacity={v.explored ? 1 : 0.45} />
         {#each v.colonies.filter((c) => !c.outpost) as c, i (c.id)}
           <circle r={20 + i * 5} fill="none" stroke={playerColor(c.owner)} stroke-width="3" />
@@ -64,6 +96,12 @@
         {#each [...new Set(v.ships.map((s) => s.owner))] as owner, i (owner)}
           <rect x={18} y={-16 + i * 12} width="10" height="8" fill={playerColor(owner)} />
         {/each}
+        {#if v.explored && monstersByStar.has(v.star.id)}
+          <text y="-22" text-anchor="middle" class="monster">☠</text>
+        {/if}
+        {#if blockadedStars.has(v.star.id)}
+          <text x="-30" y="6" text-anchor="middle" class="blockade">⚓</text>
+        {/if}
         <text y="34" text-anchor="middle">{v.star.name}</text>
       </g>
     {/each}
@@ -92,6 +130,15 @@
       {/if}
       {#if selected.star.wormholeTo !== null}
         <p class="dim">wormhole link</p>
+      {/if}
+      {#if !reachable.has(selected.star.id)}
+        <p class="dim">⛽ out of fuel range</p>
+      {/if}
+      {#if selected.explored && monstersByStar.has(selected.star.id)}
+        <p class="monster" data-testid="monster-warning">☠ guarded by: {monstersByStar.get(selected.star.id)!.join(', ')}</p>
+      {/if}
+      {#if blockadedStars.has(selected.star.id)}
+        <p class="blockade">⚓ blockaded — output halved, no freighter food</p>
       {/if}
       <ul>
         {#each selected.planets as p (p.id)}
@@ -159,5 +206,19 @@
   }
   li {
     margin-bottom: 0.25rem;
+  }
+  .monster {
+    fill: #ff8a7a;
+    color: #ff8a7a;
+    font-size: 24px;
+  }
+  .blockade {
+    fill: #ffd479;
+    color: #ffd479;
+    font-size: 24px;
+  }
+  aside .monster,
+  aside .blockade {
+    font-size: 0.9rem;
   }
 </style>
