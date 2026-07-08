@@ -3,6 +3,7 @@
   // in this browser and exposes engine hashes for node-parity e2e assertions.
   import { canonicalStringify, hashCanonical } from '@engine/canonical';
   import { DATA_VERSION } from '@engine/data/index';
+  import { gameEngine } from '@engine/adapter';
   import { rngFor } from '@engine/rng';
   import { isOpfsLikelyAvailable, openBrowserStore } from '@storage/browser';
   import type { GameMeta } from '@storage/repo';
@@ -22,6 +23,7 @@
       dataVersion: DATA_VERSION,
       parityHash: hashCanonical(PARITY_FIXTURE),
       rngSample: rngFor('0123456789abcdef0123456789abcdef', 'parity', 1).nextU32(),
+      engineParity: engineParityHashes(),
     };
     const dbName = 'moo2v2-smoke.sqlite3';
     const { store, sqlocal } = await openBrowserStore(dbName);
@@ -62,6 +64,34 @@
       await sqlocal.deleteDatabaseFile().catch(() => undefined);
     }
     return out;
+  }
+
+  // Real-engine parity: a fixed scripted mini-game; the e2e compares these
+  // hashes against the identical sequence computed in node.
+  function engineParityHashes(): string[] {
+    let s = gameEngine.init({
+      seed: 'fedcba9876543210fedcba9876543210',
+      settings: {
+        galaxySize: 'small',
+        startMode: 'average',
+        playerCount: 2,
+        modes: { creativeVariant: false, pickBidding: false, stickyBuild: false, antarans: false, randomEvents: false },
+        battleOrdersTimeoutMs: 1000,
+        debugCommands: false,
+      },
+      players: [
+        { id: 0, name: 'A', raceJson: JSON.stringify({ presetId: 'cerebri' }) },
+        { id: 1, name: 'B', raceJson: JSON.stringify({ presetId: 'hivex' }) },
+      ],
+      dataVersion: 'parity',
+    });
+    const hashes: string[] = [gameEngine.hash(s)];
+    for (let t = 0; t < 5; t++) {
+      s = gameEngine.apply(s, { turn: s.turn, playerId: -1, kind: 'advance_turn', payload: {} });
+      gameEngine.takeEvents();
+      hashes.push(gameEngine.hash(s));
+    }
+    return hashes;
   }
 
   $effect(() => {
