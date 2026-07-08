@@ -70,6 +70,7 @@ export function initGame(start: EngineGameStart): GameState {
     relations: [],
     proposals: [],
     council: { nextVoteTurn: 25, pending: null },
+    leaderOffers: [],
     winner: null,
     winType: null,
   };
@@ -107,6 +108,7 @@ export function initGame(start: EngineGameStart): GameState {
       exploredStars: [],
       designs: [],
       spies: { count: 0, target: null, mode: 'steal' },
+      leaders: [],
       eliminated: false,
     });
   }

@@ -15,7 +15,7 @@ import {
 } from './data/leaders';
 import type { Modifier } from './effects';
 import { floorDiv } from './imath';
-import { traitsOf } from './economy';
+import { resolveTraits } from './race';
 import { rngFor } from './rng';
 import type { Empire, GameState, HiredLeader, TurnEvent } from './types';
 
@@ -162,7 +162,7 @@ export function leaderCombatBonuses(empire: Empire): LeaderCombatBonuses {
 
 export function hireCostOf(row: LeaderRow, empire: Empire): number {
   const base = 50 + 25 * leaderPoints(row);
-  const discount = leaderEmpireBonuses(empire).hireDiscountPct + (traitsOf(empire).charismatic ? 25 : 0);
+  const discount = leaderEmpireBonuses(empire).hireDiscountPct + (resolveTraits(empire.picks).charismatic ? 25 : 0);
   return Math.max(10, floorDiv(base * (100 - Math.min(75, discount)), 100));
 }
 
@@ -194,8 +194,14 @@ export function leadersUpkeep(state: GameState, events: TurnEvent[]): void {
 
   for (const empire of state.empires) {
     if (empire.eliminated) continue;
+    // unassign leaders whose colony was lost or captured
+    for (const hired of empire.leaders) {
+      if (hired.colonyId !== null && !state.colonies.some((c) => c.id === hired.colonyId && c.owner === empire.id)) {
+        hired.colonyId = null;
+      }
+    }
     const bonuses = leaderEmpireBonuses(empire);
-    const traits = traitsOf(empire);
+    const traits = resolveTraits(empire.picks);
     const rng = rngFor(state.seed, state.turn, 'leaders', empire.id);
 
     // ---- new offer? ----

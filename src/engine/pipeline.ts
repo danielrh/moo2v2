@@ -10,6 +10,7 @@ import { diplomacyUpkeep } from './diplomacy';
 import { effectsOf, empireAccum } from './effects';
 import { resolveEspionage } from './espionage';
 import { assimilate, resolveInvasions } from './ground';
+import { leaderEmpireBonuses, leadersUpkeep } from './leaders';
 import { itemCost, parseDesignItem } from './items';
 import { colonyMaxPop, colonyOutput, colonyPopUnits, groupGrowthK, traitsOf } from './economy';
 import { normalizeJobsForGroup } from './commands';
@@ -71,6 +72,7 @@ function finishTurn(state: GameState, events: TurnEvent[]): void {
   s11_diplomacyUpkeep(state); // peace handshakes
   assimilate(state, events); // S11 conquered populations settle in
   resolveEspionage(state, events); // S11 spies act
+  leadersUpkeep(state, events); // S11 leader offers, salaries, XP
   diplomacyUpkeep(state, events); // S11 treaties, proposals, council
   s12_victory(state, events);
   s13_endTurn(state);
@@ -79,13 +81,16 @@ function finishTurn(state: GameState, events: TurnEvent[]): void {
 // ---------- S10-lite: ship repair + command point upkeep ----------
 
 function s10_shipUpkeep(state: GameState, events: TurnEvent[]): void {
-  // repair at own colony stars
+  // repair at own colony stars (engineer officers repair anywhere)
   for (const ship of state.ships) {
     if ((ship.dmgStructure > 0 || ship.dmgArmor > 0) && ship.location.kind === 'star') {
       const starId = ship.location.starId;
-      const repaired = state.colonies.some(
-        (c) => c.owner === ship.owner && !c.outpost && state.planets.some((p) => p.id === c.planetId && p.starId === starId),
-      );
+      const empire = state.empires.find((e) => e.id === ship.owner);
+      const repaired =
+        (empire && leaderEmpireBonuses(empire).engineerRepair) ||
+        state.colonies.some(
+          (c) => c.owner === ship.owner && !c.outpost && state.planets.some((p) => p.id === c.planetId && p.starId === starId),
+        );
       if (repaired) {
         ship.dmgStructure = 0;
         ship.dmgArmor = 0;
@@ -96,6 +101,7 @@ function s10_shipUpkeep(state: GameState, events: TurnEvent[]): void {
   for (const empire of state.empires) {
     if (empire.eliminated) continue;
     let sources = empireAccum(state, empire).cpFlat; // tachyon communications etc.
+    sources += leaderEmpireBonuses(empire).cpFlat; // operations officers
     for (const colony of state.colonies) {
       if (colony.owner !== empire.id) continue;
       if (!colony.outpost) sources += CP_SOURCES['colony'] ?? 1;
@@ -227,7 +233,7 @@ function s2_colonyOutput(state: GameState, events: TurnEvent[]): TurnOutputs {
     if (surplus > 0 && traitsOf(empire).fantasticTraders) {
       empireBC.set(empire.id, (empireBC.get(empire.id) ?? 0) + surplus);
     }
-    empire.bc += empireBC.get(empire.id) ?? 0;
+    empire.bc += (empireBC.get(empire.id) ?? 0) + leaderEmpireBonuses(empire).bcFlat;
     if (empire.bc < 0) {
       events.push({ visibleTo: empire.id, kind: 'treasury_deficit', payload: { bc: empire.bc } });
     }
@@ -324,7 +330,7 @@ function completeItem(state: GameState, colony: Colony, item: string, events: Tu
 function s4_research(state: GameState, outputs: TurnOutputs, events: TurnEvent[]): void {
   for (const empire of state.empires) {
     if (empire.eliminated) continue;
-    const rp = outputs.empireRP.get(empire.id) ?? 0;
+    const rp = (outputs.empireRP.get(empire.id) ?? 0) + leaderEmpireBonuses(empire).rpFlat;
     const rng = rngFor(state.seed, state.turn, 'research', empire.id);
     applyResearch(state, empire, rp, rng, events);
   }

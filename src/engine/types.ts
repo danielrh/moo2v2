@@ -110,6 +110,22 @@ export interface EmpireDesign {
   obsolete: boolean;
 }
 
+/** A leader in an empire's employ (pool row in data/leaders.ts). */
+export interface HiredLeader {
+  leaderId: string;
+  level: number; // 1..5
+  xp: number;
+  /** colony leaders: assigned colony (null = unassigned). Ship officers: always null. */
+  colonyId: number | null;
+}
+
+export interface LeaderOffer {
+  empireId: number;
+  leaderId: string;
+  priceBc: number;
+  expiresTurn: number;
+}
+
 export interface Empire {
   id: number; // playerId
   name: string;
@@ -129,6 +145,7 @@ export interface Empire {
     target: number | null;
     mode: 'steal' | 'sabotage';
   };
+  leaders: HiredLeader[];
   eliminated: boolean;
 }
 
@@ -237,6 +254,7 @@ export interface GameState {
   relations: RelationEntry[];
   proposals: Proposal[];
   council: CouncilState;
+  leaderOffers: LeaderOffer[];
   winner: number | null;
   winType: 'conquest' | 'council' | null;
 }

@@ -4,6 +4,7 @@
 // every tech application accounted for (modifier | handler | explicit stub).
 
 import { EFFECTS, EFFECT_ALIASES, type EffectSpec } from './data/effectsMap';
+import { leaderColonyModifiers } from './leaders';
 import type { Colony, Empire, GameState, Minerals } from './types';
 
 export type ModifierTarget =
@@ -13,6 +14,10 @@ export type ModifierTarget =
   | 'farm_flat'
   | 'prod_flat'
   | 'sci_flat'
+  | 'farm_pct'
+  | 'prod_pct'
+  | 'sci_pct'
+  | 'bc_pct'
   | 'morale_pct'
   | 'max_pop'
   | 'growth_pct'
@@ -20,6 +25,7 @@ export type ModifierTarget =
   | 'money_coeff_halves'
   | 'pollution_divisor_mult'
   | 'pollution_absorb_x2'
+  | 'pollution_absorb_flat'
   | 'pollution_zero'
   | 'spy_offense'
   | 'spy_defense'
@@ -44,6 +50,11 @@ export interface ColonyAccum {
   farmFlat: number;
   prodFlat: number;
   sciFlat: number;
+  farmPct: number;
+  prodPct: number;
+  sciPct: number;
+  bcPct: number;
+  pollutionAbsorbFlat: number;
   moralePct: number;
   maxPop: number;
   growthPct: number;
@@ -67,6 +78,11 @@ function blank(): ColonyAccum {
     farmFlat: 0,
     prodFlat: 0,
     sciFlat: 0,
+    farmPct: 0,
+    prodPct: 0,
+    sciPct: 0,
+    bcPct: 0,
+    pollutionAbsorbFlat: 0,
     moralePct: 0,
     maxPop: 0,
     growthPct: 0,
@@ -105,6 +121,21 @@ function fold(acc: ColonyAccum, mods: Modifier[] | undefined, scope: 'colony' | 
         break;
       case 'sci_flat':
         acc.sciFlat += m.amount;
+        break;
+      case 'farm_pct':
+        acc.farmPct += m.amount;
+        break;
+      case 'prod_pct':
+        acc.prodPct += m.amount;
+        break;
+      case 'sci_pct':
+        acc.sciPct += m.amount;
+        break;
+      case 'bc_pct':
+        acc.bcPct += m.amount;
+        break;
+      case 'pollution_absorb_flat':
+        acc.pollutionAbsorbFlat += m.amount;
         break;
       case 'morale_pct':
         acc.moralePct += m.amount;
@@ -168,6 +199,8 @@ export function colonyAccum(state: GameState, colony: Colony, empire: Empire): C
     const spec = effectsOf(app);
     fold(acc, spec?.modifiers, 'empire');
   }
+  // assigned colony leader (Phase 6)
+  fold(acc, leaderColonyModifiers(empire, colony.id), 'colony');
 
   // ---- coded colony handlers ----
   if (colony.buildings.includes('robotic_factory')) {

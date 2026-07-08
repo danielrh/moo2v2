@@ -237,12 +237,14 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
     }
   }
 
-  // farming: unification/morale multiplier, then flat buildings
-  const farmWorker = roundDiv(farmBase * (100 + cTotalPct('farm', ownerTraits, morale)), 100) - farmPenalty;
+  // farming: unification/morale multiplier + leader %, then flat buildings
+  const farmWorker =
+    roundDiv(farmBase * (100 + cTotalPct('farm', ownerTraits, morale) + acc.farmPct), 100) - farmPenalty;
   const food = Math.max(0, farmWorker) + acc.farmFlat;
 
   // production before pollution
-  const prodWorkerRaw = roundDiv(prodBase * (100 + cTotalPct('prod', ownerTraits, morale)), 100) - prodPenalty;
+  const prodWorkerRaw =
+    roundDiv(prodBase * (100 + cTotalPct('prod', ownerTraits, morale) + acc.prodPct), 100) - prodPenalty;
   const prodWorker = Math.max(0, prodWorkerRaw);
 
   // F8 pollution (flat building production exempt)
@@ -260,6 +262,7 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
     if (tolDen > 0 && tolNum > 0) {
       let absorb = 2 * planet.sizeClass;
       if (acc.pollutionAbsorbX2) absorb *= 2;
+      absorb += acc.pollutionAbsorbFlat; // environmentalist leaders etc.
       const scaled = roundDiv(prodWorker * tolNum, divisor * tolDen);
       pollution = Math.max(0, ceilDiv(Math.max(0, scaled - absorb), 2));
     }
@@ -270,7 +273,8 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
   const prod = Math.max(0, prodGross - prodConsumed);
 
   // research
-  const sciWorker = roundDiv(sciBase * (100 + cTotalPct('sci', ownerTraits, morale)), 100) - sciPenalty;
+  const sciWorker =
+    roundDiv(sciBase * (100 + cTotalPct('sci', ownerTraits, morale) + acc.sciPct), 100) - sciPenalty;
   const research = Math.max(0, sciWorker) + acc.sciFlat;
 
   // ---------- F7 money ----------
@@ -279,6 +283,7 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
   let bonusIncome = 0;
   const baseForBonus = special + popIncome;
   if (acc.moneyCoeffHalves > 0) bonusIncome += floorDiv(baseForBonus * acc.moneyCoeffHalves, 2);
+  if (acc.bcPct > 0) bonusIncome += floorDiv(baseForBonus * acc.bcPct, 100); // financial leader
   if (ownerTraits.government === 'democracy') bonusIncome += floorDiv(baseForBonus, 2); // ×0.5
   if (ownerTraits.government !== 'unification') {
     bonusIncome += roundDiv(popIncome * morale, 100);

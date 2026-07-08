@@ -640,6 +640,70 @@ const applyRespond: Applier = (state, cmd) => {
   }
 };
 
+// ---------- leaders ----------
+
+import { countKind, leaderById, MAX_LEADERS_PER_KIND } from './leaders';
+
+const validateHireLeader: Validator = (state, cmd) => {
+  const p = cmd.payload as { leaderId: string };
+  const offer = state.leaderOffers.find((o) => o.empireId === cmd.playerId && o.leaderId === p?.leaderId);
+  if (!offer) return `no offer for ${p?.leaderId}`;
+  if (offer.expiresTurn <= state.turn) return 'offer expired';
+  const row = leaderById.get(p.leaderId);
+  if (!row) return `unknown leader ${p.leaderId}`;
+  if (state.empires.some((e) => e.leaders.some((l) => l.leaderId === p.leaderId))) return 'already hired';
+  const empire = empireOf(state, cmd.playerId);
+  if (countKind(empire, row.kind) >= MAX_LEADERS_PER_KIND) return `no free ${row.kind} leader slot`;
+  if (empire.bc < offer.priceBc) return `need ${offer.priceBc} BC`;
+  return null;
+};
+
+const applyHireLeader: Applier = (state, cmd) => {
+  const p = cmd.payload as { leaderId: string };
+  const offer = state.leaderOffers.find((o) => o.empireId === cmd.playerId && o.leaderId === p.leaderId)!;
+  const empire = empireOf(state, cmd.playerId);
+  empire.bc -= offer.priceBc;
+  empire.leaders.push({ leaderId: p.leaderId, level: 1, xp: 0, colonyId: null });
+  empire.leaders.sort((a, b) => (a.leaderId < b.leaderId ? -1 : 1));
+  // the hire consumes every open offer for this leader (any empire)
+  state.leaderOffers = state.leaderOffers.filter((o) => o.leaderId !== p.leaderId);
+};
+
+const validateDismissLeader: Validator = (state, cmd) => {
+  const p = cmd.payload as { leaderId: string };
+  const empire = empireOf(state, cmd.playerId);
+  return empire.leaders.some((l) => l.leaderId === p?.leaderId) ? null : `not employing ${p?.leaderId}`;
+};
+
+const applyDismissLeader: Applier = (state, cmd) => {
+  const p = cmd.payload as { leaderId: string };
+  const empire = empireOf(state, cmd.playerId);
+  empire.leaders = empire.leaders.filter((l) => l.leaderId !== p.leaderId);
+};
+
+const validateAssignLeader: Validator = (state, cmd) => {
+  const p = cmd.payload as { leaderId: string; colonyId: number | null };
+  const empire = empireOf(state, cmd.playerId);
+  const hired = empire.leaders.find((l) => l.leaderId === p?.leaderId);
+  if (!hired) return `not employing ${p?.leaderId}`;
+  const row = leaderById.get(p.leaderId)!;
+  if (row.kind === 'ship') return 'ship officers command fleet-wide (no assignment)';
+  if (p.colonyId !== null) {
+    const c = ownColony(state, cmd, p.colonyId);
+    if (typeof c === 'string') return c;
+    if (empire.leaders.some((l) => l.colonyId === p.colonyId && l.leaderId !== p.leaderId)) {
+      return 'another leader already governs that colony';
+    }
+  }
+  return null;
+};
+
+const applyAssignLeader: Applier = (state, cmd) => {
+  const p = cmd.payload as { leaderId: string; colonyId: number | null };
+  const empire = empireOf(state, cmd.playerId);
+  empire.leaders.find((l) => l.leaderId === p.leaderId)!.colonyId = p.colonyId;
+};
+
 // ---------- council votes ----------
 
 const validateVote: Validator = (state, cmd) => {
@@ -742,6 +806,9 @@ export const COMMANDS: Record<string, { validate: Validator; apply: Applier }> =
   load_transports: { validate: validateLoadTransports, apply: applyLoadTransports },
   unload_transports: { validate: validateUnloadTransports, apply: applyUnloadTransports },
   set_spy_orders: { validate: validateSpyOrders, apply: applySpyOrders },
+  hire_leader: { validate: validateHireLeader, apply: applyHireLeader },
+  dismiss_leader: { validate: validateDismissLeader, apply: applyDismissLeader },
+  assign_leader: { validate: validateAssignLeader, apply: applyAssignLeader },
   diplo_propose: { validate: validatePropose, apply: applyPropose },
   diplo_respond: { validate: validateRespond, apply: applyRespond },
   cast_vote: { validate: validateVote, apply: applyVote },

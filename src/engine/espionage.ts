@@ -15,6 +15,7 @@
 import { clamp, floorDiv } from './imath';
 import { empireAccum } from './effects';
 import { traitsOf } from './economy';
+import { leaderEmpireBonuses } from './leaders';
 import { grantApp } from './research';
 import { rngFor } from './rng';
 import type { Empire, GameState, TurnEvent } from './types';
