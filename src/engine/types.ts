@@ -214,7 +214,8 @@ export type ProposalKind =
   | 'trade'
   | 'research'
   | 'gift_bc'
-  | 'tech_exchange';
+  | 'tech_exchange'
+  | 'surrender';
 
 export interface Proposal {
   id: number;

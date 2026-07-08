@@ -9,7 +9,7 @@ import { detectBattles, resolveBattle } from './battles';
 import { diplomacyUpkeep } from './diplomacy';
 import { effectsOf, empireAccum } from './effects';
 import { resolveEspionage } from './espionage';
-import { assimilate, resolveInvasions } from './ground';
+import { assimilate, isBlockaded, resolveInvasions } from './ground';
 import { leaderEmpireBonuses, leadersUpkeep } from './leaders';
 import { itemCost, parseDesignItem } from './items';
 import { applyTerraformStep, unsettledPlanetsInSystem } from './terraform';
@@ -213,7 +213,8 @@ function s2_colonyOutput(state: GameState, events: TurnEvent[]): TurnOutputs {
     let capacity = empire.freighters * 5;
     deficits = deficits.sort((a, b) => a.colony.id - b.colony.id);
     for (const d of deficits) {
-      const moved = Math.min(d.lack, surplus, capacity);
+      // blockaded colonies cannot receive freighter deliveries
+      const moved = isBlockaded(state, d.colony) ? 0 : Math.min(d.lack, surplus, capacity);
       surplus -= moved;
       capacity -= moved;
       d.lack -= moved;

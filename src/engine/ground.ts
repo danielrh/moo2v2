@@ -160,9 +160,11 @@ export function assimilate(state: GameState, events: TurnEvent[]): void {
     if (!empire) continue;
     const gov = traitsOf(empire).government;
     let n = gov === 'democracy' ? 4 : gov === 'unification' ? 20 : 8;
-    // telepath leaders and the alien management center halve resistance
+    // telepath leaders, alien management centers, and the capitol halve resistance
     if (leaderEmpireBonuses(empire).telepathAssimilate) n = Math.max(2, ceilDiv(n, 2));
-    if (colony.buildings.includes('alien_management_center')) n = Math.max(2, ceilDiv(n, 2));
+    if (colony.buildings.includes('alien_management_center') || colony.buildings.includes('capitol')) {
+      n = Math.max(2, ceilDiv(n, 2));
+    }
     for (const g of colony.groups) {
       if (!g.unrest) continue;
       const rng = rngFor(state.seed, state.turn, 'assimilate', colony.id, g.race);

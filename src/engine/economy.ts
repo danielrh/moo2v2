@@ -5,6 +5,7 @@
 
 import { buildableById } from './data/index';
 import { colonyAccum, type ColonyAccum } from './effects';
+import { effectiveClimate } from './terraform';
 import { isBlockaded } from './ground';
 import { ceilDiv, floorDiv, roundDiv } from './imath';
 import { isqrt } from './isqrt';
@@ -62,13 +63,14 @@ const CLIMATE_POP_PCT: Record<Climate, number> = {
   gaia: 100,
 };
 
-export function maxPopulation(planet: Planet, traits: RaceTraits, bonusPop = 0): number {
-  let pct = CLIMATE_POP_PCT[planet.climate];
+export function maxPopulation(planet: Planet, traits: RaceTraits, bonusPop = 0, climateOverride?: Climate): number {
+  const climate = climateOverride ?? planet.climate;
+  let pct = CLIMATE_POP_PCT[climate];
   if (traits.aquatic) {
-    if (planet.climate === 'ocean' || planet.climate === 'terran') pct = 100;
-    else if (planet.climate === 'tundra' || planet.climate === 'swamp') pct = 80;
+    if (climate === 'ocean' || climate === 'terran') pct = 100;
+    else if (climate === 'tundra' || climate === 'swamp') pct = 80;
   }
-  if (traits.tolerant && planet.climate !== 'terran' && planet.climate !== 'gaia') {
+  if (traits.tolerant && climate !== 'terran' && climate !== 'gaia') {
     pct = Math.min(100, pct + 25);
   }
   const sizeMult = planet.sizeClass * 5; // tiny 5 .. huge 25
@@ -82,7 +84,7 @@ export function colonyMaxPop(state: GameState, colony: Colony): number {
   const empire = empireOf(state, colony.owner);
   const acc = colonyAccum(state, colony, empire);
   const planet = state.planets.find((p) => p.id === colony.planetId)!;
-  return maxPopulation(planet, traitsOf(empire), acc.maxPop);
+  return maxPopulation(planet, traitsOf(empire), acc.maxPop, effectiveClimate(planet, colony));
 }
 
 // ---------- F3/F4/F5: per-colonist coefficients ----------
@@ -183,7 +185,8 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
   const acc = colonyAccum(state, colony, owner);
   const morale = moralePct(state, colony, acc);
   const popUnits = colonyPopUnits(colony);
-  const maxPop = maxPopulation(planet, ownerTraits, acc.maxPop);
+  const effClim = effectiveClimate(planet, colony); // stellar safety shield on hostile worlds
+  const maxPop = maxPopulation(planet, ownerTraits, acc.maxPop, effClim);
 
   // per-kind: base (Σ colonists × coeff) and per-colonist penalties
   let farmBase = 0;
@@ -204,7 +207,7 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
 
     const farmCoeff = Math.max(
       0,
-      foodPerFarmerBase(planet.climate, gTraits.aquatic) + gTraits.farming + acc.farmCoeff,
+      foodPerFarmerBase(effClim, gTraits.aquatic) + gTraits.farming + acc.farmCoeff,
     );
     const prodCoeff = Math.max(1, MINERAL_PROD[planet.minerals] + gTraits.industry + acc.prodCoeff);
     let sciCoeff = Math.max(1, 3 + gTraits.science + acc.sciCoeff);
@@ -299,24 +302,33 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
   // food consumption
   const foodConsumed = ceilDiv(foodNeedHalves, 2);
 
+  // food replicators: cover shortages by converting 2 production -> 1 food
+  let food2 = food;
+  let prodAfterFood = prod;
+  if (food2 < foodConsumed && has(colony, 'food_replicators')) {
+    const cover = Math.min(foodConsumed - food2, floorDiv(prodAfterFood, 2));
+    food2 += cover;
+    prodAfterFood -= cover * 2;
+  }
+
   // build diversion: housing / trade goods
   const active = colony.queue[0]?.item ?? null;
   let housingPP = 0;
   let tradeBC = 0;
-  let prodToQueue = prod;
+  let prodToQueue = prodAfterFood;
   if (active === 'housing') {
-    housingPP = prod;
+    housingPP = prodAfterFood;
     prodToQueue = 0;
   } else if (active === 'trade_goods') {
-    tradeBC = ownerTraits.fantasticTraders ? prod : floorDiv(prod, 2);
+    tradeBC = ownerTraits.fantasticTraders ? prodAfterFood : floorDiv(prodAfterFood, 2);
     prodToQueue = 0;
   }
 
   return {
-    food,
+    food: food2,
     foodConsumed,
-    foodNet: food - foodConsumed,
-    prod,
+    foodNet: food2 - foodConsumed,
+    prod: prodAfterFood,
     prodConsumed,
     prodLack,
     pollution,

@@ -207,6 +207,12 @@ export function colonyAccum(state: GameState, colony: Colony, empire: Empire): C
     const planet = state.planets.find((p) => p.id === colony.planetId);
     if (planet) acc.prodFlat += ROBOTIC_FACTORY_PROD[planet.minerals];
   }
+  // recyclotron: +1 production per population unit, pollution-free (flat is exempt)
+  if (colony.buildings.includes('recyclotron')) {
+    let units = 0;
+    for (const g of colony.groups) units += Math.floor(g.popK / 1000);
+    acc.prodFlat += units;
+  }
   // virtual reality network lifts morale empire-wide from any one colony
   if (
     !colony.buildings.includes('virtual_reality_network') &&

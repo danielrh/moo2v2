@@ -50,7 +50,7 @@ export const EFFECTS: Record<string, EffectSpec> = {
   tech_detox_pods: { kind: 'weapon', handler: 'combat' },
   insight_training: { kind: 'empire_tech', modifiers: [emp('spy_offense', 5), emp('spy_defense', 5)] },
   wellness_systems: { kind: 'empire_tech', modifiers: [emp('growth_pct', 25)], handler: 'economy' },
-  terraforming: { kind: 'project', stub: 'climate-step terraform project (Phase 6)' },
+  terraforming: { kind: 'project', handler: 'terraform' }, // climate-step project (terraform.ts T1)
   subterranean_farms: { kind: 'building', modifiers: [col('farm_flat', 4)] },
   weather_controller: { kind: 'building', modifiers: [col('farm_coeff', 2)] },
   civic_insight: { kind: 'empire_tech', modifiers: [emp('spy_offense', 10), emp('spy_defense', 10)], handler: 'economy' },
@@ -58,7 +58,7 @@ export const EFFECTS: Record<string, EffectSpec> = {
   better_living_cascade: { kind: 'weapon', handler: 'combat' },
   universal_wellness_protocol: { kind: 'empire_tech', modifiers: [emp('growth_pct', 50)], handler: 'economy' },
   adaptive_habitat_lattice: { kind: 'empire_tech', modifiers: [emp('farm_coeff', 1)] },
-  gaia_transformation: { kind: 'project', stub: 'terran->gaia transformation project (Phase 6)' },
+  gaia_transformation: { kind: 'project', handler: 'terraform' }, // terran->gaia project
   trait_reassignment: { kind: 'system', stub: '+4 race picks rework (Phase 7 lobby)' },
 
   // ---------------- chemistry ----------------
@@ -109,7 +109,7 @@ export const EFFECTS: Record<string, EffectSpec> = {
   achilles_targeting_unit: { kind: 'ship_special', stub: 'armor bypass targeting (Phase 6 combat specials)' },
 
   // ---------------- construction ----------------
-  colony_base: { kind: 'unlock', stub: 'same-system colony base (Phase 6)' },
+  colony_base: { kind: 'unlock', handler: 'economy' }, // settles the innermost free planet in-system
   star_base: { kind: 'building', modifiers: [col('cp_flat', 2)], handler: 'battles' },
   battle_station: { kind: 'building', modifiers: [col('cp_flat', 4)], handler: 'battles' },
   star_fortress: { kind: 'building', modifiers: [col('cp_flat', 6)], handler: 'battles' },
@@ -137,7 +137,7 @@ export const EFFECTS: Record<string, EffectSpec> = {
   doom_star_construction: { kind: 'unlock', handler: 'shipdesign' },
   ground_batteries: { kind: 'building', stub: 'colony beam battery joins defense (Phase 6)' },
   battleoids: { kind: 'ground_unit', stub: 'ground combat (Phase 6)' },
-  recyclotron: { kind: 'building', stub: '+1 prod/pop pollution-free (Phase 6 economy)' },
+  recyclotron: { kind: 'building', handler: 'economy' }, // +1 prod/pop unit, pollution-free (economy.ts)
   automated_repair_unit: { kind: 'ship_special', stub: 'in-combat repair (Phase 6 combat specials)' },
   artificial_planet: { kind: 'project', stub: 'asteroid/gas giant conversion (Phase 6)' },
   robotic_factory: { kind: 'building', handler: 'economy' }, // +5..+25 prod by minerals
@@ -160,10 +160,10 @@ export const EFFECTS: Record<string, EffectSpec> = {
   anti_grav_harness: { kind: 'ground_unit', stub: 'ground combat (Phase 6)' },
   inertial_stabilizer: { kind: 'ship_special', handler: 'shipdesign' },
   gyro_destabilizer: { kind: 'weapon', stub: 'special weapon class (Phase 6 combat specials)' },
-  stellar_safety_shield: { kind: 'building', stub: 'radiation shielding & bombard reduction (Phase 6)' },
+  stellar_safety_shield: { kind: 'building', handler: 'terraform' }, // hostile world lives as barren (terraform.ts); bombard shield (battles.ts)
   planetary_stellar_safety_shield: { kind: 'building', stub: 'colony shield vs bombardment (Phase 6)' },
   flux_shield: { kind: 'building', stub: 'colony shield vs bombardment (Phase 6)' },
-  nanite_factory: { kind: 'building', stub: 'production structure (verify values, Phase 6)' },
+  nanite_factory: { kind: 'building', modifiers: [col('prod_flat', 5)] }, // TUNABLE: +5 prod (classic values unpublished)
   warp_dissipater: { kind: 'ship_special', stub: 'blocks retreat (Phase 6 combat specials)' },
   stealth_field: { kind: 'ship_special', modifiers: [emp('stealth', 10)], stub: 'fleet concealment (Phase 6 intel)' },
   stealth_suit: { kind: 'empire_tech', modifiers: [emp('spy_offense', 10)] },
@@ -235,7 +235,7 @@ export const EFFECTS: Record<string, EffectSpec> = {
   proton_torpedoes: { kind: 'weapon', handler: 'combat' },
   plasma_torpedoes: { kind: 'weapon', handler: 'combat' },
   transporters: { kind: 'ship_special', stub: 'marine transport (Phase 6 boarding)' },
-  food_replicators: { kind: 'building', stub: '2 prod -> 1 food conversion (Phase 6 economy)' },
+  food_replicators: { kind: 'building', handler: 'economy' }, // 2 prod -> 1 food to cover shortages (economy.ts)
   high_energy_focus: { kind: 'ship_special', stub: '+50% beam damage (Phase 6 combat specials)' },
   energy_absorber: { kind: 'ship_special', stub: 'damage absorption (Phase 6 combat specials)' },
   megafluxers: { kind: 'empire_tech', handler: 'shipdesign' },
@@ -259,8 +259,8 @@ export const EFFECTS: Record<string, EffectSpec> = {
   // ---------------- non-application buildables & starting items ----------------
   housing: { kind: 'project', handler: 'economy' },
   trade_goods: { kind: 'project', handler: 'economy' },
-  spy: { kind: 'unlock', stub: 'espionage agents (Phase 6)' },
-  capitol: { kind: 'building', stub: 'seat of government / assimilation hub (Phase 6)' },
+  spy: { kind: 'unlock', handler: 'espionage' }, // buildable project: +1 agent (cap 10)
+  capitol: { kind: 'building', modifiers: [col('morale_pct', 10)], handler: 'ground' }, // +10 morale; assimilation hub (ground.ts)
   habitat_dome_terraforming: { kind: 'project', stub: 'terraform step (Phase 6)' },
   soil_enrichment_terraforming: { kind: 'project', stub: 'terraform step (Phase 6)' },
   hyper_advanced_construction: { kind: 'empire_tech', stub: 'repeatable bonus (Phase 6)' },

@@ -582,7 +582,7 @@ const applySpyOrders: Applier = (state, cmd) => {
 import { acceptProposal, breakTreaties, relationOf } from './diplomacy';
 import type { ProposalKind } from './types';
 
-const PROPOSAL_KINDS: ProposalKind[] = ['peace', 'non_aggression', 'alliance', 'trade', 'research', 'gift_bc', 'tech_exchange'];
+const PROPOSAL_KINDS: ProposalKind[] = ['peace', 'non_aggression', 'alliance', 'trade', 'research', 'gift_bc', 'tech_exchange', 'surrender'];
 
 const validatePropose: Validator = (state, cmd) => {
   const p = cmd.payload as { to: number; kind: ProposalKind; giveBc?: number; giveApp?: string; wantApp?: string };

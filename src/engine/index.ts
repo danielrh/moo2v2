@@ -19,6 +19,7 @@ export * from './research';
 export * from './effects';
 export * from './items';
 export * from './movement';
+export * from './terraform';
 export * from './leaders';
 export * from './commands';
 export * from './shipdesign';

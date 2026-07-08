@@ -76,6 +76,10 @@ export function acceptProposal(state: GameState, proposal: Proposal, events: Tur
       grantApp(from, proposal.wantApp);
       break;
     }
+    case 'surrender': {
+      executeSurrender(state, from, to, events);
+      break;
+    }
   }
   events.push({
     visibleTo: -1,
@@ -83,6 +87,44 @@ export function acceptProposal(state: GameState, proposal: Proposal, events: Tur
     payload: { kind: proposal.kind, a: proposal.from, b: proposal.to },
   });
   return null;
+}
+
+/** The whole realm changes hands: colonies (with unrest), ships (designs are
+ * copied across with fresh ids), treasury, tech. The surrendering empire is
+ * eliminated; a concession, not a defeat, so no loose ends remain. */
+export function executeSurrender(state: GameState, from: Empire, to: Empire, events: TurnEvent[]): void {
+  // designs: copy and remap
+  const designMap = new Map<number, number>();
+  for (const d of from.designs) {
+    const copy = { ...d, id: state.nextId++, name: `${d.name} (${from.name})`, weapons: d.weapons.map((w) => ({ ...w, mods: [...w.mods] })), specials: [...d.specials] };
+    designMap.set(d.id, copy.id);
+    to.designs.push(copy);
+  }
+  for (const ship of state.ships) {
+    if (ship.owner !== from.id) continue;
+    ship.owner = to.id;
+    if (ship.designId !== null) ship.designId = designMap.get(ship.designId) ?? null;
+  }
+  state.ships = state.ships.filter((s) => !(s.owner === to.id && s.designId === null && s.shipKind === 'design'));
+  for (const colony of state.colonies) {
+    if (colony.owner !== from.id) continue;
+    colony.owner = to.id;
+    colony.queue = [];
+    colony.storedProd = 0;
+    colony.stickyInvested = {};
+    for (const g of colony.groups) g.unrest = g.race !== to.id;
+  }
+  to.bc += Math.max(0, from.bc);
+  for (const app of from.knownApps) grantApp(to, app);
+  to.freighters += from.freighters;
+  from.bc = 0;
+  from.freighters = 0;
+  from.leaders = [];
+  from.spies = { count: 0, target: null, mode: 'steal' };
+  from.eliminated = true;
+  // the union inherits no wars from the old empire; existing relations of `to` stand
+  state.proposals = state.proposals.filter((p) => p.from !== from.id && p.to !== from.id);
+  events.push({ visibleTo: -1, kind: 'surrender', payload: { from: from.id, to: to.id } });
 }
 
 function empirePop(state: GameState, empireId: number): number {
