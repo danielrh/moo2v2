@@ -16,6 +16,7 @@ export * from './race';
 export * from './galaxy';
 export * from './economy';
 export * from './research';
+export * from './effects';
 export * from './items';
 export * from './movement';
 export * from './commands';

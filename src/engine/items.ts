@@ -18,7 +18,8 @@ export const SHIP_BUILDABLES = new Set([
 /** Repeatable non-building projects. */
 export const PROJECT_BUILDABLES = new Set(['housing', 'trade_goods', 'spy']);
 
-/** Buildables intentionally unavailable until later phases (documented). */
+/** Buildables intentionally unavailable until later phases (documented). Their
+ * effect entries in effectsMap carry matching stub notes. */
 const DEFERRED = new Set([
   'spy', // espionage arrives in Phase 6
   'colony_base',
@@ -40,8 +41,6 @@ const DEFERRED = new Set([
   'capitol',
   'alien_management_center',
   'space_academy',
-  'virtual_reality_network', // wait — implemented! remove below
-].filter((x) => x !== 'virtual_reality_network'));
   'habitat_dome_terraforming',
   'soil_enrichment_terraforming',
   'super_swarm',

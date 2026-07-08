@@ -228,13 +228,23 @@ room code (server field: local `http://127.0.0.1:8787` or default public server)
 
 ### Phase 5 — Pluggable subsystems (prompt item 5) ✅ when: coverage test shows every tech application implemented or explicitly stubbed; earlier goldens unchanged except intended diffs
 
-- [ ] Modifier interpreter + ModAccumulator (documented integer stacking)
-- [ ] Migrate Phase-3 hardcoded economy modifiers to declarative data
-- [ ] Handlers batch 1 — economy/building specials (cloning, terraforming chain, gravity generators, trade/morale buildings, replicators…)
-- [ ] Handlers batch 2 — combat specials (cloak, damper field, tractor, assault shuttles, teleporter, stellar converter, reflection field…)
-- [ ] Handlers batch 3 — movement/scan/misc (gates, wormholes, scanners/stealth, telepathic, transdimensional)
-- [ ] All race picks from racepicks.md wired end-to-end
-- [ ] Effects coverage test + stub ledger
+- [x] Modifier model (`effects.ts`): 19 targets across farm/prod/sci coeff+flat, morale,
+      max-pop, growth, money halves, pollution divisor/absorb/zero, spy/scan/stealth, CP;
+      colony scope (building present) + empire scope (tech known); coded colony handlers
+      (robotic factory by minerals, VR network empire-wide, wellness non-cumulative)
+- [x] Economy fully migrated to declarative data (`data/effectsMap.ts`) — golden tests
+      unchanged; CP sources now modifier-driven (star bases, tachyon comms)
+- [x] Live effect wins beyond parity: advanced_city_planning, learning_optimization,
+      microlite_construction, space_port, scanners/spy techs, stealth_suit, megafluxers
+      (+25% space), hull gating C7 (cruiser/battleship/titan/doomstar unlocks)
+- [x] Combat/ship specials: implemented set (battle pods, reinforced hull, battle scanner,
+      inertial stabilizer) + ~30 explicitly stubbed combat specials, colony defenses, fighters,
+      terraforming chain, androids, advanced governments -> ledger entries tagged Phase 6/7
+- [x] All 53 race picks accounted for in PICK_STATUS (implemented handler or Phase 6 stub:
+      ground/spying/diplomacy/lucky/omniscient/stealthy picks)
+- [x] Coverage gate: every application (191), buildable, and pick has modifiers | handler |
+      stub — test fails on omissions; stub ledger printed as the remaining-work queue;
+      no-op deferred buildings are unbuildable (DEFERRED list) so players cannot waste BC
 
 ### Phase 6 — Full game systems ✅ when: headless 4-player 200-turn game exercises everything with stable hashes; each victory condition reachable in a scripted fixture
 
