@@ -207,7 +207,7 @@ export const EFFECTS: Record<string, EffectSpec> = {
   gravity_generator: { kind: 'building', handler: 'economy' },
   jump_gate: { kind: 'empire_tech', stub: 'gate-boosted travel between own systems (Phase 6)' },
   plasma_web: { kind: 'weapon', stub: 'special weapon class (Phase 6 combat specials)' },
-  dimensional_portal: { kind: 'building', stub: 'attack the Antaran home (Phase 6)' },
+  dimensional_portal: { kind: 'building', handler: 'npc' }, // enables attack_antarans (npc.ts A1)
   sensors: { kind: 'empire_tech', stub: 'deep scan (verify values, Phase 6)' },
   time_warp_facilitator: { kind: 'ship_special', stub: 'extra combat turn (Phase 6 combat specials)' },
   star_gate: { kind: 'empire_tech', stub: 'instant travel between own systems (Phase 6)' },
@@ -237,7 +237,7 @@ export const EFFECTS: Record<string, EffectSpec> = {
   transporters: { kind: 'ship_special', stub: 'marine transport (Phase 6 boarding)' },
   food_replicators: { kind: 'building', handler: 'economy' }, // 2 prod -> 1 food to cover shortages (economy.ts)
   high_energy_focus: { kind: 'ship_special', handler: 'combat' }, // +50% beam damage
-  energy_absorber: { kind: 'ship_special', stub: 'damage absorption (Phase 6 combat specials)' },
+  energy_absorber: { kind: 'ship_special', handler: 'combat' }, // incoming damage x0.75 (monsters use it)
   megafluxers: { kind: 'empire_tech', handler: 'shipdesign' },
   hyper_x_capacitors: { kind: 'ship_special', handler: 'combat' }, // beams cycle 2x
 
@@ -323,7 +323,7 @@ export const PICK_STATUS: Record<string, { handler?: string; stub?: string }> = 
   tolerant: { handler: 'economy' },
   fantastic_traders: { handler: 'economy' },
   telepathic: { stub: 'diplomacy/mind control (Phase 6)' },
-  lucky: { stub: 'random events (Phase 6)' },
+  lucky: { handler: 'npc' }, // never the victim of bad random events (npc.ts E1)
   omniscient: { stub: 'galaxy visibility (Phase 6)' },
   stealthy_ships: { stub: 'fleet concealment (Phase 6)' },
   trans_dimensional: { handler: 'movement' },

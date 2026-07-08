@@ -21,6 +21,7 @@ export * from './items';
 export * from './movement';
 export * from './terraform';
 export * from './leaders';
+export * from './npc';
 export * from './commands';
 export * from './shipdesign';
 export * from './combat';

@@ -11,6 +11,7 @@ import { effectsOf, empireAccum } from './effects';
 import { resolveEspionage } from './espionage';
 import { assimilate, isBlockaded, resolveInvasions } from './ground';
 import { leaderEmpireBonuses, leadersUpkeep } from './leaders';
+import { antaranUpkeep, randomEventsUpkeep } from './npc';
 import { itemCost, parseDesignItem } from './items';
 import { applyTerraformStep, unsettledPlanetsInSystem } from './terraform';
 import { colonyMaxPop, colonyOutput, colonyPopUnits, groupGrowthK, traitsOf } from './economy';
@@ -74,6 +75,8 @@ function finishTurn(state: GameState, events: TurnEvent[]): void {
   assimilate(state, events); // S11 conquered populations settle in
   resolveEspionage(state, events); // S11 spies act
   leadersUpkeep(state, events); // S11 leader offers, salaries, XP
+  antaranUpkeep(state, events); // S11 raid cadence + withdrawals
+  randomEventsUpkeep(state, events); // S11 option-gated events
   diplomacyUpkeep(state, events); // S11 treaties, proposals, council
   s12_victory(state, events);
   s13_endTurn(state);

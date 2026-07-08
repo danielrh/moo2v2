@@ -8,6 +8,7 @@ import { leaderCombatBonuses } from './leaders';
 import { floorDiv } from './imath';
 import { rngFor } from './rng';
 import { baseDesign, designStats, knownWeapons, HULLS_BUILDABLE, BASE_HULLS, type ShipDesign } from './shipdesign';
+import { ANTARAN_EMPIRE, antaranRaze, factionOf, guardianReward, monstersAt, monsterToCombat } from './npc';
 import type { Colony, Empire, GameState, PendingBattle, Ship, TurnEvent } from './types';
 
 export function relationKey(a: number, b: number): [number, number] {
@@ -42,9 +43,12 @@ function isWarship(ship: Ship): boolean {
   return ship.shipKind === 'design';
 }
 
-/** S7: detect pairwise battles at each star (attacker = non-colony side or higher id). */
+/** S7: detect pairwise battles at each star (attacker = non-colony side or higher id).
+ * NPC forces (monsters -2, Antarans -3) take precedence at their star; the NPC
+ * side's orders are pre-filled so only humans are awaited (M2). */
 export function detectBattles(state: GameState): PendingBattle[] {
   const battles: PendingBattle[] = [];
+  const npcOrders: BattleOrders = { stance: 'hold_range', priority: 'nearest', retreatThresholdPct: 0, bombard: false };
   for (const star of state.stars) {
     const shipsHere = state.ships.filter((s) => s.location.kind === 'star' && s.location.starId === star.id);
     const colonyOwners = new Set(
@@ -52,6 +56,47 @@ export function detectBattles(state: GameState): PendingBattle[] {
         .filter((c) => state.planets.some((p) => p.id === c.planetId && p.starId === star.id))
         .map((c) => c.owner),
     );
+    // NPC encounter first: monsters defend their lair; Antaran raiders attack the colony
+    const npcs = state.monsters.filter((m) => m.starId === star.id);
+    if (npcs.length > 0) {
+      const faction = factionOf(npcs[0]!);
+      // portal assault: the player charges the Antaran home garrison
+      if (state.antarans.assaultBy !== null && npcs.some((m) => m.kind === 'antaran_fortress')) {
+        battles.push({
+          id: `b${state.turn}-${star.id}-${state.antarans.assaultBy}vantares`,
+          starId: star.id,
+          attacker: state.antarans.assaultBy,
+          defender: ANTARAN_EMPIRE,
+          ordersA: null,
+          ordersD: npcOrders,
+        });
+        continue;
+      }
+      if (faction === ANTARAN_EMPIRE && colonyOwners.size > 0) {
+        const defender = [...colonyOwners].sort((a, b) => a - b)[0]!;
+        battles.push({
+          id: `b${state.turn}-${star.id}-antaransv${defender}`,
+          starId: star.id,
+          attacker: ANTARAN_EMPIRE,
+          defender,
+          ordersA: { ...npcOrders, stance: 'charge' },
+          ordersD: null,
+        });
+        continue;
+      }
+      const challengers = [...new Set(shipsHere.filter((s) => s.owner >= 0 && isWarship(s)).map((s) => s.owner))].sort((a, b) => a - b);
+      if (challengers.length > 0) {
+        battles.push({
+          id: `b${state.turn}-${star.id}-${challengers[0]}vnpc`,
+          starId: star.id,
+          attacker: challengers[0]!,
+          defender: faction,
+          ordersA: null,
+          ordersD: npcOrders,
+        });
+      }
+      continue; // one battle per star: the lair fight blocks player-vs-player here
+    }
     const presence = new Set<number>([...shipsHere.map((s) => s.owner), ...colonyOwners]);
     const list = [...presence].sort((a, b) => a - b);
     let made = false;
@@ -194,24 +239,33 @@ export interface BuiltBattle {
 }
 
 export function buildBattleInput(state: GameState, battle: PendingBattle): BuiltBattle {
-  const attacker = state.empires.find((e) => e.id === battle.attacker)!;
-  const defender = state.empires.find((e) => e.id === battle.defender)!;
+  const attacker = state.empires.find((e) => e.id === battle.attacker);
+  const defender = state.empires.find((e) => e.id === battle.defender);
   const ships: CombatShipInit[] = [];
   for (const ship of state.ships) {
     if (ship.location.kind !== 'star' || ship.location.starId !== battle.starId) continue;
-    if (ship.owner === battle.attacker) {
+    if (attacker && ship.owner === battle.attacker) {
       const cs = shipToCombat(state, attacker, ship, 0);
       if (cs) ships.push(cs);
-    } else if (ship.owner === battle.defender) {
+    } else if (defender && ship.owner === battle.defender) {
       const cs = shipToCombat(state, defender, ship, 1);
       if (cs) ships.push(cs);
     }
   }
+  // NPC forces (monsters / Antarans) fill their side from the monster roster
+  if (battle.attacker < 0) {
+    for (const m of monstersAt(state, battle.starId, battle.attacker)) ships.push(monsterToCombat(m, 0));
+  }
+  if (battle.defender < 0) {
+    for (const m of monstersAt(state, battle.starId, battle.defender)) ships.push(monsterToCombat(m, 1));
+  }
   let baseColonyId: number | null = null;
-  const defColony = state.colonies.find(
-    (c) => c.owner === battle.defender && state.planets.some((p) => p.id === c.planetId && p.starId === battle.starId),
-  );
-  if (defColony) {
+  const defColony = defender
+    ? state.colonies.find(
+        (c) => c.owner === battle.defender && state.planets.some((p) => p.id === c.planetId && p.starId === battle.starId),
+      )
+    : undefined;
+  if (defColony && defender) {
     const base = baseToCombat(state, defender, defColony, 1_000_000 + defColony.id);
     if (base) {
       ships.push(base);
@@ -221,6 +275,7 @@ export function buildBattleInput(state: GameState, battle: PendingBattle): Built
   // ship officers: fleet-wide bonuses per side (L2)
   for (const side of [0, 1] as const) {
     const empire = side === 0 ? attacker : defender;
+    if (!empire) continue;
     const lb = leaderCombatBonuses(empire);
     if (lb.beamAttack === 0 && lb.beamDefense === 0 && lb.dmgMaxPct === 0 && lb.speedPct === 0) continue;
     for (const cs of ships) {
@@ -265,6 +320,22 @@ export function resolveBattle(state: GameState, battle: PendingBattle, events: T
   // apply ship outcomes
   const destroyedIds = new Set<number>();
   for (const o of result.outcomes) {
+    if (o.shipId >= 2_000_000) {
+      // monster / Antaran unit
+      const monster = state.monsters.find((m) => 2_000_000 + m.id === o.shipId);
+      if (!monster) continue;
+      if (o.destroyed) {
+        state.monsters = state.monsters.filter((m) => m !== monster);
+        events.push({ visibleTo: -1, kind: 'monster_slain', payload: { kind: monster.kind, starId: monster.starId } });
+        if (monster.kind === 'guardian') {
+          const victor = battle.attacker >= 0 ? battle.attacker : battle.defender;
+          guardianReward(state, victor, events);
+        }
+      } else {
+        monster.dmgStructure = Math.max(0, o.structureMax - o.structureLeft);
+      }
+      continue;
+    }
     if (o.shipId >= 1_000_000) {
       // defense base + ground batteries fall together
       if (o.destroyed && built.baseColonyId !== null) {
@@ -323,6 +394,25 @@ export function resolveBattle(state: GameState, battle: PendingBattle, events: T
     }
   }
   state.ships = state.ships.filter((s) => !destroyedIds.has(s.id));
+
+  // Antaran raid victory: they raze the colony and are gone next upkeep (A1)
+  if (battle.attacker === ANTARAN_EMPIRE && result.winner === 0) {
+    const colony = state.colonies.find(
+      (c) => c.owner === battle.defender && state.planets.some((p) => p.id === c.planetId && p.starId === battle.starId),
+    );
+    if (colony) antaranRaze(state, colony.id, events);
+  }
+  // player assault on the Antaran home: victory ends the game (A1)
+  if (battle.defender === ANTARAN_EMPIRE && state.antarans.assaultBy === battle.attacker) {
+    if (result.winner === 0 && state.winner === null) {
+      state.winner = battle.attacker;
+      state.winType = 'antaran';
+      events.push({ visibleTo: -1, kind: 'victory', payload: { empireId: battle.attacker, type: 'antaran' } });
+    }
+    // win or lose, the portal collapses and the garrison is gone
+    state.monsters = state.monsters.filter((m) => !(m.starId === battle.starId && factionOf(m) === ANTARAN_EMPIRE));
+    state.antarans.assaultBy = null;
+  }
 
   // bombardment (attacker victory + orders.bombard)
   const ordersA = built.input.ordersA;

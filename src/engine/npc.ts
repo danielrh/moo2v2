@@ -219,9 +219,13 @@ export const ANTARAN_FIRST_RAID = 25;
 
 export function antaranUpkeep(state: GameState, events: TurnEvent[]): void {
   if (!state.settings.modes.antarans) return;
-  // raiders always withdraw the turn after their attack resolves
+  // raiders withdraw after their attack turn resolves (battles run before S11)
   const before = state.monsters.length;
-  state.monsters = state.monsters.filter((m) => factionOf(m) !== ANTARAN_EMPIRE || m.starId !== m.raidStar || state.turn <= (m.raidTurn ?? 0));
+  state.monsters = state.monsters.filter((m) => {
+    if (factionOf(m) !== ANTARAN_EMPIRE) return true;
+    if (m.raidTurn === undefined) return true; // assault garrison: battles.ts cleans up
+    return state.turn < m.raidTurn;
+  });
   if (state.monsters.length !== before) {
     events.push({ visibleTo: -1, kind: 'antarans_withdraw', payload: {} });
   }

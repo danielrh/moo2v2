@@ -31,7 +31,6 @@ export const PROJECT_BUILDABLES = new Set([
 const DEFERRED = new Set([
   'artificial_planet',
   'fighter_garrison', // carrier ops omitted by the combat redesign (documented)
-  'dimensional_portal', // Antaran assault (later in Phase 6)
   'flux_shield', // superseded shield tiers stay data-only (planetary shield covers defense)
   'planetary_flux_shield',
   'planetary_barrier_shield',

@@ -292,6 +292,7 @@ function validateSettle(state: GameState, cmd: EngineCommand, wantKind: 'colony_
   if (planet.starId !== ship.location.starId) return 'ship is not at that system';
   if (wantKind === 'colony_ship' && planet.body !== 'planet') return 'cannot colonize that body';
   if (state.colonies.some((c) => c.planetId === planet.id)) return 'already settled';
+  if (hostileMonsterAt(state, planet.starId)) return 'the system is guarded — destroy its keeper first';
   return null;
 }
 
@@ -704,6 +705,37 @@ const applyAssignLeader: Applier = (state, cmd) => {
   empire.leaders.find((l) => l.leaderId === p.leaderId)!.colonyId = p.colonyId;
 };
 
+// ---------- Antaran assault (dimensional portal) ----------
+
+import { MONSTER_SPECS, hostileMonsterAt } from './npc';
+
+const validateAttackAntarans: Validator = (state, cmd) => {
+  if (!state.settings.modes.antarans) return 'Antarans mode is off';
+  if (state.antarans.assaultBy !== null) return 'an assault is already underway';
+  const p = cmd.payload as { colonyId: number };
+  const c = ownColony(state, cmd, p?.colonyId);
+  if (typeof c === 'string') return c;
+  if (!c.buildings.includes('dimensional_portal')) return 'colony has no dimensional portal';
+  const planet = state.planets.find((x) => x.id === c.planetId)!;
+  const hasFleet = state.ships.some(
+    (s) => s.owner === cmd.playerId && s.shipKind === 'design' && s.location.kind === 'star' && s.location.starId === planet.starId,
+  );
+  return hasFleet ? null : 'assemble warships at the portal first';
+};
+
+const applyAttackAntarans: Applier = (state, cmd) => {
+  const p = cmd.payload as { colonyId: number };
+  const c = colony(state, p.colonyId)!;
+  const planet = state.planets.find((x) => x.id === c.planetId)!;
+  state.antarans.assaultBy = cmd.playerId;
+  // the home garrison materializes on the far side of the portal
+  const garrison: Array<keyof typeof MONSTER_SPECS> = ['antaran_fortress', 'antaran_intruder', 'antaran_intruder', 'antaran_marauder'];
+  for (const kind of garrison) {
+    state.monsters.push({ id: state.nextId++, kind: kind as never, starId: planet.starId, dmgStructure: 0 });
+  }
+  state.monsters.sort((a, b) => a.id - b.id);
+};
+
 // ---------- council votes ----------
 
 const validateVote: Validator = (state, cmd) => {
@@ -811,6 +843,7 @@ export const COMMANDS: Record<string, { validate: Validator; apply: Applier }> =
   assign_leader: { validate: validateAssignLeader, apply: applyAssignLeader },
   diplo_propose: { validate: validatePropose, apply: applyPropose },
   diplo_respond: { validate: validateRespond, apply: applyRespond },
+  attack_antarans: { validate: validateAttackAntarans, apply: applyAttackAntarans },
   cast_vote: { validate: validateVote, apply: applyVote },
   debug_grant_app: { validate: validateDebug, apply: applyDebugGrantApp },
   debug_add_bc: { validate: validateDebug, apply: applyDebugAddBc },
