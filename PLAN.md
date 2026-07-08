@@ -296,13 +296,28 @@ room code (server field: local `http://127.0.0.1:8787` or default public server)
 
 ### Phase 7 — UI completion + modes polish ✅ when: full game start→victory by 2 humans, spreadsheet-first; auction e2e passes; all screens keyboard-navigable
 
-- [ ] Spreadsheet v2: multi-select bulk ops, named build templates, filters, sortable columns, totals footer, drag-paint jobs, dirty/ack indicators
-- [ ] Lobby/setup polish: full race picker with budget validation; sealed-bid auction UI (commit → reveal → results → losers re-pick); mode toggles with help text
-- [ ] Map v2: fuel-range shading, fog/intel states, blockade badges
-- [ ] Reports timeline (turn_events, filters), replay list (rewatch battles)
-- [ ] Diplomacy screen + chat dock (all + DM tabs)
-- [ ] Empire screen (tax slider, leaders, spies); saves manager (export/import); help/glossary
-- [ ] Creative-variant purchase UI; sticky-build progress indicators
+- [x] Spreadsheet v2: multi-select bulk builds, filter box, sortable columns, totals footer,
+      sticky-build parked-progress indicators. Deviations: drag-paint jobs skipped (steppers +
+      bulk ops cover the workflow); named build templates skipped (bulk-set fills the role);
+      optimistic planned state IS the dirty indicator (commands render instantly, host rejects
+      roll back)
+- [x] Lobby/setup: host game-setup panel (galaxy/start/all 5 modes with help text); custom race
+      builder with live pick-budget validation; sealed-bid auction UI (commit → auto-reveal →
+      results). Deviation: losers don't re-pick — the pick is simply forfeited (budget slack
+      returns; documented in protocol/auction.ts); tie → lower seat wins
+- [x] Map v2: fuel-range shading (dashed rings), monster-lair ☠ + blockade ⚓ badges with
+      sidebar detail; fog = unexplored dimming (intel levels beyond explored/unexplored not
+      modeled — deviation)
+- [x] Reports timeline: filterable turn-event feed (~50 humanized kinds, unread badge);
+      replay list on Empires
+- [x] Diplomacy on Empires tab (proposals all 8 kinds, council voting) + chat dock with
+      all/DM targeting
+- [x] Empires tab: leaders (offers/hire/assign/dismiss), agents, resign, attack-Antarans;
+      saves manager = Save/DB buttons + Home load (Phase 6a); help/glossary panel (?).
+      No tax slider exists by design (F7)
+- [x] Creative-variant purchase UI on Research; keyboard navigation via native controls
+      (buttons/selects/inputs throughout)
+- [x] Gates: auction e2e (e2e/auction.spec.ts) + full e2e matrix green (6 specs)
 
 ### Phase 8 — Hardening + performance ✅ when: 500-turn fuzz soak clean; desync drill recovers via resync; 8-player ~70-star turn < 2 s; snapshot < 8 MiB gzip; e2e matrix green twice consecutively
 
