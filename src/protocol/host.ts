@@ -213,26 +213,59 @@ export class HostCore<S> {
     this.broadcast({ t: 'lobby_update', players: this.roster(), settings: this.settings });
   }
 
+  /** Pick the empire seat a helloing channel plays. Prefers its existing
+   * claim, then a name match among free (or abandoned) seats, then the lowest
+   * free seat. Returns null when every seat is taken by a live connection. */
+  private assignSeat(channel: number, name: string): number | null {
+    const existing = this.seatMap.get(channel);
+    if (existing !== undefined && this.seats.has(existing)) return existing;
+    const claimedBy = new Map<number, number>(); // seat -> channel
+    for (const [ch, s] of this.seatMap) claimedBy.set(s, ch);
+    const available = [...this.seats.keys()]
+      .filter((id) => !claimedBy.has(id) || !this.seats.get(id)!.connected)
+      .sort((a, b) => a - b);
+    if (!available.length) return null;
+    const norm = (s: string) => s.trim().toLowerCase();
+    const matches = available.filter((id) => norm(this.seats.get(id)!.name) === norm(name));
+    // ties (duplicate names, no match) break toward the channel's own number
+    // so reconnecting players keep stable seats
+    const seat = matches.includes(channel)
+      ? channel
+      : (matches[0] ?? (available.includes(channel) ? channel : available[0]!));
+    const prev = claimedBy.get(seat);
+    if (prev !== undefined) this.seatMap.delete(prev);
+    this.seatMap.set(channel, seat);
+    return seat;
+  }
+
   private onHello(from: number, msg: Extract<ClientToHost, { t: 'hello' }>): void {
     if (msg.protocolVersion !== PROTOCOL_VERSION) {
-      return this.sendTo(from, {
+      return this.sendToChannel(from, {
         t: 'version_reject',
         reason: `protocol ${msg.protocolVersion} != ${PROTOCOL_VERSION}`,
       });
     }
     if (msg.dataVersion !== this.dataVersion) {
-      return this.sendTo(from, {
+      return this.sendToChannel(from, {
         t: 'version_reject',
         reason: `data version mismatch (host ${this.dataVersion}, you ${msg.dataVersion})`,
       });
     }
-    if (this.started && !this.seats.has(from)) {
-      return this.sendTo(from, {
-        t: 'version_reject',
-        reason: 'game already started; seat not part of this game',
-      });
+    let seatId: number;
+    if (this.started) {
+      const assigned = this.assignSeat(from, msg.name);
+      if (assigned === null) {
+        return this.sendToChannel(from, {
+          t: 'version_reject',
+          reason: 'game already started; every empire seat is taken',
+        });
+      }
+      seatId = assigned;
+    } else {
+      seatId = from; // lobby: seats follow join order
+      this.seatMap.set(from, from);
     }
-    const seat: Seat = this.seats.get(from) ?? {
+    const seat: Seat = this.seats.get(seatId) ?? {
       name: msg.name,
       ready: false,
       raceJson: null,
@@ -242,21 +275,22 @@ export class HostCore<S> {
     seat.name = msg.name || seat.name;
     seat.connected = true;
     seat.hello = true;
-    this.seats.set(from, seat);
-    this.sendTo(from, {
+    this.seats.set(seatId, seat);
+    this.sendTo(seatId, {
       t: 'welcome',
       gameId: this.gameId,
       settings: this.settings,
       players: this.roster(),
       lastSeq: this.lastSeq,
       started: this.started,
+      seat: seatId,
     });
     if (this.started && msg.haveSeq < this.lastSeq) {
-      this.sendResync(from, msg.haveSeq);
+      this.sendResync(seatId, msg.haveSeq);
     }
     this.broadcastLobby();
     if (this.started) {
-      this.sendTo(from, { t: 'commit_status', turn: this.currentTurn(), committed: [...this.committed] });
+      this.sendTo(seatId, { t: 'commit_status', turn: this.currentTurn(), committed: [...this.committed] });
     }
   }
 

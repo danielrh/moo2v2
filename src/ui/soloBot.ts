@@ -1,21 +1,29 @@
 // Single-player bot: a deliberately simple opponent driven entirely through
-// the normal command log (debug commands included), so the simulation never
-// special-cases it. Its "bonuses" are visible, replayable log entries:
-//   - research parity: grants itself whatever the human already knows
-//   - expansion parity: founds the nearest free colony when the human expands
-//   - a 100 BC stipend whenever it is broke
-// Everything else is ordinary play: it copies the human's ship designs, keeps
-// planets fed with one scientist and the rest on industry, builds random
-// things, occasionally buys production, and — in aggressive mode — throws
-// half its warfleet at the human's nearest systems.
+// the normal command log, so the simulation never special-cases it.
+//
+// Two modes:
+//   'parity' — keeps up via visible, replayable debug-command grants:
+//     research parity (learns whatever the human knows), expansion parity
+//     (founds the nearest free colony when the human expands), and a 100 BC
+//     stipend when broke. Copies the human's ship designs.
+//   'fair'   — no help at all: researches on its own, builds colony ships and
+//     settles free planets with ordinary commands, spends its own money.
+// Everything else is ordinary play in both modes: planets stay fed with one
+// scientist and the rest on industry, it builds random things, occasionally
+// buys production, and — in aggressive mode — throws half its warfleet at the
+// human's nearest systems.
 
 import { selectors, starDistance } from '@engine/index';
 import type { GameState } from '@engine/types';
 import type { GameSession } from '@protocol/session';
 
+export type BotMode = 'parity' | 'fair';
+
 export interface SoloBotOptions {
   session: GameSession<GameState>;
   raceJson?: string;
+  /** 'parity' (default) uses logged debug grants; 'fair' never cheats */
+  mode?: BotMode;
 }
 
 /** deterministic-enough tiny PRNG for bot whims (commands are logged anyway) */
@@ -29,6 +37,7 @@ function whim(seedA: number, seedB: number): () => number {
 
 export class SoloBot {
   private readonly session: GameSession<GameState>;
+  readonly mode: BotMode;
   private aggressive = false;
   private lastPlayedTurn = 0;
   private orderedBattles = new Set<string>();
@@ -36,6 +45,7 @@ export class SoloBot {
 
   constructor(opts: SoloBotOptions) {
     this.session = opts.session;
+    this.mode = opts.mode ?? 'parity';
     const raceJson = opts.raceJson ?? JSON.stringify({ presetId: 'hivex' });
     this.session.setRaceConfig(raceJson, true);
     this.unsub = this.session.subscribe((ev) => {
@@ -96,12 +106,14 @@ export class SoloBot {
     if (!bot || !human) return;
     const rand = whim(state.turn, me);
 
-    // ---- stipend: broke bots get 100 BC (logged, no sim special case) ----
-    if (bot.bc <= 0) this.submit('debug_add_bc', { amount: 100 });
+    if (this.mode === 'parity') {
+      // ---- stipend: broke bots get 100 BC (logged, no sim special case) ----
+      if (bot.bc <= 0) this.submit('debug_add_bc', { amount: 100 });
 
-    // ---- research parity: learn everything the human knows ----
-    for (const app of human.knownApps) {
-      if (!bot.knownApps.includes(app)) this.submit('debug_grant_app', { appId: app });
+      // ---- research parity: learn everything the human knows ----
+      for (const app of human.knownApps) {
+        if (!bot.knownApps.includes(app)) this.submit('debug_grant_app', { appId: app });
+      }
     }
     // keep the labs pointed somewhere so banked RP is not wasted
     if (bot.research.fieldNum === null) {
@@ -115,26 +127,28 @@ export class SoloBot {
       }
     }
 
-    // ---- expansion parity: human has more colonies -> found the nearest free planet ----
-    const humanColonies = state.colonies.filter((c) => c.owner === human.id && !c.outpost).length;
-    const botColonies = state.colonies.filter((c) => c.owner === me && !c.outpost).length;
-    if (humanColonies > botColonies) {
-      const target = this.nearestFreePlanet(state, me);
-      if (target !== null) this.submit('debug_found_colony', { planetId: target });
-    }
+    if (this.mode === 'parity') {
+      // ---- expansion parity: human has more colonies -> found the nearest free planet ----
+      const humanColonies = state.colonies.filter((c) => c.owner === human.id && !c.outpost).length;
+      const botColonies = state.colonies.filter((c) => c.owner === me && !c.outpost).length;
+      if (humanColonies > botColonies) {
+        const target = this.nearestFreePlanet(state, me);
+        if (target !== null) this.submit('debug_found_colony', { planetId: target });
+      }
 
-    // ---- copy the human's ship designs (post-parity, components are known) ----
-    const botDesignNames = new Set(bot.designs.filter((d) => !d.obsolete).map((d) => d.name));
-    for (const d of human.designs) {
-      if (d.obsolete || botDesignNames.has(d.name)) continue;
-      this.submit('save_design', {
-        name: d.name,
-        hull: d.hull,
-        computer: d.computer,
-        shield: d.shield,
-        specials: [...d.specials],
-        weapons: d.weapons.map((w) => ({ weapon: w.weapon, count: w.count, mods: [...w.mods] })),
-      });
+      // ---- copy the human's ship designs (post-parity, components are known) ----
+      const botDesignNames = new Set(bot.designs.filter((d) => !d.obsolete).map((d) => d.name));
+      for (const d of human.designs) {
+        if (d.obsolete || botDesignNames.has(d.name)) continue;
+        this.submit('save_design', {
+          name: d.name,
+          hull: d.hull,
+          computer: d.computer,
+          shield: d.shield,
+          specials: [...d.specials],
+          weapons: d.weapons.map((w) => ({ weapon: w.weapon, count: w.count, mods: [...w.mods] })),
+        });
+      }
     }
 
     // ---- per-colony: jobs (fed + 1 scientist + industry), builds, buys ----
@@ -165,8 +179,54 @@ export class SoloBot {
       }
     }
 
+    // ---- fair expansion: build/sail/settle colony ships, no shortcuts ----
+    if (this.mode === 'fair') this.fairExpansion(me);
+
     // ---- aggression: half the warfleet at the human's two nearest systems ----
     if (this.aggressive) this.attack(state, me, human.id);
+  }
+
+  /** Non-cheating expansion: settle with real colony ships. Colony ships at a
+   * star colonize the best free planet there or sail to the nearest reachable
+   * free system; while free planets exist, one colony ship stays queued. */
+  private fairExpansion(me: number): void {
+    const planned = this.session.getPlanned();
+    if (!planned) return;
+    const freePlanets = planned.planets.filter(
+      (p) =>
+        p.body === 'planet' &&
+        !planned.colonies.some((c) => c.planetId === p.id) &&
+        !planned.monsters.some((m) => m.starId === p.starId),
+    );
+    const colonyShips = planned.ships.filter((s) => s.owner === me && s.shipKind === 'colony_ship');
+    for (const ship of colonyShips) {
+      if (ship.location.kind !== 'star') continue; // already sailing
+      const starId = ship.location.starId;
+      const here = freePlanets
+        .filter((p) => p.starId === starId)
+        .sort((a, b) => b.sizeClass - a.sizeClass);
+      if (here.length) {
+        this.submit('colonize', { shipId: ship.id, planetId: here[0]!.id });
+        continue;
+      }
+      const dest = selectors
+        .moveOptions(planned, me, starId)
+        .find((o) => o.reachable && freePlanets.some((p) => p.starId === o.starId));
+      if (dest) this.submit('move_ships', { shipIds: [ship.id], destStarId: dest.starId });
+    }
+    // keep exactly one colony ship in the pipeline while there is room to grow
+    const building = planned.colonies.some(
+      (c) => c.owner === me && c.queue.some((q) => q === 'colony_ship'),
+    );
+    if (freePlanets.length && !colonyShips.length && !building) {
+      const rows = planned.colonies
+        .filter((c) => c.owner === me && !c.outpost)
+        .map((c) => selectors.colonyRow(planned, c))
+        .filter((r) => r.buildable.includes('colony_ship'))
+        .sort((a, b) => (b.output.prodToQueue || b.output.prod) - (a.output.prodToQueue || a.output.prod));
+      const best = rows[0];
+      if (best) this.submit('set_build_queue', { colonyId: best.id, items: ['colony_ship', ...best.queue] });
+    }
   }
 
   private nearestFreePlanet(state: GameState, me: number): number | null {
