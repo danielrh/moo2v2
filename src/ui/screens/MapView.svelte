@@ -73,6 +73,11 @@
 
   const selected = $derived(view.find((v) => v.star.id === selectedStarId) ?? null);
   const shipsHere = $derived(fleets.filter((f) => f.atStarId === selectedStarId));
+  /** wormhole partner of the selected star: always a valid move target */
+  const wormholeTarget = $derived.by(() => {
+    if (!gs || selectedStarId === null) return null;
+    return gs.stars.find((s) => s.id === selectedStarId)?.wormholeTo ?? null;
+  });
   const mapDims = $derived(gs ? MAP_SIZE[gs.settings.galaxySize] : { w: 2000, h: 1500 });
 
   /** own fleets in flight (or ordered this turn): marker at progress point */
@@ -285,7 +290,7 @@
           {#if v.star.id === selectedStarId}
             <circle r="36" class="selring" />
           {/if}
-          {#if selectedShipIds.length > 0 && v.star.id !== selectedStarId && reachable.has(v.star.id)}
+          {#if selectedShipIds.length > 0 && v.star.id !== selectedStarId && (reachable.has(v.star.id) || v.star.id === wormholeTarget)}
             <circle r="30" class="target" />
           {/if}
           {#if !reachable.has(v.star.id)}

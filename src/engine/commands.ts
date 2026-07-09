@@ -261,7 +261,15 @@ const validateMove: Validator = (state, cmd) => {
     const origin = moveOrigin(state, ship);
     if (origin.id === dest.id && ship.location.kind === 'star') return `ship ${ship.id} already there`;
   }
-  if (!inRange(state, cmd.playerId, dest)) return `${dest.name} is out of fuel range`;
+  if (!inRange(state, cmd.playerId, dest)) {
+    // wormholes carry ships regardless of fuel range (outposts on the far
+    // side can then extend the network)
+    for (const ship of ships) {
+      if (moveOrigin(state, ship).wormholeTo !== dest.id) {
+        return `${dest.name} is out of fuel range`;
+      }
+    }
+  }
   return null;
 };
 

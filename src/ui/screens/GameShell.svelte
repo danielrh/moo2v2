@@ -327,7 +327,7 @@
         <li><b>Colonies</b> — the spreadsheet runs your empire: assign jobs (± or drag a job count onto another job), pick builds, buy with BC. Click headers to sort; tick rows for bulk builds; 🏛 lists buildings (sell for half price).</li>
         <li><b>Turns</b> are simultaneous: everything resolves when every player commits. Uncommit any time before the last player commits.</li>
         <li><b>Food</b> feeds colonists (2 per unit ×½); shortages starve growth. Freighters move surplus between colonies — blockades cut deliveries.</li>
-        <li><b>Research</b> works one field at a time; basic (tier-1) fields grant <i>all</i> their applications. Never leave research idle — points bank but nothing finishes.</li>
+        <li><b>Research</b> works one field at a time; basic fields and Cold Fusion (marked ✦) grant <i>all</i> their applications — Cold Fusion delivers colony ships, outposts, transports and freighters together. Never leave research idle — points bank but nothing finishes.</li>
         <li><b>Ships</b> travel star-to-star within fuel range (unreachable stars are dashed red on the map). Move orders can be re-routed until you commit.</li>
         <li><b>Colonists</b> move on transports: build one, "load" at a colony, fly it, "unload" (Fleets tab). Colony bases settle other planets in the same system.</li>
         <li><b>Battles</b> only happen between empires at <b>war</b> — declare it on the Empires tab. A battle is a single pass; set stance/targeting/retreat before the clash.</li>

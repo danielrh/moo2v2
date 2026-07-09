@@ -278,7 +278,7 @@ export interface ResearchChoice {
   field: FieldRow;
   subject: string;
   cost: number;
-  /** tier-1 fields deliver every application at once (no target choice) */
+  /** "(General)" fields deliver every application at once (no target choice) */
   grantsAll: boolean;
   apps: Array<{ id: string; name: string; known: boolean }>;
 }
@@ -485,7 +485,8 @@ export function moveOptions(state: GameState, empireId: number, fromStarId: numb
     .filter((s) => s.id !== fromStarId)
     .map((s) => {
       const d = starDistance(from, s);
-      const reachable = support.some((sup) => starDistance(sup, s) <= range);
+      // wormholes carry ships regardless of fuel range
+      const reachable = from.wormholeTo === s.id || support.some((sup) => starDistance(sup, s) <= range);
       return {
         starId: s.id,
         name: s.name,
