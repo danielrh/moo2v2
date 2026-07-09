@@ -131,6 +131,7 @@
 
   let saveNote = $state('');
   let saveNoHistory = $state(false);
+  let botAggressive = $state(getActive()?.solo?.isAggressive() ?? false);
   async function saveGame() {
     try {
       const name = await downloadSave(getActive()!, { history: !saveNoHistory });
@@ -199,6 +200,20 @@
       title={researchIdle && !iCommitted ? 'Warning: no research selected — RP will be banked unspent' : ''}
       onclick={toggleCommit}
     >{iCommitted ? 'Committed ✓' : researchIdle ? '⚠ Commit turn' : 'Commit turn'} ({committed.length}/{roster.length})</button>
+    {#if getActive()?.solo}
+      <label class="aggro" title="aggressive: the bot declares war and throws half its fleet at your nearest systems">
+        <input
+          type="checkbox"
+          data-testid="bot-aggressive"
+          checked={botAggressive}
+          onchange={(e) => {
+            getActive()?.solo?.setAggressive((e.target as HTMLInputElement).checked);
+            botAggressive = (e.target as HTMLInputElement).checked;
+          }}
+        />
+        🗡 aggressive bot
+      </label>
+    {/if}
     <span class="saves">
       <button data-testid="save-game" disabled={!getActive()?.store} onclick={saveGame}
         title={getActive()?.store ? 'Download the full game as a save file (works in any tab)' : 'persistence unavailable'}>
@@ -521,6 +536,13 @@
     display: inline-flex;
     align-items: center;
     gap: 0.2rem;
+  }
+  .aggro {
+    font-size: 0.8rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: #ffb0a6;
   }
   .edge {
     position: fixed;
