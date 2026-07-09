@@ -1,7 +1,7 @@
 <script lang="ts">
   // The system-wide colonies spreadsheet: the primary way to run your empire.
   // Every edit is an optimistic command; dirty cells resolve on host accept.
-  import { selectors, itemLabel } from '@engine/index';
+  import { selectors, itemLabel, explainOutput } from '@engine/index';
   import { app, getActive } from '../state.svelte';
 
   const session = () => getActive()!.session;
@@ -75,7 +75,26 @@
     }
     return t;
   });
-  const growthLabel = (k: number) => `${k >= 0 ? '+' : ''}${(k / 1000).toFixed(1)}`;
+  const growthLabel = (k: number) => {
+    const v = k / 1000;
+    // tiny-but-nonzero growth still reads as growth (+0.04, not +0.0)
+    const s = v !== 0 && Math.abs(v) < 0.1 ? v.toFixed(2) : v.toFixed(1);
+    return `${v >= 0 ? '+' : ''}${s}`;
+  };
+
+  /** hover breakdown per output column: every coefficient and where it's from */
+  function explain(rowId: number): { farm: string; prod: string; sci: string; bc: string } {
+    const s = session().getPlanned();
+    const c = s?.colonies.find((x) => x.id === rowId);
+    if (!s || !c || c.outpost) return { farm: '', prod: '', sci: '', bc: '' };
+    const ex = explainOutput(s, c);
+    return {
+      farm: ex.farm.join('\n'),
+      prod: ex.prod.join('\n'),
+      sci: ex.sci.join('\n'),
+      bc: ex.bc.join('\n'),
+    };
+  }
 
   // ---- bulk ops ----
   let selected = $state<Set<number>>(new Set());
@@ -231,6 +250,7 @@
   </thead>
   <tbody>
     {#each rows as row (row.id)}
+      {@const ex = explain(row.id)}
       <tr data-testid="colony-row-{row.id}" class:outpost={row.outpost}>
         <td><input type="checkbox" checked={selected.has(row.id)} onchange={() => toggleSelect(row.id)} /></td>
         <td class="name">{row.name}{row.outpost ? ' (outpost)' : ''}</td>
@@ -272,12 +292,12 @@
             <button class="mini" onclick={() => adjustJob(row, job, +1)}>+</button>
           </td>
         {/each}
-        <td class:neg={row.output.foodNet < 0} data-testid="foodnet-{row.id}">{row.output.foodNet >= 0 ? '+' : ''}{row.output.foodNet}</td>
-        <td data-testid="prod-{row.id}" title={row.output.pollution > 0 ? `${row.output.pollution} production lost to pollution` : ''}>
+        <td class:neg={row.output.foodNet < 0} data-testid="foodnet-{row.id}" title={ex.farm}>{row.output.foodNet >= 0 ? '+' : ''}{row.output.foodNet}</td>
+        <td data-testid="prod-{row.id}" title={ex.prod}>
           {row.output.prodToQueue || row.output.prod}{#if row.output.pollution > 0}<span class="poll">−{row.output.pollution}☁</span>{/if}
         </td>
-        <td>{row.output.research}</td>
-        <td>{row.output.bcIncome}</td>
+        <td title={ex.sci}>{row.output.research}</td>
+        <td title={ex.bc}>{row.output.bcIncome}</td>
         <td class:neg={row.output.pollution > 0} title="production lost to pollution">{row.output.pollution}</td>
         <td>
           <select

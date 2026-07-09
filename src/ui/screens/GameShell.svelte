@@ -59,6 +59,17 @@
   });
   /** labs idle: no field selected and nothing queued — RP is being banked */
   const researchIdle = $derived(summary !== null && summary.researching === null);
+  /** commit urgency: red = everyone else committed and they are waiting on you;
+   * green = others have started committing */
+  const othersTotal = $derived(roster.length - 1);
+  const othersCommitted = $derived(committed.filter((id) => id !== session().playerId).length);
+  const commitEdge = $derived(
+    iCommitted || othersTotal <= 0 || othersCommitted === 0
+      ? ''
+      : othersCommitted === othersTotal
+        ? 'red'
+        : 'green',
+  );
   const noPersistence = $derived.by(() => {
     void app.version;
     return !getActive()?.store;
@@ -126,6 +137,24 @@
     <span class="stat" data-testid="bc" title="treasury (change per turn)">💰 {summary.bc} <span class="delta" class:neg={summary.bcDelta < 0}>({summary.bcDelta >= 0 ? '+' : ''}{summary.bcDelta})</span></span>
     <span class="stat" data-testid="food" title="empire food surplus" class:neg={summary.foodNet < 0}>🌾 {summary.foodNet >= 0 ? '+' : ''}{summary.foodNet}</span>
     <span class="stat" data-testid="rp" title="research points per turn">🔬 {summary.researchPerTurn}</span>
+    <span
+      class="stat"
+      data-testid="cp"
+      class:neg={summary.cpUsage > summary.cpSources}
+      title="command points: fleet upkeep {summary.cpUsage} vs support {summary.cpSources} (colonies, star bases, tech, officers). Every point over costs 10 BC per turn."
+    >⚓ {summary.cpUsage}/{summary.cpSources}</span>
+    <label class="tax" title="empire tax: converts this % of every colony's queue production into BC (2 prod → 1 BC)">
+      🏛 tax
+      <select
+        data-testid="tax-rate"
+        value={summary.taxRatePct}
+        onchange={(e) => session().submit('set_tax_rate', { pct: Number((e.target as HTMLSelectElement).value) })}
+      >
+        {#each [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50] as pct (pct)}
+          <option value={pct}>{pct}%</option>
+        {/each}
+      </select>
+    </label>
     <button
       class="researching"
       class:idle={researchIdle}
@@ -159,6 +188,12 @@
       </span>
     {/if}
   </header>
+  {#if commitEdge}
+    <div class="edge {commitEdge}" aria-hidden="true"></div>
+  {/if}
+  {#if commitEdge === 'red'}
+    <div class="banner urgent" data-testid="all-waiting">⏳ Everyone else has committed — the galaxy waits on you!</div>
+  {/if}
   {#if !app.hostConnected}
     <div class="banner warn" data-testid="host-offline">
       ⚠ Host offline — the game is paused. It resumes when the host returns (or load their save file to re-host).
@@ -433,6 +468,34 @@
     background: var(--panel-2);
     font-weight: 400;
     color: var(--text-dim);
+  }
+  .banner.urgent {
+    background: linear-gradient(180deg, #7a2c24, #5e211b);
+    color: #ffe3dd;
+  }
+  .tax {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .edge {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 35;
+    border-radius: 2px;
+  }
+  .edge.green {
+    box-shadow: inset 0 0 0 3px rgba(94, 224, 138, 0.55), inset 0 0 26px rgba(94, 224, 138, 0.18);
+  }
+  .edge.red {
+    animation: edgepulse 1.2s ease-in-out infinite;
+  }
+  @keyframes edgepulse {
+    0%, 100% { box-shadow: inset 0 0 0 3px rgba(255, 107, 94, 0.55), inset 0 0 26px rgba(255, 107, 94, 0.16); }
+    50% { box-shadow: inset 0 0 0 5px rgba(255, 107, 94, 0.95), inset 0 0 44px rgba(255, 107, 94, 0.3); }
   }
   .dm {
     color: #d7a7ff;

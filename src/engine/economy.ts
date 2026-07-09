@@ -356,6 +356,81 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
   };
 }
 
+// ---------- output breakdown (UI tooltips: where every point comes from) ----------
+
+export interface OutputExplain {
+  farm: string[];
+  prod: string[];
+  sci: string[];
+  bc: string[];
+}
+
+/** Human-readable per-source breakdown of a colony's output. Mirrors
+ * computeOutput's arithmetic in words; display-only. */
+export function explainOutput(state: GameState, colony: Colony): OutputExplain {
+  const planet = planetOf(state, colony);
+  const owner = empireOf(state, colony.owner);
+  const ownerTraits = traitsOf(owner);
+  const acc = colonyAccum(state, colony, owner);
+  const morale = moralePct(state, colony, acc);
+  const effClim = effectiveClimate(planet, colony);
+  const out: OutputExplain = { farm: [], prod: [], sci: [], bc: [] };
+
+  for (const g of colony.groups) {
+    const gTraits = g.race === colony.owner ? ownerTraits : groupTraits(state, g.race, ownerTraits);
+    const gravPen = planetHasGravityFix(colony) ? 0 : gravitySteps(gTraits.gravityPref, planet.gravity) * 25;
+    const farmBase = foodPerFarmerBase(effClim, gTraits.aquatic);
+    const farmCoeff = Math.max(0, farmBase + gTraits.farming + acc.farmCoeff);
+    out.farm.push(
+      `${g.farmers} farmer${g.farmers === 1 ? '' : 's'} × ${farmCoeff} (${farmBase} ${effClim}${gTraits.farming ? `, ${gTraits.farming > 0 ? '+' : ''}${gTraits.farming} race` : ''}${acc.farmCoeff ? `, +${acc.farmCoeff} tech/buildings` : ''})`,
+    );
+    const prodCoeff = Math.max(1, MINERAL_PROD[planet.minerals] + gTraits.industry + acc.prodCoeff);
+    out.prod.push(
+      `${g.workers} worker${g.workers === 1 ? '' : 's'} × ${prodCoeff} (${MINERAL_PROD[planet.minerals]} ${planet.minerals}${gTraits.industry ? `, ${gTraits.industry > 0 ? '+' : ''}${gTraits.industry} race` : ''}${acc.prodCoeff ? `, +${acc.prodCoeff} tech/buildings` : ''})`,
+    );
+    let sciCoeff = Math.max(1, 3 + gTraits.science + acc.sciCoeff);
+    if (planet.special === 'ancient_artifacts') sciCoeff += 2;
+    out.sci.push(
+      `${g.scientists} scientist${g.scientists === 1 ? '' : 's'} × ${sciCoeff} (3 base${gTraits.science ? `, ${gTraits.science > 0 ? '+' : ''}${gTraits.science} race` : ''}${acc.sciCoeff ? `, +${acc.sciCoeff} tech/buildings` : ''}${planet.special === 'ancient_artifacts' ? ', +2 artifacts' : ''})`,
+    );
+    if (gravPen > 0) {
+      const line = `−${gravPen}% ${planet.gravity} gravity penalty`;
+      out.farm.push(line);
+      out.prod.push(line);
+      out.sci.push(line);
+    }
+  }
+  const moraleLine = (kind: OutputKind) => {
+    const pct = cTotalPct(kind, ownerTraits, morale);
+    return pct !== 0 ? `${pct > 0 ? '+' : ''}${pct}% ${ownerTraits.government === 'unification' ? 'unification' : 'morale/government'}` : null;
+  };
+  for (const [kind, lines, pctAcc, flat] of [
+    ['farm', out.farm, acc.farmPct, acc.farmFlat],
+    ['prod', out.prod, acc.prodPct, acc.prodFlat],
+    ['sci', out.sci, acc.sciPct, acc.sciFlat],
+  ] as Array<[OutputKind, string[], number, number]>) {
+    const m = moraleLine(kind);
+    if (m) lines.push(m);
+    if (pctAcc) lines.push(`${pctAcc > 0 ? '+' : ''}${pctAcc}% tech/buildings/leader`);
+    if (flat) lines.push(`+${flat} flat from buildings`);
+  }
+  if (isBlockaded(state, colony)) {
+    out.farm.push('−50% blockade');
+    out.prod.push('−50% blockade');
+  }
+  const o = colonyOutput(state, colony);
+  if (o.pollution > 0) out.prod.push(`−${o.pollution} pollution`);
+  if (o.prodConsumed > 0) out.prod.push(`−${o.prodConsumed} cybernetic upkeep`);
+  out.farm.push(`− ${o.foodConsumed} eaten = net ${o.foodNet >= 0 ? '+' : ''}${o.foodNet}`);
+  out.bc.push(`${o.popUnits} pop × ${(2 + ownerTraits.bcHalves) / 2} BC`);
+  if (planet.special === 'gem_deposits') out.bc.push('+10 gem deposits');
+  if (planet.special === 'gold_deposits') out.bc.push('+5 gold deposits');
+  if (o.tradeBC) out.bc.push(`+${o.tradeBC} trade goods`);
+  if (o.taxBC) out.bc.push(`+${o.taxBC} tax (${owner.taxRatePct ?? 0}%)`);
+  if (o.maintenance) out.bc.push(`−${o.maintenance} building maintenance`);
+  return out;
+}
+
 /** Traits for non-owner pop groups (natives etc.). Phase 6 refines this. */
 function groupTraits(state: GameState, race: number, fallback: RaceTraits): RaceTraits {
   if (race >= 0) {
