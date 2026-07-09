@@ -210,6 +210,8 @@
               <option value="charge">charge</option>
               <option value="hold_range">hold range</option>
               <option value="standoff">standoff</option>
+              <option value="formation">formation</option>
+              <option value="passthrough">passthrough (raid)</option>
               <option value="evade_retreat">evade & retreat</option>
             </select>
           </label>
@@ -236,6 +238,7 @@
               </select>
               <label>comp <input type="number" min="0" max="6" bind:value={g.computer} /></label>
               <label>shield <input type="number" min="0" max="7" bind:value={g.shield} /></label>
+              <button class="mini" data-testid="clone-{side}-{gi}" title="clone this ship type" onclick={() => (s.groups = [...s.groups.slice(0, gi + 1), structuredClone($state.snapshot(g)) as typeof g, ...s.groups.slice(gi + 1)])}>⎘ clone</button>
               <button class="mini" onclick={() => (s.groups = s.groups.filter((_, x) => x !== gi))}>✕</button>
             </div>
             {#each g.weapons as w, wi (wi)}
@@ -244,6 +247,12 @@
                   {#each weaponChoices as wc (wc.id)}<option value={wc.id}>{pretty(wc.id)}</option>{/each}
                 </select>
                 <input type="number" min="1" max="40" bind:value={w.count} />
+                <select bind:value={w.arc} title="firing arc: F forward 180° · FX 270° (+20% space) · R rear 180° (−10%) · 360 turret (+40%)">
+                  <option value="F">F</option>
+                  <option value="FX">FX</option>
+                  <option value="R">R</option>
+                  <option value="360">360</option>
+                </select>
                 {#each weaponChoices.find((wc) => wc.id === w.weapon)?.availableMods ?? [] as mod (mod)}
                   <label class="mod"><input type="checkbox" checked={w.mods.includes(mod)} onchange={() => toggleMod(g, wi, mod)} />{mod}</label>
                 {/each}

@@ -134,7 +134,7 @@ export function monsterToCombat(m: MonsterUnit, side: 0 | 1): CombatShipInit {
     structureHp: spec.structure,
     shieldPool: spec.shieldPool,
     shieldFlat: spec.shieldFlat,
-    weapons: spec.weapons.map((w) => ({ ...w, mods: [...w.mods] })),
+    weapons: spec.weapons.map((w) => ({ ...w, mods: [...w.mods], arc: '360' as const })), // beasts strike all around
     startingStructure: Math.max(1, spec.structure - m.dmgStructure),
     startingArmor: spec.armor,
     specials: [...spec.specials],

@@ -63,7 +63,7 @@
     return Number('0x' + ownerColor(owner).slice(1));
   }
 
-  function drawShip(x: number, y: number, size: number, dir: 1 | -1, isBase: boolean, color: number): void {
+  function drawShip(x: number, y: number, size: number, angle: number, isBase: boolean, color: number, driveOut = false): void {
     if (isBase) {
       // orbital platform: hex + core
       const r = size * 1.2;
@@ -76,17 +76,20 @@
       gfx.circle(x, y, r * 0.4).fill({ color: 0x05070f, alpha: 0.6 });
       return;
     }
-    // hull: sleek dart with a small engine glow; dir flips when retreating
-    gfx
-      .poly([
-        x + dir * size * 1.8, y,
-        x - dir * size * 0.9, y - size * 0.85,
-        x - dir * size * 0.45, y,
-        x - dir * size * 0.9, y + size * 0.85,
-      ])
-      .fill({ color })
-      .stroke({ color: 0x05070f, width: 1 });
-    gfx.circle(x - dir * size * 1.1, y, size * 0.28).fill({ color: 0xffd18a, alpha: 0.85 });
+    // hull: sleek dart rotated to the sim heading (sprites turn with the helm)
+    const ca = Math.cos(angle);
+    const sa = Math.sin(angle);
+    const rot = (px: number, py: number): [number, number] => [x + px * ca - py * sa, y + px * sa + py * ca];
+    const pts = [
+      ...rot(size * 1.8, 0),
+      ...rot(-size * 0.9, -size * 0.85),
+      ...rot(-size * 0.45, 0),
+      ...rot(-size * 0.9, size * 0.85),
+    ];
+    gfx.poly(pts).fill({ color }).stroke({ color: 0x05070f, width: 1 });
+    const [ex, ey] = rot(-size * 1.1, 0);
+    // engine glow dims to a red sputter when the drive is knocked out
+    gfx.circle(ex, ey, size * 0.28).fill({ color: driveOut ? 0xff6b5e : 0xffd18a, alpha: driveOut ? 0.5 : 0.85 });
   }
 
   function drawBystanders(fi: number): void {

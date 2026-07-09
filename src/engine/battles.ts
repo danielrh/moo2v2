@@ -175,6 +175,7 @@ function shipToCombat(state: GameState, empire: Empire, ship: Ship, side: 0 | 1)
       ammo: w.row.ammo,
       cooldown: 0,
       count: w.count,
+      arc: w.arc,
     })),
     startingStructure: Math.max(1, stats.structureHp - ship.dmgStructure),
     startingArmor: Math.max(0, stats.armorHp - ship.dmgArmor),
@@ -227,6 +228,7 @@ function baseToCombat(state: GameState, empire: Empire, colony: Colony, syntheti
       ammo: w.row.ammo,
       cooldown: 0,
       count: w.count,
+      arc: '360' as const, // bases are turrets: full coverage
     })),
     startingStructure: stats.structureHp,
     startingArmor: stats.armorHp,

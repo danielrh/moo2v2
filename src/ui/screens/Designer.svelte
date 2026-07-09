@@ -3,14 +3,40 @@
     availableHulls,
     bestComputer,
     bestShield,
+    designDps,
     designStats,
     knownWeapons,
     HULLS_BUILDABLE,
     SPECIALS,
     type DesignStats,
     type EmpireDesign,
+    type WeaponArc,
   } from '@engine/index';
   import { app, getActive } from '../state.svelte';
+
+  const ARCS: Array<{ id: WeaponArc; label: string; help: string }> = [
+    { id: 'F', label: 'F', help: 'forward 180° (standard mount)' },
+    { id: 'FX', label: 'FX', help: 'extended forward 270° (+20% space)' },
+    { id: 'R', label: 'R', help: 'rear 180° (−10% space — raiders fire while withdrawing)' },
+    { id: '360', label: '360', help: 'full turret coverage (+40% space)' },
+  ];
+  /** designer readout: expected damage/sec at short range for the current fit */
+  function dpsOf(st: DesignStats): number {
+    return designDps(
+      st.weapons.map((w) => ({
+        weaponId: w.row.id,
+        classId: w.row.classId,
+        dmgMin: w.row.tacticalDamage.min,
+        dmgMax: w.row.tacticalDamage.max,
+        mods: w.mods,
+        ammo: w.row.ammo,
+        cooldown: 0,
+        count: w.count,
+        arc: w.arc,
+      })),
+      st.beamAttack,
+    );
+  }
 
   const session = () => getActive()!.session;
   const gs = $derived.by(() => {
@@ -24,8 +50,8 @@
   let computer = $state(0);
   let shield = $state(0);
   let specials = $state<string[]>([]);
-  let weapons = $state<Array<{ weapon: string; count: number; mods: string[] }>>([
-    { weapon: 'laser_cannon', count: 2, mods: [] },
+  let weapons = $state<Array<{ weapon: string; count: number; mods: string[]; arc: WeaponArc }>>([
+    { weapon: 'laser_cannon', count: 2, mods: [], arc: 'F' },
   ]);
 
   const maxComputer = $derived(empire ? bestComputer(empire) : 0);
@@ -42,7 +68,7 @@
 
   function addWeapon() {
     const first = weaponChoices[0];
-    if (first) weapons = [...weapons, { weapon: first.id, count: 1, mods: [] }];
+    if (first) weapons = [...weapons, { weapon: first.id, count: 1, mods: [], arc: 'F' }];
   }
   function removeWeapon(i: number) {
     weapons = weapons.filter((_, x) => x !== i);
@@ -82,7 +108,7 @@
     computer = d.computer;
     shield = d.shield;
     specials = [...d.specials];
-    weapons = d.weapons.map((w) => ({ weapon: w.weapon, count: w.count, mods: [...w.mods] }));
+    weapons = d.weapons.map((w) => ({ weapon: w.weapon, count: w.count, mods: [...w.mods], arc: w.arc ?? 'F' }));
   }
   function statsOf(d: EmpireDesign): DesignStats | string | null {
     if (!gs || !empire) return null;
@@ -131,6 +157,11 @@
               {/each}
             </select>
             <input type="number" min="1" max="50" bind:value={w.count} />
+            <select class="arc" bind:value={w.arc} title={ARCS.find((a) => a.id === w.arc)?.help}>
+              {#each ARCS as a (a.id)}
+                <option value={a.id} title={a.help}>{a.label}</option>
+              {/each}
+            </select>
             {#each weaponChoices.find((wc) => wc.id === w.weapon)?.availableMods ?? [] as mod (mod)}
               <label class="mod">
                 <input type="checkbox" checked={w.mods.includes(mod)} onchange={() => toggleMod(i, mod)} />{mod}
@@ -150,6 +181,10 @@
           atk +{stats.beamAttack} · def +{stats.beamDefense} · speed {stats.combatSpeed} ·
           armor {stats.armorHp} · struct {stats.structureHp} · shields {stats.shieldPool}
         </p>
+        <p class="battlestats" data-testid="design-battle-stats" title="DPS = expected damage/second at short range · evasion = enemy to-hit is reduced by this · beams fall to 70% damage at medium and 40% at long range">
+          ⚔ DPS ~{dpsOf(stats)} · 🛰 evasion {stats.beamDefense} · 🚀 speed {stats.combatSpeed} ·
+          📏 beams to 448u{stats.weapons.some((w) => w.mods.includes('hv')) ? ' (heavy 560u)' : ''} · missiles 600u · torpedoes 500u
+        </p>
       {/if}
       <button data-testid="design-save" disabled={typeof stats === 'string'} onclick={save}>Save design</button>
     </div>
@@ -160,7 +195,7 @@
         {#each empire.designs as d (d.id)}
           <li class:obsolete={d.obsolete} data-testid="design-{d.id}">
             <button class="linklike" onclick={() => inspect(d)}>{inspecting === d.id ? '▾' : '▸'} <b>{d.name}</b></button>
-            ({d.hull}) — {d.weapons.map((w) => `${w.count}×${w.weapon.replaceAll('_', ' ')}${w.mods.length ? ` [${w.mods.join(',')}]` : ''}`).join(', ') || 'unarmed'}
+            ({d.hull}) — {d.weapons.map((w) => `${w.count}×${w.weapon.replaceAll('_', ' ')}${w.arc && w.arc !== 'F' ? `⟨${w.arc}⟩` : ''}${w.mods.length ? ` [${w.mods.join(',')}]` : ''}`).join(', ') || 'unarmed'}
             {#if !d.obsolete}
               <button onclick={() => obsolete(d.id)}>obsolete</button>
             {:else}
@@ -227,6 +262,13 @@
     display: inline-flex;
     gap: 0.15rem;
     margin: 0;
+  }
+  .arc {
+    width: 4rem;
+  }
+  .battlestats {
+    color: var(--accent-soft);
+    font-size: 0.9rem;
   }
   .row {
     justify-content: flex-start;

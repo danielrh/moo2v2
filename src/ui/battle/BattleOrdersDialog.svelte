@@ -88,6 +88,8 @@
             <option value="charge">Charge — close to point-blank</option>
             <option value="hold_range">Hold range — fight at medium band</option>
             <option value="standoff">Standoff — stay at long range</option>
+            <option value="formation">Formation — advance as one line at fleet speed</option>
+            <option value="passthrough">Passthrough — punch through, then withdraw together (raid)</option>
             <option value="evade_retreat">Evade & retreat</option>
           </select>
         </label>
