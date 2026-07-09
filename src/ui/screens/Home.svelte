@@ -28,6 +28,8 @@
     }
   }
 
+  let botMode = $state<'parity' | 'fair'>('parity');
+
   async function goSolo() {
     if (!name) {
       app.error = 'enter a name first';
@@ -36,7 +38,7 @@
     app.error = '';
     app.connecting = true;
     try {
-      const active = await enterSoloGame(name);
+      const active = await enterSoloGame(name, botMode);
       bindActive(active);
     } catch (e) {
       app.error = e instanceof Error ? e.message : String(e);
@@ -109,10 +111,16 @@
   <button data-testid="enter" onclick={go} disabled={app.connecting}>
     {app.connecting ? 'Connecting…' : 'Create / Join'}
   </button>
-  <button data-testid="solo" onclick={goSolo} disabled={app.connecting}
-    title="offline game against a simple bot — no server, no room code needed">
-    🤖 Single player vs bot
-  </button>
+  <span class="solorow">
+    <button data-testid="solo" onclick={goSolo} disabled={app.connecting}
+      title="offline game against a simple bot — no server, no room code needed">
+      🤖 Single player vs bot
+    </button>
+    <select data-testid="bot-mode" bind:value={botMode} title="parity: the bot keeps up via visible logged grants · fair: the bot plays with no help at all">
+      <option value="parity">parity bot (keeps up)</option>
+      <option value="fair">fair bot (no cheats)</option>
+    </select>
+  </span>
   <button data-testid="load-save" onclick={() => fileInput.click()} disabled={app.connecting}>
     Load saved game…
   </button>
@@ -145,6 +153,10 @@
         <button data-testid="confirm-load" onclick={loadPreviewed} disabled={app.connecting}>Load as host</button>
         <button onclick={() => (preview = null)}>Cancel</button>
       </span>
+      <p class="dim">
+        Players joining the room get their old empire back by using the same name they played under
+        ({preview.players.join(', ')}); in-game 🤖 controls let a bot stand in for anyone missing.
+      </p>
     </div>
   {/if}
   {#if loadNote}<p class="dim" data-testid="load-note">{loadNote}</p>{/if}
@@ -208,6 +220,14 @@
     display: block;
     color: var(--gold);
     font-size: 0.82rem;
+  }
+  .solorow {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .solorow button {
+    flex: 1;
   }
   .labline {
     margin: 1rem 0 0;

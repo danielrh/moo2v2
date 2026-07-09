@@ -1,6 +1,7 @@
 <script lang="ts">
   import { selectors, gameEngine } from '@engine/index';
   import { app, getActive } from '../state.svelte';
+  import { addBotForSeat, removeBotForSeat } from '../net';
   import { latchEdge, type EdgeLatch, type EdgeLevel } from '../commitEdge';
   import { describeSaveError, downloadRawDatabase, downloadSave } from '../saveload';
   import Spreadsheet from './Spreadsheet.svelte';
@@ -38,6 +39,21 @@
     return session().getRoster();
   });
   const iCommitted = $derived(committed.includes(session().playerId));
+  /** who this connection plays (a resumed save matches seats by name) */
+  const mySeatName = $derived.by(() => {
+    void app.version;
+    const me = session().playerId;
+    return roster.find((p) => p.id === me)?.name ?? `#${me}`;
+  });
+  const botOnSeat = (seatId: number) => getActive()?.bots.find((b) => b.seatId === seatId) ?? null;
+  /** host view: seats a bot could take over, or is holding */
+  const seatIssues = $derived.by(() => {
+    void app.version;
+    if (!getActive()?.host) return [];
+    return roster
+      .map((p) => ({ p, bot: botOnSeat(p.id) }))
+      .filter(({ p, bot }) => p.id !== session().playerId && (!p.connected || bot));
+  });
   const winner = $derived(gs?.winner ?? null);
   const authHash = $derived.by(() => {
     void app.version;
@@ -154,6 +170,7 @@
 {#if gs && summary}
   <header>
     <span class="title">MOO2<span class="v2">v2</span></span>
+    <span class="stat" data-testid="my-seat" title="the empire you play (seat #{session().playerId}) — a resumed save matches players to their empire by name">👤 {mySeatName}</span>
     <span class="stat" data-testid="turn"><span class="lbl">Turn</span> {gs.turn}</span>
     <span class="stat" data-testid="bc" title="treasury (change per turn)">💰 {summary.bc} <span class="delta" class:neg={summary.bcDelta < 0}>({summary.bcDelta >= 0 ? '+' : ''}{summary.bcDelta})</span></span>
     <span class="stat" data-testid="food" title="empire food surplus" class:neg={summary.foodNet < 0}>🌾 {summary.foodNet >= 0 ? '+' : ''}{summary.foodNet}</span>
@@ -241,6 +258,19 @@
       ⚠ Host offline — the game is paused. It resumes when the host returns (or load their save file to re-host).
     </div>
   {/if}
+  {#each seatIssues as { p, bot } (p.id)}
+    <div class="banner warn" data-testid="seat-issue-{p.id}">
+      {#if bot}
+        🤖 The bot is playing <b>{p.name}</b> (seat #{p.id}).
+        <button data-testid="bot-release-{p.id}" title="retire the bot; the player gets the empire back by rejoining with their name"
+          onclick={() => removeBotForSeat(getActive()!, bot)}>✕ hand the seat back</button>
+      {:else}
+        ⏳ <b>{p.name}</b> (seat #{p.id}) is not connected — the game waits for their commit.
+        <button data-testid="bot-sub-{p.id}" title="a fair (non-cheating) bot plays their empire until they rejoin with the same name"
+          onclick={() => addBotForSeat(getActive()!, p.name)}>🤖 let the bot play {p.name}</button>
+      {/if}
+    </div>
+  {/each}
   {#if autoTurnUntil > 0 && gs.turn < autoTurnUntil}
     <div class="banner dim" data-testid="auto-turn-banner">
       ⏩ Auto-turn: once everyone commits, turns fast-forward to turn {autoTurnUntil}.

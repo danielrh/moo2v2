@@ -43,6 +43,36 @@ export interface ActiveGame {
   startGame: () => void;
   /** single-player mode: the bot opponent (aggression toggle lives here) */
   solo: SoloBot | null;
+  /** bots subbed in for absent players (host only; name-matched to seats) */
+  bots: SoloBot[];
+}
+
+/** Host-side: let a bot take over an absent player's seat. The bot helloes
+ * with the seat's name, so the host's name matching hands it that empire. */
+export function addBotForSeat(active: ActiveGame, seatName: string, mode: BotMode = 'fair'): SoloBot | null {
+  if (!active.host) return null;
+  const link = active.host.createLocalLink();
+  const session = new GameSession<GameState>({
+    link,
+    engine: gameEngine as unknown as EngineAdapter<GameState>,
+    store: null, // the host's own session already records the game
+    playerId: -1, // the host's welcome assigns the real seat
+    name: seatName,
+    engineVersion: ENGINE_VERSION,
+    dataVersion: DATA_VERSION,
+    roomCode: active.params.code,
+    lobbyServer: active.params.server,
+  });
+  const bot = new SoloBot({ session, mode });
+  active.bots.push(bot);
+  return bot;
+}
+
+/** Host-side: retire a stand-in bot and free its seat for the returning human. */
+export function removeBotForSeat(active: ActiveGame, bot: SoloBot): void {
+  bot.close();
+  if (active.host && bot.seatId >= 0) active.host.releaseSeat(bot.seatId);
+  active.bots = active.bots.filter((b) => b !== bot);
 }
 
 interface ResumeInfo {
@@ -150,6 +180,7 @@ export async function enterRoom(params: RoomParams): Promise<ActiveGame> {
       params,
       startGame: () => hosted.host.startGame(generateSeed()),
       solo: null,
+      bots: [],
     };
   }
 
@@ -178,13 +209,14 @@ export async function enterRoom(params: RoomParams): Promise<ActiveGame> {
       throw new Error('only the host can start');
     },
     solo: null,
+    bots: [],
   };
 }
 
 /** Single-player mode: an in-process game against the simple bot — no
  * lobbylink server, no WebRTC. Persists like any room (code SOLO), so a
  * reload resumes the campaign. */
-export async function enterSoloGame(name: string): Promise<ActiveGame> {
+export async function enterSoloGame(name: string, botMode: BotMode = 'parity'): Promise<ActiveGame> {
   const params: RoomParams = { server: 'local', code: 'SOLO', name, playerCount: 2 };
   const hub = new MemoryHub(2);
   const hostTransport = hub.join();
@@ -205,8 +237,9 @@ export async function enterSoloGame(name: string): Promise<ActiveGame> {
     transport: hostTransport,
     engine: gameEngine as unknown as EngineAdapter<GameState>,
     store,
-    // debugCommands power the bot's logged "grants" — the sim has no bot cases
-    settings: { ...DEFAULT_SETTINGS, playerCount: 2, debugCommands: true },
+    // debugCommands power the parity bot's logged "grants" — the sim has no
+    // bot cases; the fair bot never uses them
+    settings: { ...DEFAULT_SETTINGS, playerCount: 2, debugCommands: botMode === 'parity' },
     identity,
     ...(resume && resume.log.length ? { resume: { gameId: resume.gameId, log: resume.log } } : {}),
   });
@@ -216,7 +249,7 @@ export async function enterSoloGame(name: string): Promise<ActiveGame> {
     store: null, // the human's store records the game; the bot keeps nothing
     identity: { ...identity, name: 'Bot' },
   });
-  const solo = new SoloBot({ session: botSession });
+  const solo = new SoloBot({ session: botSession, mode: botMode });
 
   return {
     transport: hostTransport,
@@ -228,5 +261,6 @@ export async function enterSoloGame(name: string): Promise<ActiveGame> {
     params,
     startGame: () => hosted.host.startGame(generateSeed()),
     solo,
+    bots: [],
   };
 }

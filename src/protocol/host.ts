@@ -191,6 +191,19 @@ export class HostCore<S> {
     return link;
   }
 
+  /** Drop a seat's claim (e.g. removing a stand-in bot) so the next hello —
+   * say the returning human — can take the empire back. */
+  releaseSeat(seatId: number): void {
+    for (const [channel, seat] of [...this.seatMap]) {
+      if (seat !== seatId) continue;
+      this.seatMap.delete(channel);
+      if (channel >= 1000) this.localLinks.delete(channel);
+    }
+    const seat = this.seats.get(seatId);
+    if (seat) seat.connected = false;
+    this.broadcastLobby();
+  }
+
   private broadcast(msg: HostToClient): void {
     for (const id of this.seats.keys()) this.sendTo(id, msg);
   }

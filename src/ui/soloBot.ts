@@ -66,6 +66,11 @@ export class SoloBot {
     this.unsub = null;
   }
 
+  /** the empire seat this bot plays (assigned by the host's welcome) */
+  get seatId(): number {
+    return this.session.playerId;
+  }
+
   setAggressive(on: boolean): void {
     this.aggressive = on;
     // new stance applies immediately on the current turn
