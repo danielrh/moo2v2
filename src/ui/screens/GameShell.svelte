@@ -57,6 +57,34 @@
     if (!auth || auth.phase !== 'battle_orders') return null;
     return auth.pendingBattles.map((b) => b.id).join(', ');
   });
+  /** labs idle: no field selected and nothing queued — RP is being banked */
+  const researchIdle = $derived(summary !== null && summary.researching === null);
+  const noPersistence = $derived.by(() => {
+    void app.version;
+    return !getActive()?.store;
+  });
+
+  // ---- research breakthrough celebration ----
+  let celebration = $state<{ field: string; granted: string[] } | null>(null);
+  let celebrationTimer: ReturnType<typeof setTimeout> | null = null;
+  let processedReports = 0;
+  $effect(() => {
+    const reports = app.reports;
+    if (reports.length < processedReports) processedReports = 0; // cleared
+    for (let i = processedReports; i < reports.length; i++) {
+      const r = reports[i]!;
+      if (r.kind === 'research_complete') {
+        celebration = {
+          field: String(r.payload['field'] ?? ''),
+          granted: (r.payload['granted'] as string[] | undefined) ?? [],
+        };
+        if (celebrationTimer) clearTimeout(celebrationTimer);
+        celebrationTimer = setTimeout(() => (celebration = null), 8000);
+      }
+    }
+    processedReports = reports.length;
+  });
+  const pretty = (id: string) => id.replaceAll('_', ' ');
 
   function toggleCommit() {
     if (iCommitted) session().uncommitTurn();
@@ -93,20 +121,32 @@
 
 {#if gs && summary}
   <header>
-    <span class="title">MOO2v2</span>
-    <span data-testid="turn">Turn {gs.turn}</span>
-    <span data-testid="bc">{summary.bc} BC ({summary.bcDelta >= 0 ? '+' : ''}{summary.bcDelta})</span>
-    <span data-testid="food">🌾 {summary.foodNet >= 0 ? '+' : ''}{summary.foodNet}</span>
-    <span data-testid="rp">🔬 {summary.researchPerTurn}</span>
-    <span data-testid="researching">
-      {summary.researching ?? 'no research!'}
-      {summary.researchTurnsLeft !== null ? ` (${summary.researchTurnsLeft}t)` : ''}
-    </span>
+    <span class="title">MOO2<span class="v2">v2</span></span>
+    <span class="stat" data-testid="turn"><span class="lbl">Turn</span> {gs.turn}</span>
+    <span class="stat" data-testid="bc" title="treasury (change per turn)">💰 {summary.bc} <span class="delta" class:neg={summary.bcDelta < 0}>({summary.bcDelta >= 0 ? '+' : ''}{summary.bcDelta})</span></span>
+    <span class="stat" data-testid="food" title="empire food surplus" class:neg={summary.foodNet < 0}>🌾 {summary.foodNet >= 0 ? '+' : ''}{summary.foodNet}</span>
+    <span class="stat" data-testid="rp" title="research points per turn">🔬 {summary.researchPerTurn}</span>
+    <button
+      class="researching"
+      class:idle={researchIdle}
+      data-testid="researching"
+      title={researchIdle ? 'No research selected — your labs are idle! Click to choose.' : 'current research (click to view)'}
+      onclick={() => (tab = 'research')}
+    >
+      {#if researchIdle}
+        ⚠ no research!
+      {:else}
+        {pretty(summary.researching ?? '')}{summary.researchTurnsLeft !== null ? ` (${summary.researchTurnsLeft}t)` : ''}
+      {/if}
+    </button>
     <button
       data-testid="commit"
+      class="commit"
       class:committed={iCommitted}
+      class:warn={researchIdle && !iCommitted}
+      title={researchIdle && !iCommitted ? 'Warning: no research selected — RP will be banked unspent' : ''}
       onclick={toggleCommit}
-    >{iCommitted ? 'Committed ✓' : 'Commit turn'} ({committed.length}/{roster.length})</button>
+    >{iCommitted ? 'Committed ✓' : researchIdle ? '⚠ Commit turn' : 'Commit turn'} ({committed.length}/{roster.length})</button>
     {#if session().playerId === 0}
       <span class="saves">
         <button data-testid="save-game" disabled={!getActive()?.store} onclick={saveGame}
@@ -124,11 +164,6 @@
       ⚠ Host offline — the game is paused. It resumes when the host returns (or load their save file to re-host).
     </div>
   {/if}
-  {#if !getActive()?.store}
-    <div class="banner warn" data-testid="no-persistence">
-      ⚠ Persistence unavailable (another tab holds this room's database?) — the game plays but cannot be saved from this tab.
-    </div>
-  {/if}
   {#if winner !== null}
     {@const winLabel = gs.winType === 'council' ? 'is elected supreme ruler of the council' : gs.winType === 'antaran' ? 'has conquered the Antaran home' : 'wins by conquest'}
     <div class="banner" data-testid="victory">Victory: {roster.find((p) => p.id === winner)?.name ?? winner} {winLabel}!</div>
@@ -136,7 +171,7 @@
   <nav>
     <button class:active={tab === 'colonies'} data-testid="tab-colonies" onclick={() => (tab = 'colonies')}>Colonies</button>
     <button class:active={tab === 'map'} data-testid="tab-map" onclick={() => (tab = 'map')}>Map</button>
-    <button class:active={tab === 'research'} data-testid="tab-research" onclick={() => (tab = 'research')}>Research</button>
+    <button class:active={tab === 'research'} class:pulse={researchIdle} data-testid="tab-research" onclick={() => (tab = 'research')}>Research</button>
     <button class:active={tab === 'fleets'} data-testid="tab-fleets" onclick={() => (tab = 'fleets')}>Fleets</button>
     <button class:active={tab === 'designer'} data-testid="tab-designer" onclick={() => (tab = 'designer')}>Designer</button>
     <button class:active={tab === 'empires'} data-testid="tab-empires" onclick={() => (tab = 'empires')}>Empires</button>
@@ -174,11 +209,43 @@
       <Empires />
     {/if}
   </section>
+  {#if celebration}
+    <div class="celebration" data-testid="research-celebration" role="status">
+      <div class="burst">🎉</div>
+      <div>
+        <b>Breakthrough: {pretty(celebration.field)}!</b>
+        {#if celebration.granted.length}
+          <div class="apps">unlocked: {celebration.granted.map(pretty).join(' · ')}</div>
+        {/if}
+        {#if researchIdle}
+          <button class="next" onclick={() => { tab = 'research'; celebration = null; }}>Choose next research →</button>
+        {/if}
+      </div>
+      <button class="x" onclick={() => (celebration = null)}>✕</button>
+    </div>
+  {/if}
   {#if myBattle}
     <BattleOrdersDialog battle={myBattle} />
   {/if}
   {#if app.viewing}
     <BattleViewer replay={app.viewing} onclose={() => (app.viewing = null)} />
+  {/if}
+  {#if noPersistence}
+    <div class="blocker" data-testid="no-persistence">
+      <div class="blocker-card">
+        <h3>⚠ Cannot save this game</h3>
+        <p>
+          Persistence is unavailable in this tab — most likely another tab already holds this
+          room's database, or your browser blocks OPFS storage.
+        </p>
+        <p>Playing without saving is disabled: progress would be lost on reload.</p>
+        <ul>
+          <li>Close any other tab that has this room open, then reload.</li>
+          <li>Or open the game in a regular (non-private) browser window.</li>
+        </ul>
+        <button class="primary" onclick={() => location.reload()}>Reload this tab</button>
+      </div>
+    </div>
   {/if}
   <footer>
     <select data-testid="chat-to" bind:value={chatTo} title="everyone or a direct message">
@@ -201,11 +268,13 @@
     <div class="help" data-testid="help-panel">
       <h3>Quick reference <button onclick={() => (showHelp = false)}>✕</button></h3>
       <ul>
-        <li><b>Colonies</b> — the spreadsheet runs your empire: assign jobs (±), pick builds, buy with BC. Click headers to sort; tick rows for bulk builds.</li>
+        <li><b>Colonies</b> — the spreadsheet runs your empire: assign jobs (± or drag a job count onto another job), pick builds, buy with BC. Click headers to sort; tick rows for bulk builds; 🏛 lists buildings (sell for half price).</li>
         <li><b>Turns</b> are simultaneous: everything resolves when every player commits. Uncommit any time before the last player commits.</li>
         <li><b>Food</b> feeds colonists (2 per unit ×½); shortages starve growth. Freighters move surplus between colonies — blockades cut deliveries.</li>
-        <li><b>Research</b> works one field at a time; pick the application before it completes. Creative races take whole fields (or buy applications in the variant mode).</li>
-        <li><b>Ships</b> travel star-to-star within fuel range (shaded on the map). Battles are a single pass: set stance/targeting/retreat before the clash.</li>
+        <li><b>Research</b> works one field at a time; basic (tier-1) fields grant <i>all</i> their applications. Never leave research idle — points bank but nothing finishes.</li>
+        <li><b>Ships</b> travel star-to-star within fuel range (unreachable stars are dashed red on the map). Move orders can be re-routed until you commit.</li>
+        <li><b>Colonists</b> move on transports: build one, "load" at a colony, fly it, "unload" (Fleets tab). Colony bases settle other planets in the same system.</li>
+        <li><b>Battles</b> only happen between empires at <b>war</b> — declare it on the Empires tab. A battle is a single pass; set stance/targeting/retreat before the clash.</li>
         <li><b>☠ stars</b> are guarded by monsters — clear the keeper to colonize. Orion holds the Guardian and the best worlds in the galaxy.</li>
         <li><b>Leaders</b> offer their services on the Empires tab; colony leaders boost one colony, ship officers the whole fleet.</li>
         <li><b>Victory</b>: conquer everyone, win the council vote (⅔ of population), or build the dimensional portal and beat the Antarans at home.</li>
@@ -213,66 +282,157 @@
     </div>
   {/if}
 {:else}
-  <p>waiting for game state…</p>
+  <p class="loading">waiting for game state…</p>
 {/if}
 
 <style>
   header {
     display: flex;
-    gap: 1.2rem;
+    gap: 1rem;
     align-items: center;
-    padding: 0.4rem 0.8rem;
-    background: #141830;
+    padding: 0.45rem 1rem;
+    background: linear-gradient(180deg, rgba(23, 31, 66, 0.97), rgba(15, 21, 48, 0.97));
+    border-bottom: 1px solid var(--line-bright);
     position: sticky;
     top: 0;
     flex-wrap: wrap;
+    z-index: 10;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 2px 18px rgba(0, 0, 0, 0.45);
   }
   .title {
+    font-weight: 800;
+    font-size: 1.1rem;
+    color: var(--accent-soft);
+    text-shadow: 0 0 16px rgba(110, 168, 255, 0.6);
+    letter-spacing: 0.05em;
+  }
+  .title .v2 {
+    color: var(--gold);
+    font-size: 0.8rem;
+    vertical-align: super;
+  }
+  .stat {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .stat .lbl {
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .delta {
+    color: var(--good);
+    font-size: 0.85rem;
+  }
+  .delta.neg,
+  .stat.neg {
+    color: var(--bad);
+  }
+  .researching {
+    font-size: 0.85rem;
+    border-color: var(--line);
+  }
+  .researching.idle {
+    background: linear-gradient(180deg, #5a4a20, #4a3a16);
+    border-color: var(--gold);
+    color: var(--gold);
+    animation: pulse-warn 1.6s ease-in-out infinite;
+  }
+  .commit {
     font-weight: 700;
-    color: #8fb8ff;
+    background: linear-gradient(180deg, #24418a, #1b2f66);
+    border-color: #4a6ab8;
+  }
+  .commit.warn {
+    background: linear-gradient(180deg, #8a6a1c, #6e5312);
+    border-color: var(--gold);
+    color: #fff2cf;
+    animation: pulse-warn 1.6s ease-in-out infinite;
+  }
+  .commit.committed {
+    background: linear-gradient(180deg, #1f6a38, #175028);
+    border-color: var(--good);
+  }
+  @keyframes pulse-warn {
+    0%, 100% { box-shadow: 0 0 0 rgba(255, 212, 121, 0); }
+    50% { box-shadow: 0 0 14px rgba(255, 212, 121, 0.55); }
   }
   nav {
     display: flex;
-    gap: 0.3rem;
-    padding: 0.4rem 0.8rem;
+    gap: 0.35rem;
+    padding: 0.5rem 1rem 0.2rem;
+  }
+  nav button {
+    border-radius: 8px 8px 0 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-dim);
+  }
+  nav button:hover:not(:disabled) {
+    box-shadow: none;
+    color: var(--text);
+    border-color: transparent;
   }
   nav button.active {
-    background: #2c3a6e;
+    background: linear-gradient(180deg, var(--panel-3), var(--panel-2));
+    color: var(--accent-soft);
+    border: 1px solid var(--line-bright);
+    border-bottom: 2px solid var(--accent);
+    box-shadow: 0 -2px 14px rgba(110, 168, 255, 0.12);
+  }
+  nav button.pulse:not(.active) {
+    color: var(--gold);
+    animation: pulse-warn 1.6s ease-in-out infinite;
+  }
+  nav .replays {
+    margin-left: auto;
+    background: linear-gradient(180deg, #6e2a2a, #521d1d);
+    border: 1px solid #a05050;
+    color: #ffd9d0;
   }
   section {
-    padding: 0 0.8rem 1rem;
+    padding: 0.6rem 1rem 1.2rem;
   }
   footer {
     position: sticky;
     bottom: 0;
-    background: #141830;
-    padding: 0.3rem 0.8rem;
+    background: linear-gradient(0deg, rgba(15, 21, 48, 0.97), rgba(20, 27, 58, 0.97));
+    border-top: 1px solid var(--line);
+    padding: 0.35rem 1rem;
     display: flex;
     gap: 0.5rem;
     align-items: center;
+    z-index: 10;
   }
   .chatlog {
     display: flex;
     gap: 1rem;
     opacity: 0.8;
     font-size: 0.85rem;
+    overflow: hidden;
+    white-space: nowrap;
   }
   .hash {
     margin-left: auto;
-    opacity: 0.35;
+    opacity: 0.3;
     font-family: monospace;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
   }
   .banner {
-    background: #2c5a2c;
-    padding: 0.5rem 0.8rem;
+    background: linear-gradient(180deg, #2c6a3c, #235430);
+    padding: 0.5rem 1rem;
     font-weight: 700;
   }
   .banner.warn {
-    background: #5a442c;
+    background: linear-gradient(180deg, #6a5424, #54431c);
   }
-  button.committed {
-    background: #2c5a2c;
+  .banner.dim {
+    background: var(--panel-2);
+    font-weight: 400;
+    color: var(--text-dim);
   }
   .dm {
     color: #d7a7ff;
@@ -284,19 +444,98 @@
     position: fixed;
     bottom: 3rem;
     right: 1rem;
-    width: 28rem;
-    max-height: 60vh;
+    width: 30rem;
+    max-height: 65vh;
     overflow-y: auto;
-    background: #141830;
-    border: 1px solid #26304f;
-    border-radius: 8px;
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--line-bright);
+    border-radius: 10px;
     padding: 0.6rem 1rem;
     font-size: 0.85rem;
-    z-index: 20;
+    z-index: 30;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
   }
   .help h3 {
     display: flex;
     justify-content: space-between;
     margin: 0.2rem 0 0.5rem;
+  }
+  .help li {
+    margin-bottom: 0.35rem;
+  }
+  .celebration {
+    position: fixed;
+    top: 4rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.8rem;
+    align-items: center;
+    background: linear-gradient(135deg, #23408a, #1a2c5e 60%, #182450);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    padding: 0.7rem 1.1rem;
+    z-index: 45;
+    box-shadow: 0 0 40px rgba(110, 168, 255, 0.45), 0 10px 40px rgba(0, 0, 0, 0.5);
+    animation: drop-in 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
+  }
+  @keyframes drop-in {
+    from { transform: translate(-50%, -140%); opacity: 0; }
+    to { transform: translate(-50%, 0); opacity: 1; }
+  }
+  .celebration .burst {
+    font-size: 1.8rem;
+    animation: spin-pop 0.8s ease;
+  }
+  @keyframes spin-pop {
+    0% { transform: scale(0.2) rotate(-120deg); }
+    70% { transform: scale(1.25) rotate(10deg); }
+    100% { transform: scale(1) rotate(0); }
+  }
+  .celebration .apps {
+    font-size: 0.85rem;
+    color: var(--accent-soft);
+    text-transform: capitalize;
+  }
+  .celebration .next {
+    margin-top: 0.3rem;
+    background: linear-gradient(180deg, #8a6a1c, #6e5312);
+    border-color: var(--gold);
+  }
+  .celebration .x {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+  }
+  .blocker {
+    position: fixed;
+    inset: 0;
+    background: rgba(4, 6, 14, 0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 60;
+    backdrop-filter: blur(3px);
+  }
+  .blocker-card {
+    max-width: 32rem;
+    background: linear-gradient(180deg, #402c14, #2c1e0e);
+    border: 1px solid var(--gold);
+    border-radius: 12px;
+    padding: 1.2rem 1.6rem;
+    box-shadow: 0 0 60px rgba(255, 212, 121, 0.2);
+  }
+  .blocker-card h3 {
+    margin-top: 0;
+    color: var(--gold);
+  }
+  .blocker-card .primary {
+    background: linear-gradient(180deg, #8a6a1c, #6e5312);
+    border-color: var(--gold);
+    font-weight: 700;
+  }
+  .loading {
+    padding: 2rem;
+    color: var(--text-dim);
   }
 </style>

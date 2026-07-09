@@ -9,6 +9,7 @@
   window.addEventListener('hashchange', () => (route = location.hash));
 </script>
 
+<div class="starfield" aria-hidden="true"></div>
 <main>
   {#if route === '#storage-smoke'}
     <StorageSmoke />
@@ -22,13 +23,133 @@
 </main>
 
 <style>
+  :global(:root) {
+    --bg: #070a16;
+    --panel: #0f1530;
+    --panel-2: #151d3f;
+    --panel-3: #1b2547;
+    --line: #2a3558;
+    --line-bright: #40518c;
+    --text: #dce3f7;
+    --text-dim: #8f9ac0;
+    --accent: #6ea8ff;
+    --accent-soft: #8fb8ff;
+    --gold: #ffd479;
+    --good: #5ee08a;
+    --bad: #ff8a7a;
+    --glow: 0 0 12px rgba(110, 168, 255, 0.35);
+  }
   :global(body) {
     margin: 0;
-    background: #0b0e1a;
-    color: #d8dcf0;
-    font-family: system-ui, sans-serif;
+    background: radial-gradient(120% 90% at 20% -10%, #101a3d 0%, #0a0f24 45%, var(--bg) 100%) fixed;
+    color: var(--text);
+    font-family: system-ui, 'Segoe UI', sans-serif;
+    line-height: 1.45;
+  }
+  .starfield {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+      radial-gradient(1px 1px at 12% 22%, rgba(255, 255, 255, 0.55) 50%, transparent 51%),
+      radial-gradient(1px 1px at 34% 68%, rgba(190, 210, 255, 0.4) 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 56% 14%, rgba(255, 255, 255, 0.45) 50%, transparent 51%),
+      radial-gradient(1px 1px at 71% 47%, rgba(255, 230, 190, 0.4) 50%, transparent 51%),
+      radial-gradient(1px 1px at 86% 79%, rgba(255, 255, 255, 0.35) 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 8% 84%, rgba(170, 200, 255, 0.4) 50%, transparent 51%),
+      radial-gradient(1px 1px at 45% 91%, rgba(255, 255, 255, 0.3) 50%, transparent 51%),
+      radial-gradient(1px 1px at 92% 9%, rgba(255, 255, 255, 0.45) 50%, transparent 51%),
+      radial-gradient(1.2px 1.2px at 63% 33%, rgba(255, 255, 255, 0.3) 50%, transparent 51%),
+      radial-gradient(1px 1px at 25% 45%, rgba(255, 255, 255, 0.25) 50%, transparent 51%);
+    background-size:
+      1100px 700px, 900px 600px, 1300px 800px, 1000px 750px, 1200px 900px,
+      950px 650px, 1150px 850px, 1050px 700px, 850px 550px, 1250px 950px;
   }
   main {
-    padding: 2rem;
+    position: relative;
+    z-index: 1;
+    padding: 0;
+    min-height: 100vh;
+  }
+
+  /* ---------- shared control styling (global design system) ---------- */
+  :global(button) {
+    background: linear-gradient(180deg, var(--panel-3), var(--panel-2));
+    color: var(--text);
+    border: 1px solid var(--line-bright);
+    border-radius: 6px;
+    padding: 0.28rem 0.7rem;
+    font: inherit;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.08s, background 0.15s;
+  }
+  :global(button:hover:not(:disabled)) {
+    border-color: var(--accent);
+    box-shadow: var(--glow);
+  }
+  :global(button:active:not(:disabled)) {
+    transform: translateY(1px);
+  }
+  :global(button:disabled) {
+    opacity: 0.45;
+    cursor: default;
+  }
+  :global(input),
+  :global(select) {
+    background: #0b1126;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.26rem 0.5rem;
+    font: inherit;
+    font-size: 0.88rem;
+  }
+  :global(input:focus),
+  :global(select:focus),
+  :global(button:focus-visible) {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(110, 168, 255, 0.25);
+  }
+  :global(input[type='checkbox']),
+  :global(input[type='radio']) {
+    accent-color: var(--accent);
+  }
+  :global(input[type='range']) {
+    accent-color: var(--accent);
+    padding: 0;
+  }
+  :global(h1),
+  :global(h2),
+  :global(h3),
+  :global(h4) {
+    letter-spacing: 0.04em;
+  }
+  :global(table) {
+    border-collapse: collapse;
+  }
+  :global(thead th) {
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    color: var(--accent-soft);
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+  }
+  :global(tbody tr:hover td) {
+    background: rgba(110, 168, 255, 0.06);
+  }
+  :global(::-webkit-scrollbar) {
+    width: 10px;
+    height: 10px;
+  }
+  :global(::-webkit-scrollbar-thumb) {
+    background: var(--panel-3);
+    border-radius: 6px;
+    border: 2px solid var(--bg);
+  }
+  :global(::-webkit-scrollbar-track) {
+    background: transparent;
   }
 </style>

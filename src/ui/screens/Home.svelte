@@ -57,7 +57,9 @@
   });
 </script>
 
-<h1>MOO2v2</h1>
+<div class="hero">
+<h1>MOO2<span class="v2">v2</span></h1>
+<p class="tag">Conquer the stars with friends — peer-to-peer, in your browser.</p>
 <div class="form">
   <label>Name <input data-testid="name" bind:value={name} /></label>
   <label>Room code <input data-testid="room" bind:value={code} /></label>
@@ -84,20 +86,48 @@
   {#if loadNote}<p class="dim" data-testid="load-note">{loadNote}</p>{/if}
   {#if app.error}<p class="error" data-testid="error">{app.error}</p>{/if}
 </div>
+</div>
 
 <style>
+  .hero {
+    max-width: 30rem;
+    margin: 12vh auto 0;
+    padding: 1.6rem 2rem 1.8rem;
+    background: linear-gradient(180deg, rgba(21, 29, 63, 0.92), rgba(15, 21, 48, 0.92));
+    border: 1px solid var(--line-bright);
+    border-radius: 14px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 60px rgba(110, 168, 255, 0.08);
+  }
+  h1 {
+    margin: 0;
+    font-size: 2.4rem;
+    color: var(--accent-soft);
+    text-shadow: 0 0 24px rgba(110, 168, 255, 0.5);
+  }
+  .v2 {
+    color: var(--gold);
+    font-size: 1.4rem;
+    vertical-align: super;
+  }
+  .tag {
+    margin: 0.2rem 0 1.2rem;
+    color: var(--text-dim);
+  }
   .form {
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
-    max-width: 28rem;
   }
   label {
     display: flex;
     justify-content: space-between;
     gap: 0.5rem;
+    align-items: center;
   }
   .error {
-    color: #ff7b7b;
+    color: var(--bad);
+  }
+  .dim {
+    color: var(--text-dim);
   }
 </style>
