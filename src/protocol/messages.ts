@@ -40,6 +40,10 @@ export interface GameSettings {
   /** auto-advance turns up to this turn once everyone has committed the first
    * time (0 = off). Skips the slow early game. */
   autoTurnUntil?: number;
+  /** mirror galaxy: identical rotated wedges, every player on the map edge */
+  mirror?: boolean;
+  /** home-system sibling world: 'good' = ultra-rich, 'min' = abundant */
+  homeStart?: 'good' | 'min';
 }
 
 export type ClientToHost =
@@ -115,6 +119,8 @@ export const DEFAULT_SETTINGS: GameSettings = {
   battleOrdersTimeoutMs: 60_000,
   debugCommands: false,
   autoTurnUntil: 0,
+  mirror: false,
+  homeStart: 'good',
 };
 
 const TE = new TextEncoder();

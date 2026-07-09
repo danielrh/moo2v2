@@ -7,6 +7,7 @@
 
 import { rngFor, type MasterSeed, type Rng } from './rng';
 import { isqrt } from './isqrt';
+import { ceilDiv, roundDiv } from './imath';
 import type {
   BodyType,
   Climate,
@@ -227,6 +228,139 @@ export interface GeneratedGalaxy {
 
 function orbitBand(orbit: number): 'inner' | 'mid' | 'outer' {
   return orbit <= 1 ? 'inner' : orbit <= 3 ? 'mid' : 'outer';
+}
+
+/** Every player must be able to reach every other by hopping colonizable
+ * systems no more than this far apart (standard fuel cells = 4 parsecs). */
+export const HOP_RANGE_CP = 400;
+/** bridge stars are laid closer than the hop range so near-misses still link */
+const BRIDGE_SPACING_CP = 340;
+
+/** fixed-point rotations (cos, sin — scaled by 16384) for 2..8 mirror seats */
+const ROTATIONS: Record<number, ReadonlyArray<readonly [number, number]>> = {
+  2: [[16384, 0], [-16384, 0]],
+  3: [[16384, 0], [-8192, 14189], [-8192, -14189]],
+  4: [[16384, 0], [0, 16384], [-16384, 0], [0, -16384]],
+  5: [[16384, 0], [5063, 15582], [-13255, 9630], [-13255, -9630], [5063, -15582]],
+  6: [[16384, 0], [8192, 14189], [-8192, 14189], [-16384, 0], [-8192, -14189], [8192, -14189]],
+  7: [[16384, 0], [10215, 12810], [-3646, 15973], [-14761, 7109], [-14761, -7109], [-3646, -15973], [10215, -12810]],
+  8: [[16384, 0], [11585, 11585], [0, 16384], [-11585, 11585], [-16384, 0], [-11585, -11585], [0, -16384], [11585, -11585]],
+};
+
+function rotatePoint(cx: number, cy: number, dx: number, dy: number, rot: readonly [number, number]): { x: number; y: number } {
+  const [c, s] = rot;
+  return {
+    x: cx + roundDiv(dx * c - dy * s, 16384),
+    y: cy + roundDiv(dx * s + dy * c, 16384),
+  };
+}
+
+/** planet specs for one star, reusable across mirror copies (no ids yet) */
+type PlanetSpec = Omit<Planet, 'id' | 'starId'>;
+
+function rollPlanetSpecs(rng: Rng, color: StarColor, minBodies = 0): PlanetSpec[] {
+  const count = weighted(
+    rng,
+    PLANET_COUNT_WEIGHTS[color].map((wgt, n) => [n, wgt] as [number, number]),
+  );
+  const orbits = [1, 2, 3, 4, 5];
+  rng.shuffle(orbits);
+  const specs: PlanetSpec[] = [];
+  for (let k = 0; k < count; k++) {
+    const orbit = orbits[k]!;
+    const body = weighted(rng, BODY_WEIGHTS);
+    const sizeClass = 1 + weighted(rng, SIZE_WEIGHTS.map((wgt, i) => [i, wgt] as [number, number]));
+    specs.push({
+      orbit,
+      body,
+      sizeClass: body === 'planet' ? sizeClass : 3,
+      climate: body === 'planet' ? weighted(rng, CLIMATE_WEIGHTS[orbitBand(orbit)]) : 'barren',
+      minerals: weighted(rng, MINERAL_WEIGHTS[color]),
+      gravity: rollGravity(rng, body === 'planet' ? sizeClass : 3),
+      special: null,
+      homeworldOf: null,
+      terraformSteps: 0,
+    });
+  }
+  while (specs.length < minBodies) {
+    // guarantee an outpost anchor (asteroid belt) so the system can hold fuel
+    const usedOrbits = new Set(specs.map((s) => s.orbit));
+    const orbit = [3, 2, 4, 1, 5].find((o) => !usedOrbits.has(o)) ?? 3;
+    specs.push({
+      orbit,
+      body: 'asteroids',
+      sizeClass: 3,
+      climate: 'barren',
+      minerals: 'abundant',
+      gravity: rollGravity(rng, 3),
+      special: null,
+      homeworldOf: null,
+      terraformSteps: 0,
+    });
+  }
+  return specs;
+}
+
+/** Insert bridge stars until every homeworld shares one fuel-hop component.
+ * `traversable` limits which stars count as refuel hops; `addBridge` creates
+ * the star(s) for a bridge point (mirror mode adds every rotated copy). */
+function ensureHomeConnectivity(
+  stars: Star[],
+  planets: Planet[],
+  homeStarIds: number[],
+  traversable: (s: Star) => boolean,
+  addBridge: (x: number, y: number) => void,
+): void {
+  const bodiesAt = (starId: number) => planets.some((p) => p.starId === starId);
+  for (let guard = 0; guard < 64; guard++) {
+    const nodes = stars.filter((s) => (traversable(s) && bodiesAt(s.id)) || homeStarIds.includes(s.id));
+    const parent = new Map<number, number>();
+    const find = (id: number): number => {
+      let r = id;
+      while (parent.get(r) !== r) r = parent.get(r)!;
+      let cur = id;
+      while (parent.get(cur) !== cur) {
+        const next = parent.get(cur)!;
+        parent.set(cur, r);
+        cur = next;
+      }
+      return r;
+    };
+    for (const n of nodes) parent.set(n.id, n.id);
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        if (starDistance(nodes[i]!, nodes[j]!) <= HOP_RANGE_CP) {
+          parent.set(find(nodes[i]!.id), find(nodes[j]!.id));
+        }
+      }
+    }
+    const homeRoots = homeStarIds.map((id) => find(id));
+    const root0 = homeRoots[0]!;
+    if (homeRoots.every((r) => r === root0)) return;
+
+    // connect home 0's component to the nearest star of a disconnected home's component
+    const otherRoots = new Set(homeRoots.filter((r) => r !== root0));
+    let best: { a: Star; b: Star; d: number } | null = null;
+    for (const a of nodes) {
+      if (find(a.id) !== root0) continue;
+      for (const b of nodes) {
+        if (!otherRoots.has(find(b.id))) continue;
+        const d = starDistance(a, b);
+        if (!best || d < best.d) best = { a, b, d };
+      }
+    }
+    if (!best) return; // cannot happen: home stars are always nodes
+    const hops = Math.max(1, ceilDiv(best.d, BRIDGE_SPACING_CP));
+    for (let j = 1; j < hops; j++) {
+      const x = best.a.x + roundDiv((best.b.x - best.a.x) * j, hops);
+      const y = best.a.y + roundDiv((best.b.y - best.a.y) * j, hops);
+      // an existing refuel hop almost exactly here already serves the chain
+      const served = stars.some(
+        (s) => traversable(s) && bodiesAt(s.id) && (s.x - x) * (s.x - x) + (s.y - y) * (s.y - y) <= 20 * 20,
+      );
+      if (!served) addBridge(x, y);
+    }
+  }
 }
 
 export function generateGalaxy(

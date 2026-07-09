@@ -30,6 +30,9 @@ export interface Star {
   y: number;
   color: StarColor;
   wormholeTo: number | null; // starId
+  /** symmetry marker: 0 = mirror hub, >=1 mirror wedge group, -1 = connectivity
+   * bridge (never guarded by monsters); absent on ordinary stars */
+  sym?: number;
 }
 
 export interface Planet {
@@ -214,6 +217,10 @@ export interface GameStateSettings {
   debugCommands: boolean;
   /** host auto-advances turns up to this turn after the first all-commit (0/absent = off) */
   autoTurnUntil?: number;
+  /** mirror galaxy: identical rotated wedges, every player on the map edge */
+  mirror?: boolean;
+  /** home-system sibling world: 'good' = ultra-rich, 'min' = abundant */
+  homeStart?: 'good' | 'min';
 }
 
 export type ProposalKind =
