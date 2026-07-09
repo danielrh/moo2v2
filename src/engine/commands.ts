@@ -5,7 +5,7 @@
 
 import { applicationById, fieldById, fieldByNum, applicationsOfField } from './data/index';
 import { areAtWar, relationKey, setRelation } from './battles';
-import { buyCost, empireOf, traitsOf } from './economy';
+import { buyCost, colonyMaxPop, empireOf, traitsOf } from './economy';
 import { canQueue, itemCost } from './items';
 import { inRange, shipStar, travelTurns } from './movement';
 import { availableFields, fieldGrantsAll } from './research';
@@ -830,6 +830,66 @@ const applyAttackAntarans: Applier = (state, cmd) => {
   state.monsters.sort((a, b) => a.id - b.id);
 };
 
+// ---------- move_colonists (in-system, freighter-lifted) ----------
+
+interface MoveColonistsPayload {
+  fromColonyId: number;
+  toColonyId: number;
+  race: number;
+  count: number;
+}
+
+/** Colonists hop between planets of the SAME system on freighters — no
+ * transport ship needed. Requires a freighter fleet (5), the source keeps at
+ * least one unit, and the destination must have room. */
+const validateMoveColonists: Validator = (state, cmd) => {
+  const p = cmd.payload as MoveColonistsPayload;
+  const from = ownColony(state, cmd, p?.fromColonyId);
+  if (typeof from === 'string') return from;
+  const to = colony(state, p?.toColonyId);
+  if (!to) return `no colony ${p?.toColonyId}`;
+  if (to.owner !== cmd.playerId) return `colony ${p?.toColonyId} not yours`;
+  if (to.outpost) return 'outposts cannot take colonists';
+  if (from.id === to.id) return 'already there';
+  const fromStar = state.planets.find((x) => x.id === from.planetId)!.starId;
+  const toStar = state.planets.find((x) => x.id === to.planetId)!.starId;
+  if (fromStar !== toStar) return 'freighters only shuttle within a system — use a transport between stars';
+  const empire = empireOf(state, cmd.playerId);
+  if (empire.freighters < 5) return 'need a freighter fleet (5 freighters)';
+  if (!Number.isSafeInteger(p.count) || p.count < 1) return 'bad count';
+  const group = from.groups.find((g) => g.race === p.race);
+  if (!group) return `no pop group for race ${p.race}`;
+  const groupUnits = Math.floor(group.popK / 1000);
+  const totalUnits = from.groups.reduce((n, g) => n + Math.floor(g.popK / 1000), 0);
+  if (groupUnits < p.count) return `only ${groupUnits} unit(s) of that group`;
+  if (totalUnits - p.count < 1) return 'the last colonist cannot leave';
+  const cap = colonyMaxPop(state, to);
+  const there = to.groups.reduce((n, g) => n + Math.floor(g.popK / 1000), 0);
+  if (there + p.count > cap) return `destination full (${there}/${cap})`;
+  return null;
+};
+
+const applyMoveColonists: Applier = (state, cmd) => {
+  const p = cmd.payload as MoveColonistsPayload;
+  const from = colony(state, p.fromColonyId)!;
+  const to = colony(state, p.toColonyId)!;
+  const moveK = p.count * 1000;
+  const src = from.groups.find((g) => g.race === p.race)!;
+  src.popK -= moveK;
+  normalizeJobsForGroup(src);
+  if (src.popK <= 0) {
+    from.groups = from.groups.filter((g) => g !== src);
+  }
+  let dst = to.groups.find((g) => g.race === p.race);
+  if (!dst) {
+    dst = { race: p.race, popK: 0, farmers: 0, workers: 0, scientists: 0, unrest: false };
+    to.groups.push(dst);
+    to.groups.sort((a, b) => a.race - b.race);
+  }
+  dst.popK += moveK;
+  dst.workers += p.count; // arrivals pick up tools first; reassign as you like
+};
+
 // ---------- renaming + tags ----------
 
 /** Fixed set of colony tags players can attach (UI filters on these). */
@@ -1016,6 +1076,7 @@ export const COMMANDS: Record<string, { validate: Validator; apply: Applier }> =
   attack_antarans: { validate: validateAttackAntarans, apply: applyAttackAntarans },
   resign: { validate: validateResign, apply: applyResign },
   cast_vote: { validate: validateVote, apply: applyVote },
+  move_colonists: { validate: validateMoveColonists, apply: applyMoveColonists },
   rename_star: { validate: validateRenameStar, apply: applyRenameStar },
   rename_colony: { validate: validateRenameColony, apply: applyRenameColony },
   set_colony_tags: { validate: validateSetColonyTags, apply: applySetColonyTags },

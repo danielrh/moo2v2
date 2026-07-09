@@ -86,6 +86,12 @@
     void app.version;
     return session().getSettings()?.autoTurnUntil ?? 0;
   });
+  /** live leader offers for this player (drives the nav badge) */
+  const leaderOfferCount = $derived.by(() => {
+    if (!gs) return 0;
+    const me = session().playerId;
+    return gs.leaderOffers.filter((o) => o.empireId === me && o.expiresTurn > gs.turn).length;
+  });
 
   // ---- research breakthrough celebration ----
   let celebration = $state<{ field: string; granted: string[] } | null>(null);
@@ -239,6 +245,11 @@
         seenReports = app.reports.length;
       }}
     >Reports{app.reports.length > seenReports ? ` (${app.reports.length - seenReports})` : ''}</button>
+    {#if leaderOfferCount > 0 && tab !== 'empires'}
+      <button class="offers" data-testid="leader-offer-badge" title="a leader is waiting for your answer on the Empires tab" onclick={() => (tab = 'empires')}>
+        🎖 {leaderOfferCount} leader offer{leaderOfferCount > 1 ? 's' : ''}
+      </button>
+    {/if}
     {#if app.replays.some((r) => !r.watched)}
       <button class="replays" data-testid="new-replays" onclick={() => (tab = 'empires')}>
         ⚔ {app.replays.filter((r) => !r.watched).length} new battle{app.replays.filter((r) => !r.watched).length > 1 ? 's' : ''}
@@ -448,6 +459,16 @@
     background: linear-gradient(180deg, #6e2a2a, #521d1d);
     border: 1px solid #a05050;
     color: #ffd9d0;
+  }
+  nav .offers {
+    margin-left: auto;
+    background: linear-gradient(180deg, #6a5424, #54431c);
+    border: 1px solid var(--gold);
+    color: #ffe9b0;
+    animation: pulse-warn 1.6s ease-in-out infinite;
+  }
+  nav .offers + .replays {
+    margin-left: 0.35rem;
   }
   section {
     padding: 0.6rem 1rem 1.2rem;
