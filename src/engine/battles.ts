@@ -290,6 +290,14 @@ export function buildBattleInput(state: GameState, battle: PendingBattle): Built
       }
     }
   }
+  // non-combat ships present: shown in the replay at the field edge (never simulated)
+  const bystanders: Array<{ shipId: number; side: 0 | 1; kind: string }> = [];
+  for (const ship of state.ships) {
+    if (ship.location.kind !== 'star' || ship.location.starId !== battle.starId || isWarship(ship)) continue;
+    if (ship.owner === battle.attacker) bystanders.push({ shipId: ship.id, side: 0, kind: ship.shipKind });
+    else if (ship.owner === battle.defender) bystanders.push({ shipId: ship.id, side: 1, kind: ship.shipKind });
+  }
+  bystanders.sort((a, b) => a.shipId - b.shipId);
   return {
     input: {
       battleId: battle.id,
@@ -297,6 +305,7 @@ export function buildBattleInput(state: GameState, battle: PendingBattle): Built
       attacker: battle.attacker,
       defender: battle.defender,
       ships: ships.sort((a, b) => a.shipId - b.shipId),
+      bystanders,
       ordersA: (battle.ordersA as BattleOrders | null) ?? DEFAULT_ORDERS,
       ordersD: (battle.ordersD as BattleOrders | null) ?? { ...DEFAULT_ORDERS, stance: 'hold_range' },
     },

@@ -79,6 +79,9 @@ export interface BattleInput {
   attacker: number; // empireId
   defender: number;
   ships: CombatShipInit[];
+  /** non-combat ships present at the star: display-only extras for the replay
+   * viewer (they never enter the sim; the loser's are captured after the pass) */
+  bystanders?: Array<{ shipId: number; side: 0 | 1; kind: string }>;
   ordersA: BattleOrders;
   ordersD: BattleOrders;
 }
@@ -97,6 +100,8 @@ export interface BattleTickFrame {
   tick: number;
   ships: Array<{ id: number; x: number; y: number; alive: boolean; retreated: boolean; crossed: boolean; structPct: number; shieldPct: number }>;
   shots: ShotEvent[];
+  /** guided munitions in flight this tick (missiles classId 1, torpedoes 2) */
+  projectiles: Array<{ x: number; y: number; classId: number }>;
   deaths: number[];
 }
 
@@ -461,6 +466,9 @@ export function runBattle(
     if (onFrame) {
       onFrame({
         tick,
+        projectiles: projectiles
+          .filter((p) => p.hp > 0)
+          .map((p) => ({ x: p.x, y: p.y, classId: p.classId })),
         ships: sims.map((s) => ({
           id: s.init.shipId,
           x: s.x,
