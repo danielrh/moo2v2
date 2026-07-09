@@ -107,12 +107,13 @@ export class HostCore<S> {
     this.unsubs.push(this.transport.onMessage((from, msg) => this.route(from, msg as ClientToHost)));
     this.unsubs.push(
       this.transport.onEvent((ev) => {
-        const seatId = this.seatMap.get(ev.playerId);
         if (ev.type === 'player-left') {
+          const seatId = this.seatMap.get(ev.playerId);
           const seat = seatId !== undefined ? this.seats.get(seatId) : undefined;
           if (seat) seat.connected = false;
           this.broadcastLobby();
         } else if (ev.type === 'player-rejoined' || ev.type === 'player-joined') {
+          const seatId = this.seatMap.get(ev.playerId);
           const seat = seatId !== undefined ? this.seats.get(seatId) : undefined;
           if (seat) seat.connected = true;
           // roster broadcast happens after their hello

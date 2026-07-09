@@ -221,7 +221,7 @@ export class SoloBot {
     }
     // keep exactly one colony ship in the pipeline while there is room to grow
     const building = planned.colonies.some(
-      (c) => c.owner === me && c.queue.some((q) => q === 'colony_ship'),
+      (c) => c.owner === me && c.queue.some((q) => q.item === 'colony_ship'),
     );
     if (freePlanets.length && !colonyShips.length && !building) {
       const rows = planned.colonies

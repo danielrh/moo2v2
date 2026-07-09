@@ -248,6 +248,12 @@ describe('resync + persistence', () => {
     expect(resumed.session.getState()!.counters['0']).toBe(2);
     expect(resumed.session.getState()!.counters['1']).toBe(3);
 
+    // client re-introduces itself (the app does this on host player-rejoined);
+    // a restarted host only accepts commands from channels that have helloed,
+    // because hello is what assigns the empire seat (name matching on resume)
+    client.resendHello();
+    await hub.settle();
+
     // client continues: submits against the resumed host
     client.submit('increment', { n: 1 });
     await hub.settle();
