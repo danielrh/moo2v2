@@ -159,11 +159,28 @@
       <ul>
         {#each empire.designs as d (d.id)}
           <li class:obsolete={d.obsolete} data-testid="design-{d.id}">
-            <b>{d.name}</b> ({d.hull}) — {d.weapons.map((w) => `${w.count}×${w.weapon}`).join(', ') || 'unarmed'}
+            <button class="linklike" onclick={() => inspect(d)}>{inspecting === d.id ? '▾' : '▸'} <b>{d.name}</b></button>
+            ({d.hull}) — {d.weapons.map((w) => `${w.count}×${w.weapon.replaceAll('_', ' ')}${w.mods.length ? ` [${w.mods.join(',')}]` : ''}`).join(', ') || 'unarmed'}
             {#if !d.obsolete}
               <button onclick={() => obsolete(d.id)}>obsolete</button>
             {:else}
               <span class="dim">obsolete</span>
+            {/if}
+            {#if inspecting === d.id}
+              {@const st = statsOf(d)}
+              <div class="inspect">
+                <div>computer tier {d.computer} · shield tier {d.shield}{d.specials.length ? ` · specials: ${d.specials.map((s) => s.replaceAll('_', ' ')).join(', ')}` : ''}</div>
+                {#if st && typeof st !== 'string'}
+                  <div class="dim">
+                    space {st.spaceUsed}/{st.spaceTotal} · cost {st.cost} · CP {st.cpUsage} ·
+                    atk +{st.beamAttack} · def +{st.beamDefense} · speed {st.combatSpeed} ·
+                    armor {st.armorHp} · struct {st.structureHp} · shields {st.shieldPool}
+                  </div>
+                {:else if typeof st === 'string'}
+                  <div class="error">no longer valid: {st}</div>
+                {/if}
+                <button onclick={() => loadIntoEditor(d)}>⎘ copy into editor</button>
+              </div>
             {/if}
           </li>
         {/each}
@@ -225,5 +242,24 @@
   }
   li {
     margin-bottom: 0.4rem;
+  }
+  .linklike {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent-soft);
+    cursor: pointer;
+  }
+  .inspect {
+    margin: 0.3rem 0 0.2rem 1.1rem;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: rgba(15, 21, 48, 0.6);
+    font-size: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    align-items: flex-start;
   }
 </style>

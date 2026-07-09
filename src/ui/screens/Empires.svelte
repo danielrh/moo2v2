@@ -1,5 +1,6 @@
 <script lang="ts">
   import { leaderById, salaryOf, MAX_LEADERS_PER_KIND, countKind } from '@engine/leaders';
+  import { selectors } from '@engine/index';
   import type { ProposalKind } from '@engine/types';
   import { ownerName, playerColor } from '../colors';
   import { app, getActive } from '../state.svelte';
@@ -11,8 +12,11 @@
   });
   const selfId = $derived(session().playerId);
   const me = $derived(gs ? gs.empires.find((e) => e.id === selfId) : undefined);
-  const others = $derived(gs ? gs.empires.filter((e) => e.id !== selfId) : []);
+  /** race discovery: only empires you have actually met show up */
+  const met = $derived.by(() => (gs ? selectors.metEmpireIds(gs, selfId) : new Set<number>()));
+  const others = $derived(gs ? gs.empires.filter((e) => e.id !== selfId && met.has(e.id)) : []);
   const livingOthers = $derived(others.filter((e) => !e.eliminated));
+  const unmetCount = $derived(gs ? gs.empires.filter((e) => e.id !== selfId && !met.has(e.id)).length : 0);
 
   let note = $state('');
   function submit(kind: string, payload: unknown) {
@@ -101,6 +105,12 @@
   {#if note}<p class="error" data-testid="empire-note">{note}</p>{/if}
 
   <h3>Relations</h3>
+  {#if unmetCount > 0}
+    <p class="dim" data-testid="unmet">🔭 {unmetCount} empire{unmetCount > 1 ? 's' : ''} not yet encountered — explore toward their stars to make contact.</p>
+  {/if}
+  {#if others.length === 0}
+    <p class="dim">No known empires yet.</p>
+  {/if}
   <table>
     <thead>
       <tr><th>Empire</th><th>Race</th><th>Status</th><th>Treaties</th><th>Actions</th></tr>
