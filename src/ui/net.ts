@@ -13,8 +13,8 @@ import { DEFAULT_SETTINGS, type LogCommand } from '@protocol/messages';
 import { createHostedGame, generateSeed, joinGame } from '@protocol/setup';
 import type { GameSession } from '@protocol/session';
 import { isOpfsLikelyAvailable, openBrowserStore } from '@storage/browser';
+import { MemoryGameStore, type GameStoreLike } from '@storage/memory';
 import type { SQLocalKysely } from 'sqlocal/kysely';
-import type { GameStore } from '@storage/repo';
 
 export const DEFAULT_SERVER = 'https://pqrstuvw.xyz/lobbylink';
 
@@ -31,8 +31,11 @@ export interface ActiveGame {
   transport: LobbylinkTransport;
   session: GameSession<GameState>;
   host: HostCore<GameState> | null;
-  store: GameStore | null;
+  store: GameStoreLike | null;
   sqlocal: SQLocalKysely | null;
+  /** persistence is RAM-only: another tab holds this room's database (saves
+   * still download fine, but nothing survives a reload of THIS tab) */
+  memoryOnly: boolean;
   params: RoomParams;
   startGame: () => void;
 }
@@ -45,7 +48,7 @@ interface ResumeInfo {
 }
 
 async function loadResume(
-  store: GameStore,
+  store: GameStoreLike,
   roomCode: string,
   engine: EngineAdapter<GameState>,
 ): Promise<ResumeInfo | null> {
@@ -77,16 +80,33 @@ export async function enterRoom(params: RoomParams): Promise<ActiveGame> {
     maxPlayers: params.playerCount,
   });
 
-  let store: GameStore | null = null;
+  let store: GameStoreLike | null = null;
   let sqlocal: SQLocalKysely | null = null;
+  let memoryOnly = false;
   if (isOpfsLikelyAvailable()) {
     try {
       const opened = await openBrowserStore(`moo2v2-room-${params.code}.sqlite3`);
-      store = opened.store;
-      sqlocal = opened.sqlocal;
+      // sqlocal silently falls back to a RAM database when another tab holds
+      // the OPFS handle — detect that so the UI can tell the truth about it
+      const info = await opened.sqlocal.getDatabaseInfo().catch(() => null);
+      if (info && info.persisted === false) {
+        await opened.store.destroy().catch(() => undefined);
+        memoryOnly = true;
+      } else {
+        store = opened.store;
+        sqlocal = opened.sqlocal;
+      }
     } catch (e) {
       console.warn('[net] persistence unavailable (another tab in this room?):', e);
+      memoryOnly = true;
     }
+  } else {
+    memoryOnly = true;
+  }
+  if (!store) {
+    // multi-tab safety net: keep the whole game record in memory so a
+    // verified save file can always be downloaded from this tab
+    store = new MemoryGameStore();
   }
 
   const identity = {
