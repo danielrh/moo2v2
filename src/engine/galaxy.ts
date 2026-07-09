@@ -165,12 +165,46 @@ function weighted<T>(rng: Rng, entries: Array<[T, number]>): T {
   return entries[entries.length - 1]![0];
 }
 
-// Original procedural star names: consonant/vowel syllable pairs + suffixes.
+/** Real star names (public astronomical catalog names), drawn in seeded-shuffle
+ * order so every galaxy reads like a star chart. Procedural syllables remain
+ * only as an overflow fallback. */
+const REAL_STAR_NAMES = [
+  'Sirius', 'Vega', 'Altair', 'Rigel', 'Deneb', 'Antares', 'Arcturus', 'Capella', 'Procyon',
+  'Betelgeuse', 'Aldebaran', 'Canopus', 'Spica', 'Pollux', 'Castor', 'Regulus', 'Fomalhaut',
+  'Achernar', 'Bellatrix', 'Alnilam', 'Mintaka', 'Alnitak', 'Saiph', 'Algol', 'Mira', 'Polaris',
+  'Dubhe', 'Merak', 'Alioth', 'Alkaid', 'Megrez', 'Phecda', 'Rasalhague', 'Sadr', 'Albireo',
+  'Tarazed', 'Sheliak', 'Sulafat', 'Alphard', 'Denebola', 'Zosma', 'Algieba', 'Mizar', 'Alcor',
+  'Kochab', 'Thuban', 'Etamin', 'Rastaban', 'Alderamin', 'Enif', 'Markab', 'Scheat', 'Algenib',
+  'Alpheratz', 'Mirach', 'Almach', 'Hamal', 'Sheratan', 'Menkar', 'Zaurak', 'Cursa', 'Nihal',
+  'Arneb', 'Wezen', 'Adhara', 'Mirzam', 'Aludra', 'Gomeisa', 'Alhena', 'Mebsuta', 'Wasat',
+  'Talitha', 'Sadalmelik', 'Sadalsuud', 'Skat', 'Diphda', 'Ankaa', 'Achird', 'Ruchbah', 'Segin',
+  'Caph', 'Shedar', 'Mirfak', 'Algorab', 'Gienah', 'Kraz', 'Alchiba', 'Dschubba', 'Shaula',
+  'Lesath', 'Sargas', 'Nunki', 'Ascella', 'Rukbat', 'Arkab', 'Alnair', 'Atria', 'Miaplacidus',
+  'Avior', 'Suhail', 'Naos', 'Acrux', 'Mimosa', 'Gacrux', 'Hadar', 'Toliman', 'Proxima',
+  'Barnard', 'Kapteyn', 'Teegarden', 'Eridani', 'Cygni', 'Ceti', 'Indi', 'Draconis', 'Lacaille',
+  'Altais', 'Grumium', 'Kuma', 'Tyl', 'Izar', 'Seginus', 'Muphrid', 'Nekkar', 'Unukalhai',
+  'Yed', 'Sabik', 'Cebalrai', 'Vindemiatrix', 'Zavijava', 'Porrima', 'Auva', 'Heze', 'Syrma',
+] as const;
+
+// Overflow fallback: consonant/vowel syllable pairs + suffixes (original art).
 const SYL_A = ['Ka', 'Ve', 'Zo', 'My', 'Tha', 'Or', 'Ny', 'Sa', 'Del', 'Qua', 'Ri', 'Xa', 'Bel', 'Ju', 'Ho', 'Ce'];
 const SYL_B = ['ri', 'la', 'no', 'dra', 'ph', 'mi', 'ta', 'ven', 'sor', 'li', 'gan', 'de', 'ru', 'na', 'ke', 'zu'];
 const SYL_C = ['s', 'n', 'th', 'x', 'm', 'r', '', 'ne', 'ra', 'os', 'ia', 'us', 'ar', 'el', 'is', 'on'];
 
-function starName(rng: Rng, taken: Set<string>): string {
+function makeNamePool(rng: Rng): string[] {
+  const pool = [...REAL_STAR_NAMES];
+  rng.shuffle(pool);
+  return pool;
+}
+
+function starName(rng: Rng, taken: Set<string>, pool: string[]): string {
+  while (pool.length > 0) {
+    const name = pool.pop()!;
+    if (!taken.has(name)) {
+      taken.add(name);
+      return name;
+    }
+  }
   for (let i = 0; i < 100; i++) {
     const name = rng.pick(SYL_A) + rng.pick(SYL_B) + rng.pick(SYL_C);
     if (!taken.has(name)) {
