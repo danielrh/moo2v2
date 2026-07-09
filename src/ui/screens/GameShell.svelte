@@ -78,9 +78,9 @@
     if (next !== edgeLatch) edgeLatch = next;
   });
   const edgeShown = $derived(iCommitted || (gs?.turn ?? 0) !== edgeLatch.turn ? '' : edgeLatch.level);
-  const noPersistence = $derived.by(() => {
+  const memoryOnly = $derived.by(() => {
     void app.version;
-    return !getActive()?.store;
+    return getActive()?.memoryOnly ?? false;
   });
   const autoTurnUntil = $derived.by(() => {
     void app.version;
@@ -198,17 +198,17 @@
       title={researchIdle && !iCommitted ? 'Warning: no research selected — RP will be banked unspent' : ''}
       onclick={toggleCommit}
     >{iCommitted ? 'Committed ✓' : researchIdle ? '⚠ Commit turn' : 'Commit turn'} ({committed.length}/{roster.length})</button>
-    {#if session().playerId === 0}
-      <span class="saves">
-        <button data-testid="save-game" disabled={!getActive()?.store} onclick={saveGame}
-          title={getActive()?.store ? 'Download the full game as a save file' : 'persistence unavailable'}>
-          💾 Save
-        </button>
+    <span class="saves">
+      <button data-testid="save-game" disabled={!getActive()?.store} onclick={saveGame}
+        title={getActive()?.store ? 'Download the full game as a save file (works in any tab)' : 'persistence unavailable'}>
+        💾 Save
+      </button>
+      {#if session().playerId === 0}
         <button data-testid="save-db" disabled={!getActive()?.sqlocal} onclick={saveDb}
           title="Download the raw sqlite database">DB</button>
-        {#if saveNote}<span class="dim" data-testid="save-note">{saveNote}</span>{/if}
-      </span>
-    {/if}
+      {/if}
+      {#if saveNote}<span class="dim" data-testid="save-note">{saveNote}</span>{/if}
+    </span>
   </header>
   {#if edgeShown}
     <div class="edge {edgeShown}" aria-hidden="true"></div>
@@ -297,21 +297,11 @@
   {#if app.viewing}
     <BattleViewer replay={app.viewing} onclose={() => (app.viewing = null)} />
   {/if}
-  {#if noPersistence}
-    <div class="blocker" data-testid="no-persistence">
-      <div class="blocker-card">
-        <h3>⚠ Cannot save this game</h3>
-        <p>
-          Persistence is unavailable in this tab — most likely another tab already holds this
-          room's database, or your browser blocks OPFS storage.
-        </p>
-        <p>Playing without saving is disabled: progress would be lost on reload.</p>
-        <ul>
-          <li>Close any other tab that has this room open, then reload.</li>
-          <li>Or open the game in a regular (non-private) browser window.</li>
-        </ul>
-        <button class="primary" onclick={() => location.reload()}>Reload this tab</button>
-      </div>
+  {#if memoryOnly}
+    <div class="banner warn" data-testid="memory-only">
+      ⚠ Another tab (or this browser) holds this room's database — this tab keeps the full game
+      <b>in memory</b> instead. 💾 Save works normally; it just won't auto-persist across a reload
+      of this tab. Close the other tab and reload to get automatic persistence back.
     </div>
   {/if}
   <footer>
@@ -611,33 +601,6 @@
     background: transparent;
     border: none;
     color: var(--text-dim);
-  }
-  .blocker {
-    position: fixed;
-    inset: 0;
-    background: rgba(4, 6, 14, 0.88);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 60;
-    backdrop-filter: blur(3px);
-  }
-  .blocker-card {
-    max-width: 32rem;
-    background: linear-gradient(180deg, #402c14, #2c1e0e);
-    border: 1px solid var(--gold);
-    border-radius: 12px;
-    padding: 1.2rem 1.6rem;
-    box-shadow: 0 0 60px rgba(255, 212, 121, 0.2);
-  }
-  .blocker-card h3 {
-    margin-top: 0;
-    color: var(--gold);
-  }
-  .blocker-card .primary {
-    background: linear-gradient(180deg, #8a6a1c, #6e5312);
-    border-color: var(--gold);
-    font-weight: 700;
   }
   .loading {
     padding: 2rem;

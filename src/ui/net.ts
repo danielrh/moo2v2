@@ -134,6 +134,7 @@ export async function enterRoom(params: RoomParams): Promise<ActiveGame> {
       host: hosted.host,
       store,
       sqlocal,
+      memoryOnly,
       params,
       startGame: () => hosted.host.startGame(generateSeed()),
     };
@@ -158,6 +159,7 @@ export async function enterRoom(params: RoomParams): Promise<ActiveGame> {
     host: null,
     store,
     sqlocal,
+    memoryOnly,
     params,
     startGame: () => {
       throw new Error('only the host can start');

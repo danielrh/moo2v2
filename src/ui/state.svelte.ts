@@ -89,6 +89,8 @@ export function bindActive(active: ActiveGame): void {
 
 export function leaveGame(): void {
   activeGame?.transport.close();
+  // release the room database (OPFS access handle) so another tab can take it
+  void activeGame?.store?.destroy().catch(() => undefined);
   activeGame = null;
   app.screen = 'home';
   app.chat = [];
