@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { gameEngine } from '@engine/index';
 import { applyCommand, validateCommand } from '@engine/commands';
-import { fieldGrantsAll } from '@engine/research';
+import { fieldCost, fieldCostMultiplierPct, fieldGrantsAll } from '@engine/research';
+import { colonyOutput } from '@engine/economy';
 import { FIELD_ROWS, applicationsOfField } from '@engine/data/index';
 import type { GameState } from '@engine/types';
 

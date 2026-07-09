@@ -4,7 +4,7 @@
 // - No imports from outside src/engine (zero runtime dependencies).
 // - No sources of nondeterminism; randomness comes only from the seeded PRNG.
 
-export const ENGINE_VERSION = '0.3.0'; // tier-1 fields grant all apps; sell_building; same-turn move re-orders
+export const ENGINE_VERSION = '0.4.0'; // unlock registry fix, tax, charters, cost variance, pre-warp default, real star names
 
 export * from './types';
 export * from './canonical';

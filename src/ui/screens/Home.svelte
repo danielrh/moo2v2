@@ -86,6 +86,7 @@
   {#if loadNote}<p class="dim" data-testid="load-note">{loadNote}</p>{/if}
   {#if app.error}<p class="error" data-testid="error">{app.error}</p>{/if}
 </div>
+<p class="labline"><a href="#battle-lab">⚗ Battle Lab</a> — build fleets for both sides and watch them fight (balance sandbox)</p>
 </div>
 
 <style>
@@ -129,5 +130,13 @@
   }
   .dim {
     color: var(--text-dim);
+  }
+  .labline {
+    margin: 1rem 0 0;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .labline a {
+    color: var(--accent-soft);
   }
 </style>

@@ -117,7 +117,12 @@
           <div class="field" class:current={isCurrent}>
             <div class="head">
               <b>{pretty(choice.field.id)}</b>
-              <span class="dim">{choice.cost} RP</span>
+              <span
+                class="dim"
+                title={choice.cost !== choice.field.cost
+                  ? `base ${choice.field.cost} RP × this galaxy's seeded difficulty (same for every player)`
+                  : ''}
+              >{choice.cost} RP{choice.cost > choice.field.cost ? ' ▲' : ''}</span>
             </div>
             {#if choice.grantsAll}
               <p class="all" title="Basic fields deliver every application at once">✦ researches all applications</p>

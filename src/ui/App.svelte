@@ -1,5 +1,6 @@
 <script lang="ts">
   import StorageSmoke from './dev/StorageSmoke.svelte';
+  import BattleLab from './screens/BattleLab.svelte';
   import Home from './screens/Home.svelte';
   import Lobby from './screens/Lobby.svelte';
   import GameShell from './screens/GameShell.svelte';
@@ -13,6 +14,8 @@
 <main>
   {#if route === '#storage-smoke'}
     <StorageSmoke />
+  {:else if route === '#battle-lab'}
+    <BattleLab />
   {:else if app.screen === 'home'}
     <Home />
   {:else if app.screen === 'lobby'}
