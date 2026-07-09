@@ -37,6 +37,9 @@ export interface GameSettings {
   battleOrdersTimeoutMs: number;
   /** enable logged debug commands (testing) */
   debugCommands: boolean;
+  /** auto-advance turns up to this turn once everyone has committed the first
+   * time (0 = off). Skips the slow early game. */
+  autoTurnUntil?: number;
 }
 
 export type ClientToHost =
@@ -111,6 +114,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   },
   battleOrdersTimeoutMs: 60_000,
   debugCommands: false,
+  autoTurnUntil: 0,
 };
 
 const TE = new TextEncoder();

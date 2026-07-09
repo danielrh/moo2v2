@@ -210,6 +210,8 @@ export interface GameStateSettings {
   };
   battleOrdersTimeoutMs: number;
   debugCommands: boolean;
+  /** host auto-advances turns up to this turn after the first all-commit (0/absent = off) */
+  autoTurnUntil?: number;
 }
 
 export type ProposalKind =

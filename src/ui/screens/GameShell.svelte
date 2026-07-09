@@ -82,6 +82,10 @@
     void app.version;
     return !getActive()?.store;
   });
+  const autoTurnUntil = $derived.by(() => {
+    void app.version;
+    return session().getSettings()?.autoTurnUntil ?? 0;
+  });
 
   // ---- research breakthrough celebration ----
   let celebration = $state<{ field: string; granted: string[] } | null>(null);
@@ -205,6 +209,11 @@
   {#if !app.hostConnected}
     <div class="banner warn" data-testid="host-offline">
       ⚠ Host offline — the game is paused. It resumes when the host returns (or load their save file to re-host).
+    </div>
+  {/if}
+  {#if autoTurnUntil > 0 && gs.turn < autoTurnUntil}
+    <div class="banner dim" data-testid="auto-turn-banner">
+      ⏩ Auto-turn: once everyone commits, turns fast-forward to turn {autoTurnUntil}.
     </div>
   {/if}
   {#if winner !== null}

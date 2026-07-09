@@ -59,6 +59,9 @@ export class HostCore<S> {
   private unsubs: Array<() => void> = [];
   private battleTimer: ReturnType<typeof setTimeout> | null = null;
   private battleOrdersTimeoutMs = 60_000;
+  /** true once any advance_turn is in the log (auto-turn eligibility) */
+  private anyTurnAdvanced = false;
+  private autoAdvancing = false;
   private auction: {
     seed: string;
     contested: Record<string, number[]>;
@@ -91,6 +94,7 @@ export class HostCore<S> {
       for (const cmd of opts.resumeLog) this.fold(cmd);
       this.battleOrdersTimeoutMs = this.settings.battleOrdersTimeoutMs || 60_000;
       this.checkBattlePhase(); // resumed mid battle-orders phase: restart the clock
+      this.maybeAutoAdvance(); // resumed mid auto-turn fast-forward: keep going
     }
 
     this.unsubs.push(this.transport.onMessage((from, msg) => this.route(from, msg as ClientToHost)));
@@ -364,6 +368,7 @@ export class HostCore<S> {
     } else if (this.state) {
       this.state = this.engine.apply(this.state, cmd);
       if (cmd.kind === 'advance_turn' && this.state) {
+        this.anyTurnAdvanced = true;
         const t = this.engine.turnOf(this.state) - 1; // hash of the completed turn boundary
         this.turnHashes.set(t, this.engine.hash(this.state));
       }
@@ -403,6 +408,7 @@ export class HostCore<S> {
       }
       this.accept({ turn: this.currentTurn(), playerId: -1, kind: 'resolve_combat', payload: {} });
       this.broadcast({ t: 'commit_status', turn: this.currentTurn(), committed: [] });
+      this.maybeAutoAdvance();
       return;
     }
     if (!this.battleTimer) {
@@ -411,6 +417,7 @@ export class HostCore<S> {
         if (this.state && this.engine.phaseOf && this.engine.phaseOf(this.state) === 'battle_orders') {
           this.accept({ turn: this.currentTurn(), playerId: -1, kind: 'resolve_combat', payload: {} });
           this.broadcast({ t: 'commit_status', turn: this.currentTurn(), committed: [] });
+          this.maybeAutoAdvance();
         }
       }, this.battleOrdersTimeoutMs);
     }
@@ -455,6 +462,35 @@ export class HostCore<S> {
       payload: this.engine.advancePayload(this.state),
     });
     this.broadcast({ t: 'commit_status', turn: this.currentTurn(), committed: [] });
+    this.maybeAutoAdvance();
+  }
+
+  /** Auto-turn mode: once the table has advanced a turn together, keep
+   * advancing automatically until settings.autoTurnUntil (early-game skip).
+   * Battles still pause for orders; auto-advance resumes after resolution. */
+  private maybeAutoAdvance(): void {
+    const until = this.settings.autoTurnUntil ?? 0;
+    if (until <= 0 || !this.anyTurnAdvanced || this.autoAdvancing) return;
+    this.autoAdvancing = true;
+    try {
+      while (
+        this.state &&
+        this.currentTurn() < until &&
+        (!this.engine.phaseOf || this.engine.phaseOf(this.state) === 'planning')
+      ) {
+        const turn = this.currentTurn();
+        this.committed.clear();
+        this.accept({
+          turn,
+          playerId: -1,
+          kind: 'advance_turn',
+          payload: this.engine.advancePayload(this.state),
+        });
+        this.broadcast({ t: 'commit_status', turn: this.currentTurn(), committed: [] });
+      }
+    } finally {
+      this.autoAdvancing = false;
+    }
   }
 
   private onHashReport(from: number, msg: Extract<ClientToHost, { t: 'hash_report' }>): void {
