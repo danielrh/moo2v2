@@ -42,13 +42,25 @@ export interface GameMeta {
   roomCode: string;
 }
 
+export interface SaveSnapshot {
+  turn: number;
+  seq: number;
+  stateJson: string;
+  stateHash: string;
+}
+
 export interface SaveEnvelope {
   format: 'moo2v2-save';
-  version: 1;
+  version: 1 | 2;
   game: GamesTable;
   players: GamePlayersTable[];
   commands: Array<{ seq: number; turn: number; playerId: number; kind: string; payload: string }>;
-  snapshot: { turn: number; seq: number; stateJson: string; stateHash: string } | null;
+  /** the final snapshot: the snapshot-first load base on any future build */
+  snapshot: SaveSnapshot | null;
+  /** v2 history: every stored snapshot ascending by turn (what-if resume points) */
+  snapshots?: SaveSnapshot[];
+  /** v2: false when the log + old snapshots were stripped at save time */
+  history?: boolean;
 }
 
 export class GameStore {
@@ -357,7 +369,24 @@ export class GameStore {
 
   // ----- export / import -----
 
-  async exportGame(gameId: string): Promise<SaveEnvelope> {
+  /** All stored snapshots, ascending by turn (gunzipped). */
+  async allSnapshots(gameId: string): Promise<SaveSnapshot[]> {
+    const rows = await this.db
+      .selectFrom('snapshots')
+      .selectAll()
+      .where('game_id', '=', gameId)
+      .orderBy('turn')
+      .execute();
+    const out: SaveSnapshot[] = [];
+    for (const row of rows) {
+      const bytes = row.state instanceof Uint8Array ? row.state : new Uint8Array(row.state as ArrayBufferLike);
+      out.push({ turn: row.turn, seq: row.seq, stateJson: await gunzipText(bytes), stateHash: row.state_hash });
+    }
+    return out;
+  }
+
+  async exportGame(gameId: string, opts: { history?: boolean } = {}): Promise<SaveEnvelope> {
+    const history = opts.history ?? true;
     const game = await this.getGame(gameId);
     if (!game) throw new Error(`no such game: ${gameId}`);
     const players = await this.getPlayers(gameId);
@@ -367,14 +396,19 @@ export class GameStore {
       .where('game_id', '=', gameId)
       .orderBy('seq')
       .execute();
-    const snapshot = await this.latestSnapshot(gameId);
+    const snapshots = await this.allSnapshots(gameId);
+    const snapshot = snapshots.length ? snapshots[snapshots.length - 1]! : null;
     return {
       format: 'moo2v2-save',
-      version: 1,
+      version: 2,
       game,
       players,
-      commands: commands.map((c) => ({ seq: c.seq, turn: c.turn, playerId: c.player_id, kind: c.kind, payload: c.payload })),
-      snapshot: snapshot ?? null,
+      commands: history
+        ? commands.map((c) => ({ seq: c.seq, turn: c.turn, playerId: c.player_id, kind: c.kind, payload: c.payload }))
+        : [],
+      snapshot,
+      snapshots: history ? snapshots.slice(0, -1) : [],
+      history,
     };
   }
 
@@ -406,14 +440,8 @@ export class GameStore {
         )
         .execute();
     }
-    if (envelope.snapshot) {
-      await this.saveSnapshot(
-        envelope.game.game_id,
-        envelope.snapshot.turn,
-        envelope.snapshot.seq,
-        envelope.snapshot.stateJson,
-        envelope.snapshot.stateHash,
-      );
+    for (const snap of [...(envelope.snapshots ?? []), ...(envelope.snapshot ? [envelope.snapshot] : [])]) {
+      await this.saveSnapshot(envelope.game.game_id, snap.turn, snap.seq, snap.stateJson, snap.stateHash);
     }
   }
 }
