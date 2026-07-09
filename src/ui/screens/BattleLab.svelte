@@ -120,9 +120,11 @@
 
   function run() {
     error = '';
+    // plain data only: the sim + structuredClone must never see $state proxies
+    const snap = $state.snapshot(sides) as unknown as [LabSide, LabSide];
     const ships: CombatShipInit[] = [];
     for (const side of [0, 1] as const) {
-      sides[side].groups.forEach((g, gi) => {
+      snap[side].groups.forEach((g, gi) => {
         for (let n = 0; n < Math.min(g.count, 12); n++) {
           const cs = toCombat(side, g, gi, n);
           if (typeof cs === 'string') {
@@ -144,8 +146,8 @@
       attacker: 0,
       defender: 1,
       ships: ships.sort((a, b) => a.shipId - b.shipId),
-      ordersA: { ...sides[0].orders },
-      ordersD: { ...sides[1].orders },
+      ordersA: { ...snap[0].orders },
+      ordersD: { ...snap[1].orders },
     };
     const padded = seed.padEnd(32, '0').slice(0, 32);
     const result = runBattle(structuredClone(input), rngFor(padded, ...input.seedLabel));
