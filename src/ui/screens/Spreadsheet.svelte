@@ -122,6 +122,20 @@
     }
     return [...common].sort();
   });
+  const selectableRows = $derived(rows.filter((r) => !r.outpost));
+  function selectAllFiltered() {
+    selected = new Set(selectableRows.map((r) => r.id));
+  }
+  /** quick job configurations for every selected colony */
+  function applyPreset(preset: selectors.JobPreset) {
+    const s = session().getPlanned();
+    if (!s) return;
+    for (const row of rows) {
+      if (!selected.has(row.id) || row.outpost) continue;
+      const groups = selectors.presetJobs(s, row.id, preset);
+      if (groups) session().submit('set_jobs', { colonyId: row.id, groups });
+    }
+  }
 
   type Job = 'farmers' | 'workers' | 'scientists';
   function moveJob(row: selectors.ColonyRow, fromJob: Job, toJob: Job) {
@@ -224,7 +238,10 @@
 </script>
 
 <div class="bar">
-  <input data-testid="colony-filter" placeholder="filter colonies…" bind:value={filter} style="width:12rem" />
+  <input data-testid="colony-filter" placeholder="filter colonies or tags…" bind:value={filter} style="width:12rem" />
+  <button data-testid="select-filtered" title="select every colony matching the current filter" onclick={selectAllFiltered}>
+    select all ({selectableRows.length})
+  </button>
   {#if selected.size > 0}
     <span>{selected.size} selected:</span>
     <select
@@ -238,6 +255,12 @@
       <option value="">set build for all…</option>
       {#each bulkOptions as item (item)}<option value={item}>{label(item)}</option>{/each}
     </select>
+    <span class="presets">
+      jobs:
+      <button data-testid="preset-research" title="minimum farmers to stay fed; everyone else does research" onclick={() => applyPreset('research')}>⚗ research</button>
+      <button data-testid="preset-industry" title="minimum farmers to stay fed; everyone else works industry" onclick={() => applyPreset('industry')}>⚒ industry</button>
+      <button data-testid="preset-blend" title="industry capped at ≤2 pollution; the rest research" onclick={() => applyPreset('blend')}>⚗⚒ blend</button>
+    </span>
     <button onclick={() => (selected = new Set())}>clear selection</button>
   {:else}
     <span class="dim">tick colonies to bulk-set builds · click headers to sort · drag a job number onto another column to move a colonist</span>

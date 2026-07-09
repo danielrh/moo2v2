@@ -208,6 +208,72 @@ export function empireSummary(state: GameState, empireId: number): EmpireSummary
   };
 }
 
+export type JobPreset = 'research' | 'industry' | 'blend';
+
+/** Bulk job presets for the colonies screen. Farmers are set to the fewest
+ * that keep the colony fed (0 if farming cannot feed it — freighters cover
+ * shortfalls); the rest go to science ('research'), industry ('industry'), or
+ * industry capped at pollution <= 2 with the remainder on science ('blend'). */
+export function presetJobs(
+  state: GameState,
+  colonyId: number,
+  preset: JobPreset,
+): Array<{ race: number; farmers: number; workers: number; scientists: number }> | null {
+  const colony = state.colonies.find((c) => c.id === colonyId);
+  if (!colony || colony.outpost || colony.groups.length === 0) return null;
+  const probe: Colony = structuredClone(colony);
+  const unitsOf = (g: { popK: number }) => Math.floor(g.popK / 1000);
+  const total = probe.groups.reduce((n, g) => n + unitsOf(g), 0);
+  if (total === 0) return null;
+
+  const assign = (farmers: number, workers: number): void => {
+    let f = farmers;
+    let w = workers;
+    for (const g of probe.groups) {
+      const units = unitsOf(g);
+      g.farmers = Math.min(units, f);
+      f -= g.farmers;
+      g.workers = Math.min(units - g.farmers, w);
+      w -= g.workers;
+      g.scientists = units - g.farmers - g.workers;
+    }
+  };
+
+  // fewest farmers that feed the colony (foodNet is monotone in farmers)
+  let farmers = 0;
+  let fed = false;
+  for (let f = 0; f <= total; f++) {
+    assign(f, 0);
+    if (colonyOutput(state, probe).foodNet >= 0) {
+      farmers = f;
+      fed = true;
+      break;
+    }
+  }
+  if (!fed) farmers = 0; // farming cannot feed this world: do not waste hands
+
+  const rest = total - farmers;
+  let workers = 0;
+  if (preset === 'industry') {
+    workers = rest;
+  } else if (preset === 'blend') {
+    for (let w = rest; w >= 0; w--) {
+      assign(farmers, w);
+      if (colonyOutput(state, probe).pollution <= 2) {
+        workers = w;
+        break;
+      }
+    }
+  }
+  assign(farmers, workers);
+  return probe.groups.map((g) => ({
+    race: g.race,
+    farmers: g.farmers,
+    workers: g.workers,
+    scientists: g.scientists,
+  }));
+}
+
 export interface ResearchChoice {
   field: FieldRow;
   subject: string;

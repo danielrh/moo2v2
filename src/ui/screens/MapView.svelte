@@ -46,6 +46,20 @@
   });
   /** fuel-range envelope: circles around every colony/outpost star */
   let showRange = $state(true);
+
+  /** map zoom mode: 'fit' shows the whole galaxy, 'zoom' is a scrollable
+   * close-up. Persisted so a reload keeps the chosen view (bugs.md). */
+  let mapZoom = $state<'fit' | 'zoom'>(
+    typeof localStorage !== 'undefined' && localStorage.getItem('moo2.mapZoom') === 'zoom' ? 'zoom' : 'fit',
+  );
+  function toggleMapZoom() {
+    mapZoom = mapZoom === 'fit' ? 'zoom' : 'fit';
+    try {
+      localStorage.setItem('moo2.mapZoom', mapZoom);
+    } catch {
+      // private mode: view still toggles, just not remembered
+    }
+  }
   const rangeCircles = $derived.by(() => {
     if (!gs || !showRange) return [];
     const empire = gs.empires.find((e) => e.id === me());
@@ -217,7 +231,12 @@
 
 <div class="wrap">
   <div class="mapcol">
-    <svg viewBox="0 0 {mapDims.w} {mapDims.h}" data-testid="galaxy-map">
+    <div class="scroller" class:zoomed={mapZoom === 'zoom'}>
+    <svg
+      viewBox="0 0 {mapDims.w} {mapDims.h}"
+      data-testid="galaxy-map"
+      style={mapZoom === 'zoom' ? `width:${Math.round(mapDims.w * 0.85)}px;max-width:none` : ''}
+    >
       <defs>
         <filter id="starglow" x="-80%" y="-80%" width="260%" height="260%">
           <feGaussianBlur stdDeviation="6" result="blur" />
@@ -339,7 +358,14 @@
         </g>
       {/each}
     </svg>
+    </div>
     <div class="legend">
+      <button
+        class="zoombtn"
+        data-testid="map-zoom-toggle"
+        title="toggle between fitting the whole galaxy and a scrollable close-up"
+        onclick={toggleMapZoom}
+      >{mapZoom === 'fit' ? '🔍 zoom in' : '🗺 fit galaxy'}</button>
       <label><input type="checkbox" bind:checked={showRange} /> fuel range</label>
       <span><span class="sw" style="border-color:#5a3030"></span> dashed ring = out of range</span>
       <span class="dimtext">◐ faded star = unexplored</span>
@@ -491,6 +517,14 @@
     border-radius: 10px;
     min-height: 420px;
     display: block;
+  }
+  .scroller.zoomed {
+    overflow: auto;
+    max-height: 74vh;
+    border-radius: 10px;
+  }
+  .zoombtn {
+    font-size: 0.8rem;
   }
   .star {
     cursor: pointer;
