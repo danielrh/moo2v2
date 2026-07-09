@@ -22,8 +22,61 @@ export const MAX_TICKS = 400;
  * to land equal-tech passes in the 20-40% fleet-damage envelope) */
 export const COMBAT_PACE = 250;
 
-export type Stance = 'charge' | 'hold_range' | 'standoff' | 'evade_retreat';
+export type Stance = 'charge' | 'hold_range' | 'standoff' | 'evade_retreat' | 'formation' | 'passthrough';
 export type TargetPriority = 'nearest' | 'biggest' | 'smallest' | 'warships' | 'bases';
+
+/** Weapon firing arcs (relative to the ship's heading):
+ *  F = forward 180°, FX = extended 270°, R = rear 180°, 360 = all around. */
+export type WeaponArc = 'F' | 'FX' | 'R' | '360';
+
+// ---- integer heading math: 32 compass directions, cos/sin scaled by 16384 ----
+export const DIRS = 32;
+const TRIG: ReadonlyArray<readonly [number, number]> = [
+  [16384, 0], [16069, 3196], [15137, 6270], [13623, 9102], [11585, 11585], [9102, 13623], [6270, 15137], [3196, 16069],
+  [0, 16384], [-3196, 16069], [-6270, 15137], [-9102, 13623], [-11585, 11585], [-13623, 9102], [-15137, 6270], [-16069, 3196],
+  [-16384, 0], [-16069, -3196], [-15137, -6270], [-13623, -9102], [-11585, -11585], [-9102, -13623], [-6270, -15137], [-3196, -16069],
+  [0, -16384], [3196, -16069], [6270, -15137], [9102, -13623], [11585, -11585], [13623, -9102], [15137, -6270], [16069, -3196],
+];
+
+/** heading (0..31) whose unit vector best matches (dx,dy) — integer argmax */
+export function headingToward(dx: number, dy: number): number {
+  let best = 0;
+  let bestDot = -Infinity;
+  for (let h = 0; h < DIRS; h++) {
+    const dot = TRIG[h]![0] * dx + TRIG[h]![1] * dy;
+    if (dot > bestDot) {
+      bestDot = dot;
+      best = h;
+    }
+  }
+  return best;
+}
+
+/** signed shortest rotation from heading a to b, in [-16, 16) */
+export function headingDelta(a: number, b: number): number {
+  let d = (b - a) % DIRS;
+  if (d > DIRS / 2) d -= DIRS;
+  if (d < -DIRS / 2) d += DIRS;
+  return d;
+}
+
+/** hull turn rate in headings/tick: small ships whip around, capitals lumber */
+export function turnRateOf(hullIdx: number, isBase: boolean): number {
+  if (isBase) return 2;
+  if (hullIdx <= 2) return 4; // frigate, destroyer: 45°/tick
+  if (hullIdx <= 3) return 3;
+  if (hullIdx <= 4) return 2;
+  return 1; // titan, doomstar
+}
+
+/** is a target bearing (0..31, relative to heading) inside the weapon's arc? */
+export function inArc(arc: WeaponArc, headingToTarget: number, heading: number): boolean {
+  if (arc === '360') return true;
+  const d = Math.abs(headingDelta(heading, headingToTarget));
+  if (arc === 'F') return d <= 8; // ±90°
+  if (arc === 'FX') return d <= 12; // ±135°
+  return d >= 8; // R: rear half ±90° around the tail
+}
 
 export interface BattleOrders {
   stance: Stance;
@@ -50,6 +103,8 @@ export interface CombatWeapon {
   ammo: number; // -1 unlimited
   cooldown: number; // ticks between shots
   count: number;
+  /** firing arc relative to heading (absent = F; point defense is always 360) */
+  arc?: WeaponArc;
 }
 
 export interface CombatShipInit {
@@ -98,7 +153,20 @@ export interface ShotEvent {
 
 export interface BattleTickFrame {
   tick: number;
-  ships: Array<{ id: number; x: number; y: number; alive: boolean; retreated: boolean; crossed: boolean; structPct: number; shieldPct: number }>;
+  ships: Array<{
+    id: number;
+    x: number;
+    y: number;
+    /** heading 0..31 (0 = +x): the sprite rotation */
+    h: number;
+    alive: boolean;
+    retreated: boolean;
+    crossed: boolean;
+    structPct: number;
+    shieldPct: number;
+    /** knocked-out systems this tick: d(rive) c(omputer) s(hields) */
+    sys: string;
+  }>;
   shots: ShotEvent[];
   /** guided munitions in flight this tick (missiles classId 1, torpedoes 2) */
   projectiles: Array<{ x: number; y: number; classId: number }>;
@@ -129,9 +197,15 @@ interface Sim {
   init: CombatShipInit;
   x: number;
   y: number;
+  /** facing, 0..31 (0 = +x toward the defender side) */
+  heading: number;
+  /** deployment row (formation keeps this lane) */
+  homeY: number;
   alive: boolean;
   retreated: boolean;
   crossed: boolean;
+  /** passthrough: this ship has punched past the enemy line */
+  passedThrough: boolean;
   shield: number;
   shieldRegenAcc: number;
   armor: number;
@@ -144,7 +218,14 @@ interface Sim {
   specials: Set<string>;
   missileEvasion: number; // % chance an arriving missile/torpedo misses
   repairAcc: number; // automated repair unit accumulator
+  /** transient system knockouts (battle-local; never persisted) */
+  sysDrive: boolean;
+  sysComputer: boolean;
+  sysShield: boolean;
 }
+
+/** chance (%) that a structure hit knocks out a random ship system */
+export const SYSTEM_KNOCKOUT_PCT = 20;
 
 interface Projectile {
   from: number; // sim index
