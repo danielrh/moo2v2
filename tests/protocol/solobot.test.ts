@@ -20,14 +20,20 @@ function identity(name: string) {
   };
 }
 
-async function soloGame() {
+async function soloGame(mode: 'parity' | 'fair' = 'parity') {
   const hub = new MemoryHub(2);
   const engine = gameEngine as unknown as EngineAdapter<GameState>;
   const hosted = createHostedGame<GameState>({
     transport: hub.join(),
     engine,
     store: null,
-    settings: { ...DEFAULT_SETTINGS, playerCount: 2, debugCommands: true, galaxySize: 'small', startMode: 'average' },
+    settings: {
+      ...DEFAULT_SETTINGS,
+      playerCount: 2,
+      debugCommands: mode === 'parity',
+      galaxySize: 'small',
+      startMode: 'average',
+    },
     identity: identity('Human'),
   });
   const botSession = joinGame<GameState>({
@@ -36,7 +42,7 @@ async function soloGame() {
     store: null,
     identity: identity('Bot'),
   });
-  const bot = new SoloBot({ session: botSession });
+  const bot = new SoloBot({ session: botSession, mode });
   await hub.settle();
   hosted.session.setRaceConfig(JSON.stringify({ presetId: 'solari' }), true);
   await hub.settle();
@@ -130,6 +136,24 @@ describe('single-player bot (bug: solo mode with a very simple bot, no lobbylink
     const sci = botColony.groups.reduce((n, g) => n + g.scientists, 0);
     expect(sci).toBeGreaterThanOrEqual(1);
     expect(botColony.queue.length).toBeGreaterThan(0);
+    bot.close();
+  });
+
+  it('fair mode: never uses debug commands, researches on its own, builds a colony ship to expand', async () => {
+    const { hub, hosted, bot } = await soloGame('fair');
+    for (let i = 0; i < 3; i++) await endTurn(hub, hosted);
+    await hub.settle();
+    // no cheating: not a single debug grant in the authoritative log
+    expect(hosted.host.getLog().some((c) => c.kind.startsWith('debug_'))).toBe(false);
+    const state = hosted.session.getState()!;
+    // real research is under way
+    expect(state.empires[1]!.research.fieldNum).not.toBeNull();
+    // expansion the honest way: a colony ship is queued (or already launched)
+    const queued = state.colonies.some(
+      (c) => c.owner === 1 && c.queue.some((q) => q.item === 'colony_ship'),
+    );
+    const launched = state.ships.some((s) => s.owner === 1 && s.shipKind === 'colony_ship');
+    expect(queued || launched).toBe(true);
     bot.close();
   });
 
