@@ -191,6 +191,8 @@
             {v.explored ? '' : ' — unexplored'}
             {reachable.has(v.star.id) ? '' : ' — out of fuel range'}
           </title>
+          <!-- invisible hit target so the whole star area is clickable -->
+          <circle r="30" fill="transparent" stroke="none" />
           {#if v.star.id === selectedStarId}
             <circle r="36" class="selring" />
           {/if}
