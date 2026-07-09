@@ -31,14 +31,19 @@ export class SoloBot {
   private readonly session: GameSession<GameState>;
   private aggressive = false;
   private lastPlayedTurn = 0;
+  private orderedBattles = new Set<string>();
   private unsub: (() => void) | null = null;
 
   constructor(opts: SoloBotOptions) {
     this.session = opts.session;
-    this.session.setRaceConfig(opts.raceJson ?? JSON.stringify({ presetId: 'hivex' }), true);
+    const raceJson = opts.raceJson ?? JSON.stringify({ presetId: 'hivex' });
+    this.session.setRaceConfig(raceJson, true);
     this.unsub = this.session.subscribe((ev) => {
       if (ev.type === 'lobby') {
-        this.session.setRaceConfig(opts.raceJson ?? JSON.stringify({ presetId: 'hivex' }), true);
+        // re-ready only while the roster does not yet show us ready — an
+        // unconditional send here would echo lobby updates forever
+        const self = this.session.getRoster().find((p) => p.id === this.session.playerId);
+        if (self && (!self.ready || !self.raceJson)) this.session.setRaceConfig(raceJson, true);
       }
       if (ev.type === 'started' || ev.type === 'turn-advanced' || ev.type === 'state' || ev.type === 'commit-status') {
         this.maybePlay();
@@ -72,6 +77,7 @@ export class SoloBot {
     }
     if (state.turn === this.lastPlayedTurn) return;
     this.lastPlayedTurn = state.turn;
+    this.orderedBattles.clear();
     try {
       this.playTurn(state);
     } finally {
@@ -230,7 +236,8 @@ export class SoloBot {
     for (const b of state.pendingBattles) {
       if (b.attacker !== me && b.defender !== me) continue;
       const mine = b.attacker === me ? b.ordersA : b.ordersD;
-      if (mine !== null) continue;
+      if (mine !== null || this.orderedBattles.has(b.id)) continue;
+      this.orderedBattles.add(b.id); // once — resubmitting on every event would echo forever
       this.submit('battle_orders', {
         battleId: b.id,
         orders: {
