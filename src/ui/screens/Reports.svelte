@@ -37,6 +37,7 @@
       case 'star_explored': return `a new star system was charted`;
       case 'ship_arrived': return `a fleet arrived at its destination`;
       case 'starvation': return `${colonyOf(p['colonyId'])} is starving (${p['lack']} short)`;
+      case 'food_chartered': return `chartered civilian haulers moved ${p['units']} food beyond freighter capacity (−${p['bc']} BC)`;
       case 'population_lost': return `${colonyOf(p['colonyId'])} lost population`;
       case 'colony_died': return `a colony has perished`;
       case 'research_complete': {
