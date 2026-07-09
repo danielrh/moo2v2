@@ -368,6 +368,9 @@ export function generateGalaxy(
   settings: GameStateSettings,
   empireTraits: RaceTraits[],
 ): GeneratedGalaxy {
+  if (settings.mirror && ROTATIONS[empireTraits.length]) {
+    return generateMirrorGalaxy(seed, settings, empireTraits);
+  }
   const rng = rngFor(seed, 'galaxy');
   const { w, h } = MAP_SIZE[settings.galaxySize];
   const starCount = STAR_COUNTS[settings.galaxySize];
@@ -407,35 +410,13 @@ export function generateGalaxy(
   // --- planets ---
   const planets: Planet[] = [];
   for (const star of stars) {
-    const count = weighted(
-      rng,
-      PLANET_COUNT_WEIGHTS[star.color].map((wgt, n) => [n, wgt] as [number, number]),
-    );
-    const orbits = [1, 2, 3, 4, 5];
-    rng.shuffle(orbits);
-    for (let k = 0; k < count; k++) {
-      const orbit = orbits[k]!;
-      const body = weighted(rng, BODY_WEIGHTS);
-      const sizeClass = 1 + weighted(rng, SIZE_WEIGHTS.map((wgt, i) => [i, wgt] as [number, number]));
-      planets.push({
-        id: nextId++,
-        starId: star.id,
-        orbit,
-        body,
-        sizeClass: body === 'planet' ? sizeClass : 3,
-        climate: body === 'planet' ? weighted(rng, CLIMATE_WEIGHTS[orbitBand(orbit)]) : 'barren',
-        minerals: weighted(rng, MINERAL_WEIGHTS[star.color]),
-        gravity: rollGravity(rng, body === 'planet' ? sizeClass : 3),
-        special: null,
-        homeworldOf: null,
-        terraformSteps: 0,
-      });
+    for (const spec of rollPlanetSpecs(rng, star.color)) {
+      planets.push({ id: nextId++, starId: star.id, ...spec });
     }
   }
   planets.sort((a, b) => a.id - b.id);
 
   // --- homeworlds: pick well-separated stars, override one planet each ---
-  const homePlanets: number[] = [];
   const homeStars: Star[] = [];
   const nonHole = stars.filter((s) => s.color !== 'black_hole');
   let bestSpread: Star[] | null = null;
@@ -455,11 +436,55 @@ export function generateGalaxy(
     // dense fallback: just take the most mutually distant stars greedily
     bestSpread = nonHole.slice(0, empireTraits.length);
   }
+  for (const s of bestSpread) homeStars.push(s);
+
+  // --- connectivity guarantee: bridge stars until all homes link at hop range ---
+  ensureHomeConnectivity(
+    stars,
+    planets,
+    homeStars.map((s) => s.id),
+    () => true,
+    (x, y) => {
+      const star: Star = {
+        id: nextId++,
+        name: starName(rng, taken, namePool),
+        x,
+        y,
+        color: (() => {
+          const c = weighted(rng, COLOR_WEIGHTS);
+          return c === 'black_hole' ? 'red' : c;
+        })(),
+        wormholeTo: null,
+        sym: -1,
+      };
+      stars.push(star);
+      for (const spec of rollPlanetSpecs(rng, star.color, 1)) {
+        planets.push({ id: nextId++, starId: star.id, ...spec });
+      }
+    },
+  );
+
+  nextId = placeHomeworlds(planets, homeStars, empireTraits, settings, nextId);
+  planets.sort((a, b) => a.id - b.id);
+
+  return { stars, planets, homePlanets: homePlanetIds(planets, empireTraits.length), nextId };
+}
+
+/** Override each home star's orbit 3 with the race homeworld and equalize the
+ * rest of the system: exactly one sibling world, identical for every player
+ * ('good' start = ultra-rich, 'min' start = abundant). */
+function placeHomeworlds(
+  planets: Planet[],
+  homeStars: Star[],
+  empireTraits: RaceTraits[],
+  settings: GameStateSettings,
+  nextIdIn: number,
+): number {
+  let nextId = nextIdIn;
+  const sibMinerals: Minerals = (settings.homeStart ?? 'good') === 'min' ? 'abundant' : 'ultra_rich';
   for (let e = 0; e < empireTraits.length; e++) {
-    const star = bestSpread[e]!;
-    homeStars.push(star);
+    const star = homeStars[e]!;
     const traits = empireTraits[e]!;
-    // replace/insert the homeworld at orbit 3
     const existingIdx = planets.findIndex((p) => p.starId === star.id && p.orbit === 3);
     const hw: Planet = {
       id: existingIdx >= 0 ? planets[existingIdx]!.id : nextId++,
@@ -476,35 +501,166 @@ export function generateGalaxy(
     };
     if (existingIdx >= 0) planets[existingIdx] = hw;
     else planets.push(hw);
-    homePlanets.push(hw.id);
 
-    // every home system starts with at least one other settleable world — a
-    // modest poor planet — so colony bases have somewhere to go (min-start rule)
-    const sibling = planets.find((p) => p.starId === star.id && p.id !== hw.id && p.body === 'planet');
-    if (!sibling) {
-      const usedOrbits = new Set(planets.filter((p) => p.starId === star.id).map((p) => p.orbit));
-      const orbit = [2, 4, 1, 5].find((o) => !usedOrbits.has(o)) ?? 2;
-      const existingAt = planets.findIndex((p) => p.starId === star.id && p.orbit === orbit);
-      const extra: Planet = {
-        id: existingAt >= 0 ? planets[existingAt]!.id : nextId++,
-        starId: star.id,
-        orbit,
-        body: 'planet',
-        sizeClass: 2,
-        climate: weighted(rng, CLIMATE_WEIGHTS[orbitBand(orbit)]),
-        minerals: 'poor',
-        gravity: rollGravity(rng, 2),
-        special: null,
-        homeworldOf: null,
-        terraformSteps: 0,
-      };
-      if (existingAt >= 0) planets[existingAt] = extra;
-      else planets.push(extra);
+    // home-system parity: drop every other rolled planet, add the one sibling
+    for (let i = planets.length - 1; i >= 0; i--) {
+      const p = planets[i]!;
+      if (p.starId === star.id && p.id !== hw.id) planets.splice(i, 1);
+    }
+    planets.push({
+      id: nextId++,
+      starId: star.id,
+      orbit: 2,
+      body: 'planet',
+      sizeClass: 3,
+      climate: 'barren',
+      minerals: sibMinerals,
+      gravity: 'normal',
+      special: null,
+      homeworldOf: null,
+      terraformSteps: 0,
+    });
+  }
+  return nextId;
+}
+
+function homePlanetIds(planets: Planet[], empireCount: number): number[] {
+  const ids: number[] = [];
+  for (let e = 0; e < empireCount; e++) {
+    ids.push(planets.find((p) => p.homeworldOf === e)!.id);
+  }
+  return ids;
+}
+
+/** Mirror galaxy: one hub star at the exact center plus N rotated copies of a
+ * seeded wedge. Every player starts on the map edge with an identical
+ * neighborhood (same colors, planets, distances up to 1cp rounding). */
+function generateMirrorGalaxy(
+  seed: MasterSeed,
+  settings: GameStateSettings,
+  empireTraits: RaceTraits[],
+): GeneratedGalaxy {
+  const rng = rngFor(seed, 'galaxy_mirror');
+  const { w, h } = MAP_SIZE[settings.galaxySize];
+  const starCount = STAR_COUNTS[settings.galaxySize];
+  const n = empireTraits.length;
+  const rots = ROTATIONS[n]!;
+  const cx = w >> 1;
+  const cy = h >> 1;
+  const radius = Math.min(cx, cy) - 120; // homes ride the map edge
+  let nextId = 1;
+
+  const stars: Star[] = [];
+  const planets: Planet[] = [];
+  const taken = new Set<string>();
+  const namePool = makeNamePool(rng);
+
+  /** create one star per rotation of (dx,dy), sharing color + planet specs */
+  const addGroup = (dx: number, dy: number, sym: number, color: StarColor, specs: PlanetSpec[]): Star[] => {
+    const out: Star[] = [];
+    for (const rot of rots) {
+      const { x, y } = rotatePoint(cx, cy, dx, dy, rot);
+      const star: Star = { id: nextId++, name: starName(rng, taken, namePool), x, y, color, wormholeTo: null, sym };
+      stars.push(star);
+      for (const spec of specs) planets.push({ id: nextId++, starId: star.id, ...spec });
+      out.push(star);
+    }
+    return out;
+  };
+
+  // hub: a single shared star at the exact center (Orion designate)
+  const hubColor: StarColor = 'yellow';
+  const hub: Star = { id: nextId++, name: starName(rng, taken, namePool), x: cx, y: cy, color: hubColor, wormholeTo: null, sym: 0 };
+  stars.push(hub);
+  for (const spec of rollPlanetSpecs(rng, hubColor, 1)) {
+    planets.push({ id: nextId++, starId: hub.id, ...spec });
+  }
+
+  // home group: one copy per player, on the edge (sym 1)
+  const homeCopies = addGroup(radius, 0, 1, 'yellow', rollPlanetSpecs(rng, 'yellow', 1));
+
+  // wedge stars: sampled offsets whose every rotation stays clear of everything
+  const wedgeGroups = Math.max(2, Math.floor((starCount - 1) / n) - 1);
+  let placed = 0;
+  let guard = 0;
+  let symCounter = 2;
+  while (placed < wedgeGroups && guard++ < 30000) {
+    const dx = rng.int(2 * radius + 1) - radius;
+    const dy = rng.int(2 * radius + 1) - radius;
+    const r2 = dx * dx + dy * dy;
+    if (r2 > radius * radius || r2 < MIN_STAR_DIST * MIN_STAR_DIST) continue;
+    const points = rots.map((rot) => rotatePoint(cx, cy, dx, dy, rot));
+    const clear =
+      points.every((p) =>
+        stars.every((s) => (s.x - p.x) * (s.x - p.x) + (s.y - p.y) * (s.y - p.y) >= MIN_STAR_DIST * MIN_STAR_DIST),
+      ) &&
+      points.every(
+        (p, i) =>
+          points.filter((_, j) => j > i).every((q) => (q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y) >= MIN_STAR_DIST * MIN_STAR_DIST),
+      );
+    if (!clear) continue;
+    const color = weighted(rng, COLOR_WEIGHTS);
+    addGroup(dx, dy, symCounter++, color, rollPlanetSpecs(rng, color));
+    placed++;
+  }
+
+  // symmetric wormholes: one private pair inside every wedge
+  const holeGroups = [...new Set(stars.filter((s) => (s.sym ?? -1) >= 2 && s.color !== 'black_hole').map((s) => s.sym!))];
+  if (holeGroups.length >= 2) {
+    const ga = holeGroups[rng.int(holeGroups.length)]!;
+    let gb = ga;
+    while (gb === ga) gb = holeGroups[rng.int(holeGroups.length)]!;
+    const asPerRot = stars.filter((s) => s.sym === ga);
+    const bsPerRot = stars.filter((s) => s.sym === gb);
+    for (let k = 0; k < Math.min(asPerRot.length, bsPerRot.length); k++) {
+      asPerRot[k]!.wormholeTo = bsPerRot[k]!.id;
+      bsPerRot[k]!.wormholeTo = asPerRot[k]!.id;
     }
   }
+
+  // connectivity: bridge symmetric copies together (hub excluded — it will be
+  // guarded as the prize system, so the guaranteed path avoids it)
+  ensureHomeConnectivity(
+    stars,
+    planets,
+    homeCopies.map((s) => s.id),
+    (s) => s.id !== hub.id,
+    (x, y) => {
+      // convert back to an offset from the hub and add every rotation of it
+      let odx = x - cx;
+      let ody = y - cy;
+      const d2 = odx * odx + ody * ody;
+      if (d2 < MIN_STAR_DIST * MIN_STAR_DIST) {
+        // a chain point on/near the hub: push it out so the copies neither
+        // stack on the hub nor on each other (still symmetric — every copy
+        // gets the same nudged offset)
+        if (d2 === 0) {
+          odx = MIN_STAR_DIST;
+          ody = 0;
+        } else {
+          const d = Math.max(1, isqrt(d2));
+          odx = roundDiv(odx * MIN_STAR_DIST, d);
+          ody = roundDiv(ody * MIN_STAR_DIST, d);
+        }
+      }
+      const specs = rollPlanetSpecs(rng, 'red', 1);
+      for (const rot of rots) {
+        const { x: px, y: py } = rotatePoint(cx, cy, odx, ody, rot);
+        // skip a copy that would stack on an existing star (tight overlaps
+        // only happen near the hub where another copy already serves)
+        if (stars.some((s) => (s.x - px) * (s.x - px) + (s.y - py) * (s.y - py) <= 30 * 30)) continue;
+        const star: Star = { id: nextId++, name: starName(rng, taken, namePool), x: px, y: py, color: 'red', wormholeTo: null, sym: -1 };
+        stars.push(star);
+        for (const spec of specs) planets.push({ id: nextId++, starId: star.id, ...spec });
+      }
+    },
+  );
+
+  planets.sort((a, b) => a.id - b.id);
+  nextId = placeHomeworlds(planets, homeCopies, empireTraits, settings, nextId);
   planets.sort((a, b) => a.id - b.id);
 
-  return { stars, planets, homePlanets, nextId };
+  return { stars, planets, homePlanets: homePlanetIds(planets, n), nextId };
 }
 
 function rollGravity(rng: Rng, sizeClass: number): Gravity {

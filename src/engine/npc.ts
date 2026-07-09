@@ -155,16 +155,17 @@ export function hostileMonsterAt(state: GameState, starId: number): boolean {
 
 /** Game-start placement: guarded systems + the Guardian's prize system (M1). */
 export function seedMonsters(state: GameState): void {
+  if (state.settings.mirror) return seedMonstersMirror(state);
   const rng = rngFor(state.seed, 0, 'monsters');
   const homeStars = new Set<number>();
   for (const c of state.colonies) {
     const p = state.planets.find((x) => x.id === c.planetId);
     if (p) homeStars.add(p.starId);
   }
-  // Orion: the star farthest from every homeworld
+  // Orion: the star farthest from every homeworld (never a connectivity bridge)
   let orion: { starId: number; score: number } | null = null;
   for (const star of state.stars) {
-    if (homeStars.has(star.id) || star.color === 'black_hole') continue;
+    if (homeStars.has(star.id) || star.color === 'black_hole' || star.sym === -1) continue;
     let nearest = Infinity;
     for (const hs of homeStars) {
       const h = state.stars.find((s) => s.id === hs)!;
@@ -174,40 +175,72 @@ export function seedMonsters(state: GameState): void {
     if (!orion || nearest > orion.score) orion = { starId: star.id, score: nearest };
   }
   if (orion) {
-    const star = state.stars.find((s) => s.id === orion!.starId)!;
-    star.name = 'Orion';
-    // re-roll its planets into prizes
-    state.planets = state.planets.filter((p) => p.starId !== star.id);
-    const prizes: Array<Pick<Planet, 'sizeClass' | 'climate' | 'minerals'>> = [
-      { sizeClass: 5, climate: 'gaia', minerals: 'abundant' },
-      { sizeClass: 4, climate: 'terran', minerals: 'ultra_rich' },
-      { sizeClass: 3, climate: 'arid', minerals: 'rich' },
-    ];
-    prizes.forEach((prize, i) => {
-      state.planets.push({
-        id: state.nextId++,
-        starId: star.id,
-        orbit: i + 1,
-        body: 'planet',
-        sizeClass: prize.sizeClass,
-        climate: prize.climate,
-        minerals: prize.minerals,
-        gravity: 'normal',
-        special: i === 0 ? 'ancient_artifacts' : null,
-        homeworldOf: null,
-        terraformSteps: 0,
-      });
-    });
-    state.planets.sort((a, b) => a.id - b.id);
-    state.monsters.push({ id: state.nextId++, kind: 'guardian', starId: star.id, dmgStructure: 0 });
+    placeOrion(state, state.stars.find((s) => s.id === orion!.starId)!);
   }
-  // guarded systems: ~12% of remaining systems with planets
+  // guarded systems: ~12% of remaining systems with planets (bridges exempt —
+  // they carry the guaranteed path between players)
   for (const star of state.stars) {
-    if (homeStars.has(star.id) || star.id === orion?.starId) continue;
+    if (homeStars.has(star.id) || star.id === orion?.starId || star.sym === -1) continue;
     if (!state.planets.some((p) => p.starId === star.id && p.body === 'planet')) continue;
     if (rng.chancePct(12)) {
       const kind = GUARDABLE[rng.int(GUARDABLE.length)]!;
       state.monsters.push({ id: state.nextId++, kind, starId: star.id, dmgStructure: 0 });
+    }
+  }
+  state.monsters.sort((a, b) => a.id - b.id);
+}
+
+/** Turn a star into Orion: prize worlds + the Guardian. */
+function placeOrion(state: GameState, star: GameState['stars'][number]): void {
+  star.name = 'Orion';
+  // re-roll its planets into prizes
+  state.planets = state.planets.filter((p) => p.starId !== star.id);
+  const prizes: Array<Pick<Planet, 'sizeClass' | 'climate' | 'minerals'>> = [
+    { sizeClass: 5, climate: 'gaia', minerals: 'abundant' },
+    { sizeClass: 4, climate: 'terran', minerals: 'ultra_rich' },
+    { sizeClass: 3, climate: 'arid', minerals: 'rich' },
+  ];
+  prizes.forEach((prize, i) => {
+    state.planets.push({
+      id: state.nextId++,
+      starId: star.id,
+      orbit: i + 1,
+      body: 'planet',
+      sizeClass: prize.sizeClass,
+      climate: prize.climate,
+      minerals: prize.minerals,
+      gravity: 'normal',
+      special: i === 0 ? 'ancient_artifacts' : null,
+      homeworldOf: null,
+      terraformSteps: 0,
+    });
+  });
+  state.planets.sort((a, b) => a.id - b.id);
+  state.monsters.push({ id: state.nextId++, kind: 'guardian', starId: star.id, dmgStructure: 0 });
+}
+
+/** Mirror-galaxy placement: Orion sits on the shared hub (equidistant from
+ * every home) and guarded systems are decided per symmetry group so every
+ * player faces the identical set of keepers. */
+function seedMonstersMirror(state: GameState): void {
+  const rng = rngFor(state.seed, 0, 'monsters');
+  const hub = state.stars.find((s) => s.sym === 0);
+  if (hub) {
+    placeOrion(state, hub);
+  }
+  const groups = new Map<number, typeof state.stars>();
+  for (const star of state.stars) {
+    if (star.sym === undefined || star.sym < 2) continue; // hub, homes, bridges exempt
+    groups.set(star.sym, [...(groups.get(star.sym) ?? []), star]);
+  }
+  for (const sym of [...groups.keys()].sort((a, b) => a - b)) {
+    const members = groups.get(sym)!;
+    if (!state.planets.some((p) => p.starId === members[0]!.id && p.body === 'planet')) continue;
+    if (rng.chancePct(12)) {
+      const kind = GUARDABLE[rng.int(GUARDABLE.length)]!;
+      for (const star of members.sort((a, b) => a.id - b.id)) {
+        state.monsters.push({ id: state.nextId++, kind, starId: star.id, dmgStructure: 0 });
+      }
     }
   }
   state.monsters.sort((a, b) => a.id - b.id);

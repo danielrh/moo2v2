@@ -144,6 +144,26 @@
         <option value="average">average</option>
       </select>
     </label>
+    <label title="every player's home system gets the identical second world">
+      Home system:
+      <select
+        data-testid="home-start"
+        value={settings.homeStart ?? 'good'}
+        onchange={(e) => updateSetting('homeStart', (e.target as HTMLSelectElement).value as GameSettings['homeStart'])}
+      >
+        <option value="good">good start (ultra-rich sibling)</option>
+        <option value="min">min start (abundant sibling)</option>
+      </select>
+    </label>
+    <label title="the galaxy is built from identical rotated wedges — every player starts on the edge with exactly the same nearby stars, planets and keepers">
+      <input
+        type="checkbox"
+        data-testid="mode-mirror"
+        checked={settings.mirror ?? false}
+        onchange={(e) => updateSetting('mirror', (e.target as HTMLInputElement).checked)}
+      />
+      Mirror galaxy
+    </label>
     {#each MODE_HELP as m (m.key)}
       <label title={m.help}>
         <input
