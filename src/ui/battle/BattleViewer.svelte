@@ -251,16 +251,18 @@
     if (frames.length) drawFrame(0);
     pixi.ticker.add((t) => {
       if (!frames.length) return;
+      const msPerTick = 100 / speed;
       if (playing) {
         elapsed += t.deltaMS;
-        const msPerTick = 100 / speed;
         while (elapsed >= msPerTick && frameIdx < frames.length - 1) {
           elapsed -= msPerTick;
           frameIdx++;
         }
         if (frameIdx >= frames.length - 1) playing = false;
       }
-      drawFrame(Math.min(frameIdx, frames.length - 1));
+      // sub-tick fraction keeps beam pulses and slugs gliding between ticks
+      const frac = playing ? Math.min(0.999, elapsed / msPerTick) : 0;
+      drawFrame(Math.min(frameIdx, frames.length - 1), frac);
     });
   });
 
@@ -306,6 +308,9 @@
       <input class="scrub" type="range" min="0" max={totalFrames - 1} value={Math.min(frameIdx, totalFrames - 1)} oninput={scrub} />
     {/if}
     <div class="canvashost" bind:this={host}></div>
+    {#if (input.bystanders ?? []).length > 0}
+      <p class="keyline">△ hollow arrows at the edges are non-combat ships — they sit out the pass and are lost only if their escorts fall.</p>
+    {/if}
     {#if simError}
       <p class="err">{simError}</p>
     {/if}
@@ -370,5 +375,10 @@
   .err {
     color: var(--gold);
     margin: 0.5rem 0 0;
+  }
+  .keyline {
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    margin: 0.4rem 0 0;
   }
 </style>
