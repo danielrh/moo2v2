@@ -2,6 +2,7 @@
   // Pre-battle orders: the only input combat takes. The pass itself is an
   // automatic cinematic once both sides have ordered (or the timeout fires).
   import type { PendingBattle } from '@engine/types';
+  import { ownerName } from '../colors';
   import { app, getActive } from '../state.svelte';
 
   const { battle }: { battle: PendingBattle } = $props();
@@ -23,21 +24,37 @@
     void app.version;
     return session().getRoster();
   });
-  const nameOf = (id: number) => roster.find((p) => p.id === id)?.name ?? `#${id}`;
+  const nameOf = (id: number) => ownerName(id, (x) => roster.find((p) => p.id === x)?.name);
   const starName = $derived.by(() => {
     const gs = session().getState();
     return gs?.stars.find((s) => s.id === battle.starId)?.name ?? '?';
   });
   const fleetCounts = $derived.by(() => {
     const gs = session().getState();
-    if (!gs) return { mine: 0, theirs: 0 };
-    const count = (owner: number) =>
-      gs.ships.filter(
+    if (!gs) return { mine: 0, theirs: 0, theirBase: false };
+    const count = (owner: number) => {
+      if (owner < 0) {
+        // NPC side: monsters / Antarans at this star
+        return gs.monsters.filter(
+          (m) => m.starId === battle.starId && (owner === -3) === m.kind.startsWith('antaran_'),
+        ).length;
+      }
+      return gs.ships.filter(
         (s) => s.owner === owner && s.shipKind === 'design' && s.location.kind === 'star' && s.location.starId === battle.starId,
       ).length;
+    };
+    const enemy = isAttacker ? battle.defender : battle.attacker;
+    const theirBase =
+      enemy >= 0 &&
+      gs.colonies.some(
+        (c) =>
+          c.owner === enemy &&
+          gs.planets.some((p) => p.id === c.planetId && p.starId === battle.starId) &&
+          c.buildings.some((b) => ['star_base', 'battle_station', 'star_fortress', 'missile_base', 'ground_batteries'].includes(b)),
+      );
     return isAttacker
-      ? { mine: count(battle.attacker), theirs: count(battle.defender) }
-      : { mine: count(battle.defender), theirs: count(battle.attacker) };
+      ? { mine: count(battle.attacker), theirs: count(battle.defender), theirBase }
+      : { mine: count(battle.defender), theirs: count(battle.attacker), theirBase };
   });
 
   function submit() {
@@ -55,10 +72,12 @@
 
 <div class="overlay">
   <div class="dialog" data-testid="battle-dialog">
-    <h3>Battle at {starName}</h3>
+    <h3>⚔ Battle at {starName}</h3>
     <p>
       {nameOf(battle.attacker)} attacks {nameOf(battle.defender)} — you are the
-      <b>{isAttacker ? 'attacker' : 'defender'}</b> ({fleetCounts.mine} warships vs {fleetCounts.theirs}).
+      <b>{isAttacker ? 'attacker' : 'defender'}</b>
+      ({fleetCounts.mine} warship{fleetCounts.mine === 1 ? '' : 's'} vs
+      {fleetCounts.theirs}{fleetCounts.theirBase ? ' + orbital defenses' : ''}).
     </p>
     {#if alreadyOrdered}
       <p data-testid="battle-waiting">Orders locked. Waiting for the enemy…</p>

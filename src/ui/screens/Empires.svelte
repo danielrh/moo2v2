@@ -1,7 +1,7 @@
 <script lang="ts">
   import { leaderById, salaryOf, MAX_LEADERS_PER_KIND, countKind } from '@engine/leaders';
   import type { ProposalKind } from '@engine/types';
-  import { playerColor } from '../colors';
+  import { ownerName, playerColor } from '../colors';
   import { app, getActive } from '../state.svelte';
 
   const session = () => getActive()!.session;
@@ -256,9 +256,14 @@
     <h3>Battle replays</h3>
     <ul>
       {#each app.replays as r (r.battleId)}
+        {@const s = r.summary as Record<string, unknown>}
+        {@const starName = gs.stars.find((x) => x.id === s['starId'])?.name ?? `star ${s['starId']}`}
         <li>
-          turn {r.turn}: {r.battleId} {r.watched ? '(watched)' : ''}
-          <button data-testid="watch-{r.battleId}" onclick={() => (app.viewing = r)}>watch</button>
+          <b>Turn {r.turn}</b> — battle at {starName}:
+          {ownerName(Number(s['attacker']), (x) => gs.empires.find((e) => e.id === x)?.name)} vs
+          {ownerName(Number(s['defender']), (x) => gs.empires.find((e) => e.id === x)?.name)}
+          {r.watched ? ' (watched)' : ''}
+          <button data-testid="watch-{r.battleId}" onclick={() => (app.viewing = r)}>▶ watch</button>
         </li>
       {/each}
     </ul>

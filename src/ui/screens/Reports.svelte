@@ -24,6 +24,9 @@
   function colonyOf(id: unknown): string {
     return gs?.colonies.find((c) => c.id === id)?.name ?? `colony ${id}`;
   }
+  function starOf(id: unknown): string {
+    return gs?.stars.find((s) => s.id === id)?.name ?? `star ${id}`;
+  }
 
   function describe(kind: string, p: Record<string, unknown>): string {
     switch (kind) {
@@ -36,9 +39,13 @@
       case 'starvation': return `${colonyOf(p['colonyId'])} is starving (${p['lack']} short)`;
       case 'population_lost': return `${colonyOf(p['colonyId'])} lost population`;
       case 'colony_died': return `a colony has perished`;
-      case 'research_complete': return `research breakthrough: ${p['appId'] ?? p['fieldId'] ?? ''}`;
+      case 'research_complete': {
+        const granted = Array.isArray(p['granted']) ? (p['granted'] as string[]) : [];
+        const what = granted.length ? granted.map((g) => String(g).replaceAll('_', ' ')).join(', ') : String(p['field'] ?? '').replaceAll('_', ' ');
+        return `🎉 research breakthrough: ${what}${p['extra'] ? ' (purchased application)' : ''}`;
+      }
       case 'battle_pending': return `battle brewing: ${nameOf(p['attacker'])} vs ${nameOf(p['defender'])}`;
-      case 'battle_resolved': return `battle at star ${p['starId']}: winner ${p['winner'] === null ? 'none' : nameOf(p['winner'])}`;
+      case 'battle_resolved': return `battle at ${starOf(p['starId'])}: winner ${p['winner'] === null ? 'none' : nameOf(p['winner'])}`;
       case 'bombardment': return `${colonyOf(p['colonyId'])} was bombarded (${p['popKilled']} pop lost)`;
       case 'colony_captured': return `${colonyOf(p['colonyId'])} captured by ${nameOf(p['to'])}`;
       case 'invasion_repelled': return `invasion repelled at ${colonyOf(p['colonyId'])}`;
@@ -59,7 +66,7 @@
       case 'council_convened': return `the Galactic Council convenes: ${(p['candidates'] as number[]).map(nameOf).join(' vs ')}`;
       case 'council_result': return `council result: ${p['winner'] === null ? 'no ruler elected' : `${nameOf(p['winner'])} elected!`}`;
       case 'terraformed': return `${colonyOf(p['colonyId'])} terraformed to ${p['climate']}`;
-      case 'monster_slain': return `the ${p['kind']} at star ${p['starId']} was slain`;
+      case 'monster_slain': return `the ${p['kind']} at ${starOf(p['starId'])} was slain`;
       case 'guardian_defeated': return `${nameOf(p['empireId'])} defeated the Guardian of Orion!`;
       case 'antaran_raid': return `Antaran raiders strike ${nameOf(p['empireId'])}!`;
       case 'antarans_withdraw': return `the Antarans withdraw to their dimension`;

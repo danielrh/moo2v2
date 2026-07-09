@@ -18,6 +18,7 @@
     const s = session().getPlanned();
     return s ? itemLabel(s, session().playerId, item) : item;
   };
+  const pretty = (id: string) => id.replaceAll('_', ' ');
 
   // ---- filter + sort ----
   let filter = $state('');
@@ -61,10 +62,11 @@
     });
   });
   const totals = $derived.by(() => {
-    const t = { pop: 0, food: 0, prod: 0, sci: 0, bc: 0, pollution: 0 };
+    const t = { pop: 0, growthK: 0, food: 0, prod: 0, sci: 0, bc: 0, pollution: 0 };
     for (const r of allRows) {
       if (r.outpost) continue;
       t.pop += r.popUnits;
+      t.growthK += r.growthK;
       t.food += r.output.foodNet;
       t.prod += r.output.prodToQueue || r.output.prod;
       t.sci += r.output.research;
@@ -73,6 +75,7 @@
     }
     return t;
   });
+  const growthLabel = (k: number) => `${k >= 0 ? '+' : ''}${(k / 1000).toFixed(1)}`;
 
   // ---- bulk ops ----
   let selected = $state<Set<number>>(new Set());
@@ -100,7 +103,19 @@
     return [...common].sort();
   });
 
-  function adjustJob(row: selectors.ColonyRow, job: 'farmers' | 'workers' | 'scientists', delta: number) {
+  type Job = 'farmers' | 'workers' | 'scientists';
+  function moveJob(row: selectors.ColonyRow, fromJob: Job, toJob: Job) {
+    if (fromJob === toJob || row.jobs[fromJob] <= 0) return;
+    const jobs = { ...row.jobs };
+    jobs[fromJob]--;
+    jobs[toJob]++;
+    session().submit('set_jobs', {
+      colonyId: row.id,
+      groups: [{ race: session().playerId, ...jobs }],
+    });
+  }
+
+  function adjustJob(row: selectors.ColonyRow, job: Job, delta: number) {
     const jobs = { ...row.jobs };
     if (delta > 0) {
       // take a unit from the largest other pool
@@ -122,6 +137,20 @@
     });
   }
 
+  // ---- drag colonists between job columns ----
+  let drag: { colonyId: number; job: Job } | null = null;
+  let dragOver = $state<{ colonyId: number; job: Job } | null>(null);
+  function onDragStart(row: selectors.ColonyRow, job: Job, ev: DragEvent) {
+    drag = { colonyId: row.id, job };
+    ev.dataTransfer?.setData('text/plain', `${row.id}:${job}`);
+    if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+  }
+  function onDrop(row: selectors.ColonyRow, job: Job) {
+    if (drag && drag.colonyId === row.id) moveJob(row, drag.job, job);
+    drag = null;
+    dragOver = null;
+  }
+
   function setBuild(row: selectors.ColonyRow, item: string) {
     if (!item) return;
     const items = row.queue.length ? [item, ...row.queue.slice(1)] : [item];
@@ -135,6 +164,18 @@
 
   function buy(row: selectors.ColonyRow) {
     session().submit('buy_production', { colonyId: row.id });
+  }
+
+  function sell(row: selectors.ColonyRow, buildingId: string) {
+    session().submit('sell_building', { colonyId: row.id, buildingId });
+  }
+
+  let openBuildings = $state<Set<number>>(new Set());
+  function toggleBuildings(id: number) {
+    const next = new Set(openBuildings);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    openBuildings = next;
   }
 
   function parked(row: selectors.ColonyRow): string {
@@ -161,7 +202,7 @@
     </select>
     <button onclick={() => (selected = new Set())}>clear selection</button>
   {:else}
-    <span class="dim">tick colonies to bulk-set builds; click headers to sort</span>
+    <span class="dim">tick colonies to bulk-set builds · click headers to sort · drag a job number onto another column to move a colonist</span>
   {/if}
 </div>
 
@@ -171,20 +212,21 @@
       <th></th>
       <th class="sortable" onclick={() => sortBy('name')}>Colony {sortKey === 'name' ? (sortDir > 0 ? '▲' : '▼') : ''}</th>
       <th>Planet</th>
-      <th class="sortable" onclick={() => sortBy('pop')}>Pop {sortKey === 'pop' ? (sortDir > 0 ? '▲' : '▼') : ''}</th>
+      <th class="sortable" onclick={() => sortBy('pop')} title="population / capacity (projected growth per turn)">Pop {sortKey === 'pop' ? (sortDir > 0 ? '▲' : '▼') : ''}</th>
       <th class="sortable" onclick={() => sortBy('morale')}>Morale {sortKey === 'morale' ? (sortDir > 0 ? '▲' : '▼') : ''}</th>
-      <th>Farm</th>
-      <th>Work</th>
-      <th>Sci</th>
-      <th class="sortable" onclick={() => sortBy('food')}>🌾 {sortKey === 'food' ? (sortDir > 0 ? '▲' : '▼') : ''}</th>
-      <th class="sortable" onclick={() => sortBy('prod')}>🔧 {sortKey === 'prod' ? (sortDir > 0 ? '▲' : '▼') : ''}</th>
-      <th class="sortable" onclick={() => sortBy('sci')}>🔬 {sortKey === 'sci' ? (sortDir > 0 ? '▲' : '▼') : ''}</th>
-      <th class="sortable" onclick={() => sortBy('bc')}>💰 {sortKey === 'bc' ? (sortDir > 0 ? '▲' : '▼') : ''}</th>
-      <th>☁️</th>
+      <th title="farmers">🌱</th>
+      <th title="workers">⚒</th>
+      <th title="scientists">⚗</th>
+      <th class="sortable" onclick={() => sortBy('food')} title="net food">🌾 {sortKey === 'food' ? (sortDir > 0 ? '▲' : '▼') : ''}</th>
+      <th class="sortable" onclick={() => sortBy('prod')} title="production to the build queue (after pollution)">🔧 {sortKey === 'prod' ? (sortDir > 0 ? '▲' : '▼') : ''}</th>
+      <th class="sortable" onclick={() => sortBy('sci')} title="research">🔬 {sortKey === 'sci' ? (sortDir > 0 ? '▲' : '▼') : ''}</th>
+      <th class="sortable" onclick={() => sortBy('bc')} title="income">💰 {sortKey === 'bc' ? (sortDir > 0 ? '▲' : '▼') : ''}</th>
+      <th title="pollution — lost production this turn">☁️</th>
       <th class="sortable" onclick={() => sortBy('building')}>Building {sortKey === 'building' ? (sortDir > 0 ? '▲' : '▼') : ''}</th>
       <th>Progress</th>
       <th>Buy</th>
       <th>Queue</th>
+      <th title="buildings — click 🏛 to inspect and sell">🏛</th>
     </tr>
   </thead>
   <tbody>
@@ -192,21 +234,51 @@
       <tr data-testid="colony-row-{row.id}" class:outpost={row.outpost}>
         <td><input type="checkbox" checked={selected.has(row.id)} onchange={() => toggleSelect(row.id)} /></td>
         <td class="name">{row.name}{row.outpost ? ' (outpost)' : ''}</td>
-        <td class="dim">{row.planet.climate} {row.planet.minerals} {row.planet.gravity}-g s{row.planet.sizeClass}</td>
-        <td data-testid="pop-{row.id}">{row.popUnits}/{row.maxPop}</td>
+        <td class="dim">{row.planet.climate} {pretty(row.planet.minerals)} {row.planet.gravity}-g s{row.planet.sizeClass}</td>
+        <td data-testid="pop-{row.id}" title="projected growth next turn: {growthLabel(row.growthK)}">
+          {row.popUnits}/{row.maxPop}
+          {#if !row.outpost}
+            <span class="growth" class:neg={row.growthK < 0}>{growthLabel(row.growthK)}</span>
+          {/if}
+        </td>
         <td>{row.output.moralePct}%</td>
         {#each ['farmers', 'workers', 'scientists'] as const as job (job)}
-          <td class="jobs">
+          <td
+            class="jobs"
+            class:dropping={dragOver?.colonyId === row.id && dragOver?.job === job}
+            ondragover={(e) => {
+              if (drag?.colonyId === row.id) {
+                e.preventDefault();
+                dragOver = { colonyId: row.id, job };
+              }
+            }}
+            ondragleave={() => {
+              if (dragOver?.colonyId === row.id && dragOver?.job === job) dragOver = null;
+            }}
+            ondrop={(e) => {
+              e.preventDefault();
+              onDrop(row, job);
+            }}
+          >
             <button class="mini" onclick={() => adjustJob(row, job, -1)}>-</button>
-            <span data-testid="{job}-{row.id}">{row.jobs[job]}</span>
+            <span
+              class="jobcount"
+              draggable={row.jobs[job] > 0}
+              role="button"
+              tabindex="-1"
+              title="drag onto another job column to move a colonist"
+              ondragstart={(e) => onDragStart(row, job, e)}
+              data-testid="{job}-{row.id}">{row.jobs[job]}</span>
             <button class="mini" onclick={() => adjustJob(row, job, +1)}>+</button>
           </td>
         {/each}
         <td class:neg={row.output.foodNet < 0} data-testid="foodnet-{row.id}">{row.output.foodNet >= 0 ? '+' : ''}{row.output.foodNet}</td>
-        <td data-testid="prod-{row.id}">{row.output.prodToQueue || row.output.prod}</td>
+        <td data-testid="prod-{row.id}" title={row.output.pollution > 0 ? `${row.output.pollution} production lost to pollution` : ''}>
+          {row.output.prodToQueue || row.output.prod}{#if row.output.pollution > 0}<span class="poll">−{row.output.pollution}☁</span>{/if}
+        </td>
         <td>{row.output.research}</td>
         <td>{row.output.bcIncome}</td>
-        <td class:neg={row.output.pollution > 0}>{row.output.pollution}</td>
+        <td class:neg={row.output.pollution > 0} title="production lost to pollution">{row.output.pollution}</td>
         <td>
           <select
             data-testid="build-{row.id}"
@@ -226,6 +298,9 @@
           {#if row.activeItem === 'housing' || row.activeItem === 'trade_goods'}
             ∞
           {:else if row.activeItem}
+            <span class="cellbar" title="{row.storedProd}/{row.activeCost}">
+              <span class="cellfill" style="width:{row.activeCost > 0 ? Math.min(100, Math.floor((row.storedProd * 100) / row.activeCost)) : 0}%"></span>
+            </span>
             {row.storedProd}/{row.activeCost}{row.turnsLeft !== null ? ` (${row.turnsLeft}t)` : ''}
           {:else}
             idle
@@ -250,7 +325,37 @@
             {/each}
           </select>
         </td>
+        <td>
+          {#if row.buildings.length}
+            <button class="mini" data-testid="buildings-{row.id}" onclick={() => toggleBuildings(row.id)}>
+              🏛{row.buildings.length}
+            </button>
+          {/if}
+        </td>
       </tr>
+      {#if openBuildings.has(row.id)}
+        <tr class="buildingsrow" data-testid="buildings-panel-{row.id}">
+          <td colspan="18">
+            <div class="chips">
+              {#each row.sellables as s (s.id)}
+                <span class="chip">
+                  {pretty(s.id)}
+                  <button
+                    class="mini sellbtn"
+                    disabled={!row.canSell || s.refund <= 0}
+                    title={row.canSell ? `sell for ${s.refund} BC (one sale per colony per turn)` : 'already sold a building here this turn'}
+                    data-testid="sell-{row.id}-{s.id}"
+                    onclick={() => sell(row, s.id)}
+                  >sell {s.refund} BC</button>
+                </span>
+              {/each}
+              {#if !row.canSell}
+                <span class="dim">one sale per colony per turn — done for this turn</span>
+              {/if}
+            </div>
+          </td>
+        </tr>
+      {/if}
     {/each}
   </tbody>
   <tfoot>
@@ -258,7 +363,7 @@
       <td></td>
       <td class="name">Σ {allRows.filter((r) => !r.outpost).length} colonies</td>
       <td></td>
-      <td>{totals.pop}</td>
+      <td>{totals.pop} <span class="growth">{growthLabel(totals.growthK)}</span></td>
       <td></td>
       <td colspan="3"></td>
       <td class:neg={totals.food < 0}>{totals.food >= 0 ? '+' : ''}{totals.food}</td>
@@ -266,7 +371,7 @@
       <td>{totals.sci}</td>
       <td>{totals.bc}</td>
       <td class:neg={totals.pollution > 0}>{totals.pollution}</td>
-      <td colspan="4"></td>
+      <td colspan="5"></td>
     </tr>
   </tfoot>
 </table>
@@ -285,7 +390,7 @@
   }
   td,
   th {
-    border: 1px solid #26304f;
+    border: 1px solid var(--line);
     padding: 0.25rem 0.45rem;
     text-align: left;
     white-space: nowrap;
@@ -295,25 +400,70 @@
     user-select: none;
   }
   tfoot td {
-    background: #141830;
+    background: var(--panel-2);
     font-weight: 600;
   }
   .jobs {
     white-space: nowrap;
   }
+  .jobs.dropping {
+    background: rgba(94, 224, 138, 0.18);
+    outline: 1px dashed var(--good);
+  }
+  .jobcount {
+    display: inline-block;
+    min-width: 1.1rem;
+    text-align: center;
+    cursor: grab;
+    border-radius: 4px;
+    padding: 0 0.15rem;
+  }
+  .jobcount:hover {
+    background: var(--panel-3);
+  }
   .mini {
     padding: 0 0.35rem;
-    margin: 0 0.15rem;
+    margin: 0 0.1rem;
   }
   .neg {
-    color: #ff8a7a;
+    color: var(--bad);
+  }
+  .growth {
+    font-size: 0.75rem;
+    color: var(--good);
+    margin-left: 0.2rem;
+  }
+  .growth.neg {
+    color: var(--bad);
+  }
+  .poll {
+    font-size: 0.72rem;
+    color: var(--bad);
+    margin-left: 0.25rem;
+    opacity: 0.9;
+  }
+  .cellbar {
+    display: inline-block;
+    vertical-align: middle;
+    width: 3.2rem;
+    height: 0.4rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-right: 0.3rem;
+  }
+  .cellfill {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #24418a, var(--accent));
   }
   .dim {
     opacity: 0.65;
   }
   .parked {
     display: block;
-    color: #ffd479;
+    color: var(--gold);
     font-size: 0.75rem;
   }
   .name {
@@ -324,5 +474,25 @@
   }
   select {
     max-width: 11rem;
+  }
+  .buildingsrow td {
+    background: var(--panel);
+  }
+  .chips {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .chip {
+    background: var(--panel-3);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.15rem 0.45rem;
+    text-transform: capitalize;
+  }
+  .sellbtn {
+    margin-left: 0.35rem;
+    font-size: 0.75rem;
   }
 </style>
