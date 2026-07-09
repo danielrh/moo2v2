@@ -1,6 +1,7 @@
 <script lang="ts">
   import { selectors, gameEngine } from '@engine/index';
   import { app, getActive } from '../state.svelte';
+  import { latchEdge, type EdgeLatch, type EdgeLevel } from '../commitEdge';
   import { describeSaveError, downloadRawDatabase, downloadSave } from '../saveload';
   import Spreadsheet from './Spreadsheet.svelte';
   import MapView from './MapView.svelte';
@@ -60,16 +61,23 @@
   /** labs idle: no field selected and nothing queued — RP is being banked */
   const researchIdle = $derived(summary !== null && summary.researching === null);
   /** commit urgency: red = everyone else committed and they are waiting on you;
-   * green = others have started committing */
+   * green = others have started committing. Latched one-way per turn so an
+   * opponent cycling commit/uncommit cannot flash the screen. */
   const othersTotal = $derived(roster.length - 1);
   const othersCommitted = $derived(committed.filter((id) => id !== session().playerId).length);
-  const commitEdge = $derived(
+  const commitEdge = $derived<EdgeLevel>(
     iCommitted || othersTotal <= 0 || othersCommitted === 0
       ? ''
       : othersCommitted === othersTotal
         ? 'red'
         : 'green',
   );
+  let edgeLatch = $state<EdgeLatch>({ turn: 0, level: '' });
+  $effect(() => {
+    const next = latchEdge(edgeLatch, gs?.turn ?? 0, gs?.phase ?? 'planning', commitEdge);
+    if (next !== edgeLatch) edgeLatch = next;
+  });
+  const edgeShown = $derived(iCommitted || (gs?.turn ?? 0) !== edgeLatch.turn ? '' : edgeLatch.level);
   const noPersistence = $derived.by(() => {
     void app.version;
     return !getActive()?.store;
@@ -188,10 +196,10 @@
       </span>
     {/if}
   </header>
-  {#if commitEdge}
-    <div class="edge {commitEdge}" aria-hidden="true"></div>
+  {#if edgeShown}
+    <div class="edge {edgeShown}" aria-hidden="true"></div>
   {/if}
-  {#if commitEdge === 'red'}
+  {#if edgeShown === 'red'}
     <div class="banner urgent" data-testid="all-waiting">⏳ Everyone else has committed — the galaxy waits on you!</div>
   {/if}
   {#if !app.hostConnected}
