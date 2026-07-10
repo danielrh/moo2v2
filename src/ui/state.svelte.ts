@@ -50,9 +50,25 @@ export function bindActive(active: ActiveGame): void {
   app.hostConnected = true;
   app.version++;
   if (!active.host) {
+    // signaling blips fire spurious player-left for a host whose data channel
+    // is fine — only show "host offline" if they stay gone for a while
+    let hostLostTimer: ReturnType<typeof setTimeout> | null = null;
     active.transport.onEvent((ev) => {
-      if (ev.type === 'player-left' && ev.playerId === 0) app.hostConnected = false;
-      else if ((ev.type === 'player-rejoined' || ev.type === 'player-joined') && ev.playerId === 0) app.hostConnected = true;
+      if (ev.type === 'player-left' && ev.playerId === 0) {
+        if (!hostLostTimer) {
+          hostLostTimer = setTimeout(() => {
+            hostLostTimer = null;
+            app.hostConnected = false;
+            app.version++;
+          }, 8000);
+        }
+      } else if ((ev.type === 'player-rejoined' || ev.type === 'player-joined') && ev.playerId === 0) {
+        if (hostLostTimer) {
+          clearTimeout(hostLostTimer);
+          hostLostTimer = null;
+        }
+        app.hostConnected = true;
+      }
       app.version++;
     });
   }

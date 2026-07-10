@@ -13,6 +13,7 @@
     return session().getPlanned();
   });
   const me = () => session().playerId;
+  const foeName = (id: number) => gs?.empires.find((e) => e.id === id)?.raceName ?? `#${id}`;
   const view = $derived.by(() => (gs ? selectors.galaxyView(gs, me()) : []));
   const fleets = $derived.by(() => (gs ? selectors.fleetRows(gs, me()) : []));
   const reachable = $derived.by(() => {
@@ -70,6 +71,12 @@
 
   let selectedStarId = $state<number | null>(null);
   let selectedShipIds = $state<number[]>([]);
+  // the fleets explainer shows until dismissed once (then never again)
+  let showFleetTip = $state(localStorage.getItem('moo2.tip.fleets') !== '0');
+  function dismissFleetTip() {
+    showFleetTip = false;
+    localStorage.setItem('moo2.tip.fleets', '0');
+  }
 
   const selected = $derived(view.find((v) => v.star.id === selectedStarId) ?? null);
   const shipsHere = $derived(fleets.filter((f) => f.atStarId === selectedStarId));
@@ -362,7 +369,18 @@
           {/if}
           <text y="38" text-anchor="middle" class="label" class:dimlabel={!v.explored}>{v.star.name}</text>
           {#if v.explored && v.planets.length}
-            <text y="52" text-anchor="middle" class="pips">{'●'.repeat(Math.min(5, v.planets.filter((p) => p.body === 'planet').length))}</text>
+            {@const bodies = v.planets.slice(0, 6)}
+            {#each bodies as p, bi (p.id)}
+              {@const bx = (bi - (bodies.length - 1) / 2) * 9}
+              {#if p.body === 'planet'}
+                {@const col = v.colonies.find((c) => gs?.colonies.find((x) => x.id === c.id)?.planetId === p.id)}
+                <circle cx={bx} cy="50" r="2.4" fill={col ? playerColor(col.owner) : '#6a7288'}>
+                  <title>{p.climate} planet{col ? ` — ${col.name}` : ' (uncolonized)'}</title>
+                </circle>
+              {:else}
+                <text x={bx} y="53" text-anchor="middle" class="bodyx"><title>{p.body === 'asteroids' ? 'asteroid belt' : 'gas giant'}</title>×</text>
+              {/if}
+            {/each}
           {/if}
         </g>
       {/each}
@@ -462,7 +480,18 @@
             {/each}
           {/each}
         </svg>
-        <p class="syskey">size = circle · color = climate · gold ring = rich · dashed = poor · player ring = colony</p>
+        <p class="syskey">size = circle · color = climate · thin gold ring = rich · THICK gold = ultra-rich · dashed = poor · player ring = colony</p>
+      {/if}
+      {#if selected.ships.some((sh) => sh.owner !== me())}
+        {@const foes = selected.ships.filter((sh) => sh.owner !== me() && sh.owner >= 0)}
+        {#if foes.length}
+          <p class="foefleet" data-testid="enemy-fleet-{selected.star.id}">
+            ⚔ enemy fleet:
+            {#each Object.entries(foes.reduce((acc: Record<string, number>, sh) => { const k = `${foeName(sh.owner)} ${sh.hull ?? sh.kind}`; acc[k] = (acc[k] ?? 0) + 1; return acc; }, {})) as [label, n] (label)}
+              <span class="foechip">{n}× {label}</span>
+            {/each}
+          </p>
+        {/if}
       {/if}
       <ul class="planets">
         {#each selected.planets as p (p.id)}
@@ -503,12 +532,37 @@
       {/if}
     {:else}
       <p class="dim">select a star</p>
-      <p class="dim">Your ships travel star-to-star within fuel range. Fleets under way show as ▶ markers with their ETA.</p>
+      {#if showFleetTip}
+        <p class="dim">
+          Your ships travel star-to-star within fuel range. Fleets under way show as ▶ markers with their ETA.
+          <button class="tipdismiss" onclick={dismissFleetTip}>got it ✕</button>
+        </p>
+      {/if}
     {/if}
   </aside>
 </div>
 
 <style>
+  .bodyx {
+    font-size: 8px;
+    fill: #6a7288;
+  }
+  .tipdismiss {
+    font-size: 0.72rem;
+    padding: 0 0.3rem;
+    margin-left: 0.4rem;
+  }
+  .foefleet {
+    font-size: 0.8rem;
+    color: var(--bad, #ff7b7b);
+  }
+  .foechip {
+    background: rgba(255, 110, 110, 0.12);
+    border: 1px solid rgba(255, 110, 110, 0.35);
+    border-radius: 6px;
+    padding: 0 0.3rem;
+    margin-right: 0.25rem;
+  }
   .wrap {
     display: flex;
     gap: 0.8rem;

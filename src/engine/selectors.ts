@@ -394,7 +394,7 @@ export interface StarView {
   wormholeVisible: boolean;
   planets: Planet[];
   colonies: Array<{ id: number; owner: number; name: string; outpost: boolean }>;
-  ships: Array<{ id: number; owner: number; kind: string }>;
+  ships: Array<{ id: number; owner: number; kind: string; hull: string | null }>;
   inRange: boolean;
 }
 
@@ -440,7 +440,17 @@ export function galaxyView(state: GameState, empireId: number): StarView[] {
     const ships = state.ships
       .filter((s) => s.location.kind === 'star' && s.location.starId === star.id)
       .filter((s) => s.owner === empireId || known(star.id))
-      .map((s) => ({ id: s.id, owner: s.owner, kind: s.shipKind }));
+      .map((s) => {
+        // warship hull class is visible at scanner range (know what you face)
+        let hull: string | null = null;
+        if (s.shipKind === 'design' && s.designId !== null) {
+          const owner = state.empires.find((e) => e.id === s.owner);
+          hull = owner?.designs.find((d) => d.id === s.designId)?.hull ?? null;
+        } else if (s.shipKind === 'scout') {
+          hull = 'frigate';
+        }
+        return { id: s.id, owner: s.owner, kind: s.shipKind, hull };
+      });
     return {
       star,
       explored: explored.has(star.id),

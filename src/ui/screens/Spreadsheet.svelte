@@ -5,11 +5,14 @@
   import { app, getActive } from '../state.svelte';
 
   const session = () => getActive()!.session;
-  const allRows = $derived.by(() => {
+  const allRowsWithOutposts = $derived.by(() => {
     void app.version;
     const s = session().getPlanned();
     return s ? selectors.colonyRows(s, session().playerId) : [];
   });
+  // outposts are fuel stops, not economies: they live on the map, not here
+  const allRows = $derived(allRowsWithOutposts.filter((r) => !r.outpost));
+  const outpostCount = $derived(allRowsWithOutposts.length - allRows.length);
   const stickyMode = $derived.by(() => {
     void app.version;
     return session().getPlanned()?.settings.modes.stickyBuild === true;
@@ -391,7 +394,7 @@
     </span>
     <button onclick={() => (selected = new Set())}>clear selection</button>
   {:else}
-    <span class="dim">tick colonies to bulk-select · click headers to sort · click a citizen to grab them + everyone to their right, then drag onto another job or a same-system colony</span>
+    <span class="dim">💡 drag citizens between jobs or onto another colony · ☑ tick rows for bulk builds &amp; presets</span>
   {/if}
   {#if moveNote}
     <span class="movenote" data-testid="move-note">{moveNote}</span>
@@ -661,7 +664,7 @@
   <tfoot>
     <tr data-testid="totals">
       <td></td>
-      <td class="name">Σ {allRows.filter((r) => !r.outpost).length} colonies</td>
+      <td class="name">Σ {allRows.length} colonies{outpostCount > 0 ? ` · ${outpostCount} outpost${outpostCount > 1 ? 's' : ''} (map)` : ''}</td>
       <td></td>
       <td>{totals.pop} <span class="growth">{growthLabel(totals.growthK)}</span></td>
       <td></td>

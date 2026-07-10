@@ -168,22 +168,28 @@
   });
 
   let saveNote = $state('');
+  let saveNoteTimer: ReturnType<typeof setTimeout> | null = null;
+  function flashSaveNote(text: string) {
+    saveNote = text;
+    if (saveNoteTimer) clearTimeout(saveNoteTimer);
+    saveNoteTimer = setTimeout(() => (saveNote = ''), 6000);
+  }
   let saveNoHistory = $state(false);
   let botAggressive = $state(getActive()?.solo?.isAggressive() ?? false);
   async function saveGame() {
     try {
       const name = await downloadSave(getActive()!, { history: !saveNoHistory });
-      saveNote = `saved ${name}`;
+      flashSaveNote(`saved ${name}`);
     } catch (e) {
-      saveNote = describeSaveError(e);
+      flashSaveNote(describeSaveError(e));
     }
   }
   async function saveDb() {
     try {
       await downloadRawDatabase(getActive()!);
-      saveNote = 'database downloaded';
+      flashSaveNote('database downloaded');
     } catch (e) {
-      saveNote = describeSaveError(e);
+      flashSaveNote(describeSaveError(e));
     }
   }
 </script>
