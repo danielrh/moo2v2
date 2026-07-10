@@ -95,4 +95,7 @@ add telemetry for user actions so we can learn what users
 we need a picks = 14
 antaran should be called andromedan (since in this different game they are from from the andromeda galaxy)
 
+please add UI telemetry and stats so we can find out where the time is being spent int he UI. These can go in aggregates in the save file and can be displayed by each empire so we can see which palyers spend time in which screens
 
+
+after 100% of the above bugs are done, please improve the included non-cheating AI to beat itself. Run several games against itself and improve it each time based on stats
