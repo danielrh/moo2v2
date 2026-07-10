@@ -78,6 +78,8 @@ export function resolveInvasions(state: GameState, events: TurnEvent[]): void {
     const startTroops = troops;
     const startMilitia = militia;
     let civilianLosses = 0;
+    // round-by-round record for the ground-battle replay (participants only)
+    const roundsLog: Array<{ t: number; m: number }> = [{ t: troops, m: militia }];
     while (troops > 0 && militia > 0) {
       const atkPower = troops * atkStr;
       const defPower = militia * defStr;
@@ -87,7 +89,13 @@ export function resolveInvasions(state: GameState, events: TurnEvent[]): void {
       } else {
         troops--;
       }
+      roundsLog.push({ t: troops, m: militia });
     }
+    // long sieges get thinned so the replay payload stays small
+    const rounds =
+      roundsLog.length <= 60
+        ? roundsLog
+        : roundsLog.filter((_, i) => i % Math.ceil(roundsLog.length / 60) === 0 || i === roundsLog.length - 1);
 
     // apply civilian losses to groups (largest first, keep at least 1 unit total)
     let toKill = Math.min(civilianLosses, Math.max(0, colonyPopUnits(colony) - 1));
@@ -102,6 +110,25 @@ export function resolveInvasions(state: GameState, events: TurnEvent[]): void {
     for (const g of colony.groups) normalizeJobsForGroup(g);
 
     const captured = militia <= 0 && troops > 0;
+    // the invasion replay goes to the two participants only
+    for (const viewer of new Set([attackerId, colony.owner])) {
+      events.push({
+        visibleTo: viewer,
+        kind: 'ground_battle',
+        payload: {
+          colonyId: colony.id,
+          colonyName: colony.name,
+          starId,
+          attacker: attackerId,
+          defender: colony.owner,
+          captured,
+          civilianLosses,
+          startTroops,
+          startMilitia,
+          rounds,
+        },
+      });
+    }
     if (captured) {
       const oldOwner = colony.owner;
       colony.owner = attackerId;

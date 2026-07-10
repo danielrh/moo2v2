@@ -152,3 +152,31 @@ describe('strike craft (fighter bays / assault shuttles)', () => {
     expect(crippled).toBe(true);
   });
 });
+
+describe("'deadliest' target priority", () => {
+  it('guns go for the highest-weapon-output enemy, not the nearest', () => {
+    const bigGuns = { weaponId: 'laser_cannon', classId: 0, dmgMin: 30, dmgMax: 30, mods: [] as string[], ammo: -1, cooldown: 0, count: 6, arc: '360' as const };
+    const peashooter = { weaponId: 'laser_cannon', classId: 0, dmgMin: 1, dmgMax: 1, mods: [] as string[], ammo: -1, cooldown: 0, count: 1, arc: '360' as const };
+    const myGun = { weaponId: 'laser_cannon', classId: 0, dmgMin: 4, dmgMax: 4, mods: [] as string[], ammo: -1, cooldown: 0, count: 1, arc: '360' as const };
+    const input: BattleInput = {
+      battleId: 't',
+      seedLabel: ['t'],
+      attacker: 0,
+      defender: 1,
+      ships: [
+        ship({ shipId: 1, side: 0, weapons: [myGun] }),
+        ship({ shipId: 2, side: 1, weapons: [peashooter], structureHp: 3000, startingStructure: 3000 }),
+        ship({ shipId: 3, side: 1, weapons: [bigGuns], structureHp: 3000, startingStructure: 3000 }),
+      ],
+      ordersA: { stance: 'charge', priority: 'deadliest', retreatThresholdPct: 0, bombard: false },
+      ordersD: { stance: 'hold_range', priority: 'nearest', retreatThresholdPct: 0, bombard: false },
+    };
+    const frames: BattleTickFrame[] = [];
+    runBattle(input, rngFor(SEED, 'deadliest'), (f) => frames.push(structuredClone(f)));
+    const myShots = frames.flatMap((f) => f.shots).filter((s) => s.from === 1 && s.to >= 0);
+    expect(myShots.length).toBeGreaterThan(0);
+    // overwhelming majority of fire goes at the big-gun ship (id 3)
+    const at3 = myShots.filter((s) => s.to === 3).length;
+    expect(at3 / myShots.length).toBeGreaterThan(0.8);
+  });
+});
