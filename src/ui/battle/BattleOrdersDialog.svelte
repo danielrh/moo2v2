@@ -100,6 +100,7 @@
             <option value="smallest">Smallest hulls</option>
             <option value="warships">Warships first</option>
             <option value="bases">Bases first</option>
+            <option value="deadliest">Deadliest — highest weapon output first</option>
           </select>
         </label>
         <label>Retreat below {retreatThresholdPct}% fleet HP

@@ -259,6 +259,7 @@
               <option value="smallest">smallest</option>
               <option value="warships">warships</option>
               <option value="bases">bases</option>
+              <option value="deadliest">deadliest</option>
             </select>
           </label>
           <label>retreat &lt; {s.orders.retreatThresholdPct}%

@@ -23,7 +23,7 @@ export const MAX_TICKS = 400;
 export const COMBAT_PACE = 250;
 
 export type Stance = 'charge' | 'hold_range' | 'standoff' | 'evade_retreat' | 'formation' | 'passthrough';
-export type TargetPriority = 'nearest' | 'biggest' | 'smallest' | 'warships' | 'bases';
+export type TargetPriority = 'nearest' | 'biggest' | 'smallest' | 'warships' | 'bases' | 'deadliest';
 
 /** Weapon firing arcs (relative to the ship's heading):
  *  F = forward 180°, FX = extended 270°, R = rear 180°, 360 = all around. */
@@ -436,8 +436,21 @@ export function runBattle(
           if (target && active(target)) {
             const d = idist(Math.abs(target.x - s.x), Math.abs(target.y - s.y));
             if (d > 430 * FP) steer(target.x, target.y, 1);
-            else if (d < 360 * FP) steer(target.x, target.y, -1);
-            else travel = 0;
+            else if (d < 360 * FP) {
+              // back away — but when the field edge blocks the line of
+              // withdrawal, strafe ALONG the edge instead of grinding into it
+              const nearLeft = s.x <= 40 * FP && target.x > s.x;
+              const nearRight = s.x >= FIELD_W - 40 * FP && target.x < s.x;
+              const nearTop = s.y <= 40 * FP && target.y > s.y;
+              const nearBottom = s.y >= FIELD_H - 40 * FP && target.y < s.y;
+              if (nearLeft || nearRight) {
+                steer(s.x, target.y > s.y ? s.y - FIELD_H : s.y + FIELD_H, 1);
+              } else if (nearTop || nearBottom) {
+                steer(target.x > s.x ? s.x - FIELD_W : s.x + FIELD_W, s.y, 1);
+              } else {
+                steer(target.x, target.y, -1);
+              }
+            } else travel = 0;
           } else travel = 0;
           break;
         }
@@ -527,7 +540,10 @@ export function runBattle(
       if (!t2) return true;
       let incoming = hurtThisTick.get(idx) ?? 0;
       for (const p of projectiles) if (p.hp > 0 && p.targetIdx === idx) incoming += p.dmg;
-      return incoming >= t2.shield + t2.armor + t2.structure;
+      // switch once the volley is ~80% certain to finish the target: the
+      // last few shots walk on instead of pulverizing a corpse, but focused
+      // fire on a live target keeps its full value
+      return incoming * 10 >= (t2.shield + t2.armor + t2.structure) * 8;
     };
     for (let si = 0; si < sims.length; si++) {
       const s = sims[si]!;
@@ -787,6 +803,16 @@ function pickTarget(sims: Sim[], s: Sim, accept?: (idx: number) => boolean): num
   if (!enemies.length) return -1;
   const priority = s.priority;
   const dist = (i: number) => idist(Math.abs(sims[i]!.x - s.x), Math.abs(sims[i]!.y - s.y));
+  const threat = (i: number) => {
+    // sustained output: Σ expected damage / cooldown — the "most damage" ship
+    let total = 0;
+    for (const w of sims[i]!.init.weapons) {
+      if (w.classId === 3) continue;
+      const expected = w.dmgMin + w.dmgMax; // ×2, constant factor cancels
+      total += Math.floor((expected * w.count * 100) / Math.max(1, cooldownOf(w, false)));
+    }
+    return total;
+  };
   switch (priority) {
     case 'biggest':
       return enemies.sort((a, b) => sims[b]!.init.hullIdx - sims[a]!.init.hullIdx || dist(a) - dist(b) || a - b)[0]!;
@@ -796,6 +822,8 @@ function pickTarget(sims: Sim[], s: Sim, accept?: (idx: number) => boolean): num
       return enemies.sort((a, b) => Number(sims[a]!.init.isBase) - Number(sims[b]!.init.isBase) || dist(a) - dist(b) || a - b)[0]!;
     case 'bases':
       return enemies.sort((a, b) => Number(sims[b]!.init.isBase) - Number(sims[a]!.init.isBase) || dist(a) - dist(b) || a - b)[0]!;
+    case 'deadliest':
+      return enemies.sort((a, b) => threat(b) - threat(a) || dist(a) - dist(b) || a - b)[0]!;
     default:
       return enemies.sort((a, b) => dist(a) - dist(b) || a - b)[0]!;
   }
