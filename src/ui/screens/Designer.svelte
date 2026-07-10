@@ -53,8 +53,25 @@
   });
   const empire = $derived(gs?.empires.find((e) => e.id === session().playerId) ?? null);
 
-  let name = $state('New Design');
+  // default design names follow the hull class ("Destroyer", then
+  // "Destroyer II"...) until the player types their own
+  const ROMAN_SUFFIX = ['', ' II', ' III', ' IV', ' V', ' VI', ' VII', ' VIII', ' IX', ' X'];
+  function autoName(h: string): string {
+    const base = h.split('_').map((w) => (w[0] ?? '').toUpperCase() + w.slice(1)).join(' ');
+    const taken = new Set((empire?.designs ?? []).filter((d) => !d.obsolete).map((d) => d.name));
+    for (const suffix of ROMAN_SUFFIX) {
+      if (!taken.has(base + suffix)) return base + suffix;
+    }
+    return `${base} ${taken.size + 1}`;
+  }
+  let nameAuto = $state(true);
+  let name = $state('Frigate');
   let hull = $state('frigate');
+  $effect(() => {
+    void hull;
+    void empire?.designs.length;
+    if (nameAuto) name = autoName(hull);
+  });
   let computer = $state(0);
   let shield = $state(0);
   let specials = $state<string[]>([]);
@@ -122,7 +139,7 @@
       name, hull, computer, shield, specials, weapons,
       modelIdx: wrapVariant(hull as ArtClass, modelIdx),
     });
-    if (!res.error) name = 'New Design';
+    if (!res.error) nameAuto = true; // next default: "Destroyer II" etc.
   }
 
   /** try the design on the battlefield BEFORE saving it: opens the Battle Lab
@@ -161,6 +178,7 @@
     inspecting = inspecting === d.id ? null : d.id;
   }
   function loadIntoEditor(d: EmpireDesign) {
+    nameAuto = false;
     name = `${d.name} II`;
     hull = d.hull;
     computer = d.computer;
@@ -202,7 +220,7 @@
   <div class="wrap">
     <div class="form">
       <h3>New warship design</h3>
-      <label>Name <input data-testid="design-name" bind:value={name} /></label>
+      <label>Name <input data-testid="design-name" bind:value={name} oninput={() => (nameAuto = false)} /></label>
       <label>Hull
         <select data-testid="design-hull" bind:value={hull}>
           {#each HULLS_BUILDABLE as h (h)}

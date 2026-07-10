@@ -596,6 +596,15 @@
     padding: 0 0.3rem;
     margin-left: 0.4rem;
   }
+  .selall {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--text-dim);
+    margin-left: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
   .foefleet {
     font-size: 0.8rem;
     color: var(--bad, #ff7b7b);

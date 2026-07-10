@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { selectors, shipStyleOf, type EmpireDesign } from '@engine/index';
+  import { selectors, shipStyleOf, shortEntityId, type EmpireDesign } from '@engine/index';
   import { app, getActive } from '../state.svelte';
   import { playerColor } from '../colors';
   import ShipPreview from '../battle/ShipPreview.svelte';
@@ -58,7 +58,7 @@
             {:else if f.ship.shipKind === 'scout'}
               <ShipPreview style={myStyle} cls="scout" variant={f.ship.id} color={myColor} px={1} />
             {/if}
-            {f.name} <span class="dim">#{f.ship.id}</span></td>
+            {f.name} <span class="dim">#{shortEntityId(f.ship.id)}</span></td>
           <td class="dim">{f.kind === 'design' ? 'warship' : f.kind.replaceAll('_', ' ')}</td>
           <td>
             {#if f.transit}

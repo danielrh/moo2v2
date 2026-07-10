@@ -49,6 +49,16 @@
 
   // ---- filter + sort ----
   let filter = $state('');
+  // the citizens/bulk-builds explainer shows until dismissed once (then never)
+  let showCitizensTip = $state(localStorage.getItem('moo2.tip.citizens') !== '0');
+  function dismissCitizensTip() {
+    showCitizensTip = false;
+    try {
+      localStorage.setItem('moo2.tip.citizens', '0');
+    } catch {
+      // private mode: dismisses for this tab at least
+    }
+  }
   let showTags = $state(localStorage.getItem('moo2.showTags') !== '0');
   function toggleTags() {
     showTags = !showTags;
@@ -404,8 +414,11 @@
       <button data-testid="preset-blend" title="industry capped at ≤2 pollution; the rest research" onclick={() => applyPreset('blend')}>⚗⚒ blend</button>
     </span>
     <button onclick={() => (selected = new Set())}>clear selection</button>
-  {:else}
-    <span class="dim">💡 drag citizens between jobs or onto another colony · ☑ tick rows for bulk builds &amp; presets</span>
+  {:else if showCitizensTip}
+    <span class="dim" data-testid="citizens-tip">
+      💡 drag citizens between jobs or onto another colony · ☑ tick rows for bulk builds &amp; presets
+      <button class="tipdismiss" data-testid="citizens-tip-dismiss" onclick={dismissCitizensTip}>got it ✕</button>
+    </span>
   {/if}
   {#if moveNote}
     <span class="movenote" data-testid="move-note">{moveNote}</span>
@@ -831,6 +844,11 @@
   }
   .dim {
     opacity: 0.65;
+  }
+  .tipdismiss {
+    font-size: 0.72rem;
+    padding: 0 0.3rem;
+    margin-left: 0.4rem;
   }
   /* planet specs: tiny and cut off — hover for the full description */
   td.planet {
