@@ -82,14 +82,42 @@ describe('move_colonists (bug: no transports needed for in-system movement)', ()
     expect(validateCommand(state, cmd(state, { fromColonyId: home.id, toColonyId: second.id, race: 0, count: 1 }))).toBeNull();
   });
 
-  it('rejects cross-system moves (transports do that)', () => {
+  it('cross-system moves ride freighters: 5 per colonist, travel time, then arrival', () => {
     const state = newGame();
     const { home } = withSecondColony(state);
     const other = state.colonies.find((c) => c.owner === 1)!;
     other.owner = 0; // pretend we own a colony in another system
+    const homeStar = state.stars.find((s) => s.id === state.planets.find((p) => p.id === home.planetId)!.starId)!;
+    const otherStar = state.stars.find((s) => s.id === state.planets.find((p) => p.id === other.planetId)!.starId)!;
+    // link them by wormhole so fuel range cannot interfere (1-turn trip)
+    homeStar.wormholeTo = otherStar.id;
+    otherStar.wormholeTo = homeStar.id;
+
+    const move = cmd(state, { fromColonyId: home.id, toColonyId: other.id, race: 0, count: 1 });
+    // no freighters: rejected with a reason that explains itself
+    state.empires[0]!.freighters = 0;
+    expect(validateCommand(state, move)).toContain('free freighters');
+    // with a fleet: the colonist boards and 5 freighters go busy
+    state.empires[0]!.freighters = 5;
+    expect(validateCommand(state, move)).toBeNull();
+    const before = Math.floor(home.groups[0]!.popK / 1000);
+    const otherBefore = Math.floor(other.groups[0]!.popK / 1000);
+    applyCommand(state, move);
+    expect(Math.floor(home.groups[0]!.popK / 1000)).toBe(before - 1);
+    expect(state.popTransits!.length).toBe(1);
+    // all freighters busy: a second convoy is refused until they return
     expect(validateCommand(state, cmd(state, { fromColonyId: home.id, toColonyId: other.id, race: 0, count: 1 }))).toContain(
-      'within a system',
+      'free freighters',
     );
+    // arrival: 1 turn later the colonist steps off and the freighters free up
+    const after = gameEngine.apply(state, { turn: state.turn, playerId: -1, kind: 'advance_turn', payload: {} });
+    const final = after.phase === 'battle_orders'
+      ? gameEngine.apply(after, { turn: after.turn, playerId: -1, kind: 'resolve_combat', payload: {} })
+      : after;
+    const otherAfter = final.colonies.find((c) => c.id === other.id)!;
+    const units = otherAfter.groups.reduce((n, g) => n + Math.floor(g.popK / 1000), 0);
+    expect(units).toBe(otherBefore + 1);
+    expect(final.popTransits ?? []).toHaveLength(0);
   });
 
   it('never abandons the source colony and respects destination capacity', () => {

@@ -858,8 +858,10 @@ interface MoveColonistsPayload {
   count: number;
 }
 
-/** Colonists hop between planets of the SAME system — no transport ship and
- * no freighters needed (MOO2's in-system exception). The source keeps at
+/** Colonists move on freighters: free and instant between planets of the
+ * SAME system (MOO2's in-system exception); BETWEEN systems each colonist
+ * unit ties up one freighter fleet (5 freighters) for the whole trip and
+ * arrives after normal travel time (wormholes: 1 turn). The source keeps at
  * least one unit, and the destination must have room. */
 const validateMoveColonists: Validator = (state, cmd) => {
   const p = cmd.payload as MoveColonistsPayload;
@@ -870,19 +872,31 @@ const validateMoveColonists: Validator = (state, cmd) => {
   if (to.owner !== cmd.playerId) return `colony ${p?.toColonyId} not yours`;
   if (to.outpost) return 'outposts cannot take colonists';
   if (from.id === to.id) return 'already there';
-  const fromStar = state.planets.find((x) => x.id === from.planetId)!.starId;
-  const toStar = state.planets.find((x) => x.id === to.planetId)!.starId;
-  if (fromStar !== toStar) return 'colonists shuttle freely only within a system — use a transport between stars';
   if (!Number.isSafeInteger(p.count) || p.count < 1) return 'bad count';
+  const fromStarId = state.planets.find((x) => x.id === from.planetId)!.starId;
+  const toStarId = state.planets.find((x) => x.id === to.planetId)!.starId;
+  if (fromStarId !== toStarId) {
+    const fromStar = state.stars.find((s) => s.id === fromStarId)!;
+    const toStar = state.stars.find((s) => s.id === toStarId)!;
+    if (!inRange(state, cmd.playerId, toStar) && fromStar.wormholeTo !== toStar.id) {
+      return `${toStar.name} is out of fuel range for freighters`;
+    }
+    const empire = empireOf(state, cmd.playerId);
+    const free = freeFreighters(state, empire);
+    if (free < 5 * p.count) {
+      return `moving ${p.count} colonist(s) between systems needs ${5 * p.count} free freighters (5 per colonist; ${free} free)`;
+    }
+  }
   const group = from.groups.find((g) => g.race === p.race);
   if (!group) return `no pop group for race ${p.race}`;
   const groupUnits = Math.floor(group.popK / 1000);
-  const totalUnits = from.groups.reduce((n, g) => n + Math.floor(g.popK / 1000), 0);
+  const totalUnits = popUnitsOf(from);
   if (groupUnits < p.count) return `only ${groupUnits} unit(s) of that group`;
   if (totalUnits - p.count < 1) return 'the last colonist cannot leave';
   const cap = colonyMaxPop(state, to);
-  const there = to.groups.reduce((n, g) => n + Math.floor(g.popK / 1000), 0);
-  if (there + p.count > cap) return `destination full (${there}/${cap})`;
+  const there = popUnitsOf(to);
+  const incoming = (state.popTransits ?? []).reduce((n, t) => n + (t.toColonyId === to.id ? t.units : 0), 0);
+  if (there + incoming + p.count > cap) return `destination full (${there + incoming}/${cap} incl. en route)`;
   return null;
 };
 
@@ -897,14 +911,34 @@ const applyMoveColonists: Applier = (state, cmd) => {
   if (src.popK <= 0) {
     from.groups = from.groups.filter((g) => g !== src);
   }
-  let dst = to.groups.find((g) => g.race === p.race);
-  if (!dst) {
-    dst = { race: p.race, popK: 0, farmers: 0, workers: 0, scientists: 0, unrest: false };
-    to.groups.push(dst);
-    to.groups.sort((a, b) => a.race - b.race);
+  const fromStarId = state.planets.find((x) => x.id === from.planetId)!.starId;
+  const toStarId = state.planets.find((x) => x.id === to.planetId)!.starId;
+  if (fromStarId === toStarId) {
+    let dst = to.groups.find((g) => g.race === p.race);
+    if (!dst) {
+      dst = { race: p.race, popK: 0, farmers: 0, workers: 0, scientists: 0, unrest: false };
+      to.groups.push(dst);
+      to.groups.sort((a, b) => a.race - b.race);
+    }
+    dst.popK += moveK;
+    dst.workers += p.count; // arrivals pick up tools first; reassign as you like
+    return;
   }
-  dst.popK += moveK;
-  dst.workers += p.count; // arrivals pick up tools first; reassign as you like
+  // between systems: colonists board freighters and sail
+  const empire = empireOf(state, cmd.playerId);
+  const fromStar = state.stars.find((s) => s.id === fromStarId)!;
+  const toStar = state.stars.find((s) => s.id === toStarId)!;
+  const turns = travelTurns(state, empire, fromStar, toStar);
+  (state.popTransits ??= []).push({
+    id: state.nextId++,
+    empireId: cmd.playerId,
+    race: p.race,
+    fromColonyId: from.id,
+    toColonyId: to.id,
+    units: p.count,
+    departedTurn: state.turn,
+    arrivalTurn: state.turn + turns,
+  });
 };
 
 // ---------- trait reassignment (ecology docs: +4 pick points on research) ----------

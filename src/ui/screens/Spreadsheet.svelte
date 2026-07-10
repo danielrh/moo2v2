@@ -246,29 +246,27 @@
     dragOver = null;
     dragOverColony = null;
   }
-  /** citizens dropped on a different colony: in-system shuttle (no ships needed) */
+  /** citizens dropped on a different colony: instant in-system shuttle, or a
+   * freighter convoy between systems (5 freighters per colonist, travel time) */
   function dropOnColony(row: selectors.ColonyRow) {
     if (!drag || drag.colonyId === row.id) return;
     const src = allRows.find((r) => r.id === drag!.colonyId);
     if (!src) return;
-    if (src.planet.starId !== row.planet.starId) {
-      note('⛔ colonists shuttle freely only within a system — use a transport between stars');
-    } else {
-      const n = drag.count;
-      const res = session().submit('move_colonists', {
-        fromColonyId: src.id,
-        toColonyId: row.id,
-        race: drag.race,
-        count: n,
-      });
-      if (res.error) note(`⛔ ${res.error}`);
-      else note(`🚚 ${n} colonist${n > 1 ? 's' : ''} shipped ${src.name} → ${row.name}`);
-    }
+    const n = drag.count;
+    const sameSystem = src.planet.starId === row.planet.starId;
+    const res = session().submit('move_colonists', {
+      fromColonyId: src.id,
+      toColonyId: row.id,
+      race: drag.race,
+      count: n,
+    });
+    if (res.error) note(`⛔ ${res.error}`);
+    else if (sameSystem) note(`🚚 ${n} colonist${n > 1 ? 's' : ''} shuttled ${src.name} → ${row.name}`);
+    else note(`🚚 ${n} colonist${n > 1 ? 's' : ''} boarded freighters ${src.name} → ${row.name} (${5 * n} freighters busy until arrival)`);
   }
   const canDropColony = (row: selectors.ColonyRow): boolean => {
     if (!drag || drag.colonyId === row.id || row.outpost) return false;
-    const src = allRows.find((r) => r.id === drag!.colonyId);
-    return !!src && src.planet.starId === row.planet.starId;
+    return allRows.some((r) => r.id === drag!.colonyId);
   };
 
   function setBuild(row: selectors.ColonyRow, item: string) {

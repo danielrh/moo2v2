@@ -183,6 +183,12 @@
     <span class="stat" data-testid="turn"><span class="lbl">Turn</span> {gs.turn}</span>
     <span class="stat" data-testid="bc" title="treasury (change per turn)">💰 {summary.bc} <span class="delta" class:neg={summary.bcDelta < 0}>({summary.bcDelta >= 0 ? '+' : ''}{summary.bcDelta})</span></span>
     <span class="stat" data-testid="food" title="empire food surplus" class:neg={summary.foodNet < 0}>🌾 {summary.foodNet >= 0 ? '+' : ''}{summary.foodNet}</span>
+    <span
+      class="stat"
+      data-testid="freighters"
+      class:neg={summary.freightersFree < summary.freightersNeeded}
+      title="freighters: free / total. Food deliveries need {summary.freightersNeeded}; hauling colonists between systems ties up 5 per colonist{summary.colonistsInTransit > 0 ? ` (${summary.colonistsInTransit} colonist${summary.colonistsInTransit > 1 ? 's' : ''} en route)` : ''}."
+    >🚚 {summary.freightersFree}/{summary.freighters}</span>
     <span class="stat" data-testid="rp" title="research points per turn">🔬 {summary.researchPerTurn}</span>
     <span
       class="stat"

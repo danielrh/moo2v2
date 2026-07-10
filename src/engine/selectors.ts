@@ -224,6 +224,10 @@ export interface EmpireSummary {
   researchPerTurn: number;
   freighters: number;
   freightersNeeded: number;
+  /** freighters not tied up hauling colonists between systems */
+  freightersFree: number;
+  /** colonist units currently riding freighters */
+  colonistsInTransit: number;
   colonies: number;
   researching: string | null;
   researchTurnsLeft: number | null;
@@ -265,6 +269,11 @@ export function empireSummary(state: GameState, empireId: number): EmpireSummary
     researchPerTurn: rp,
     freighters: empire.freighters,
     freightersNeeded: ceilDiv(freightersNeeded, 5) * 5,
+    freightersFree: freeFreighters(state, empire),
+    colonistsInTransit: (state.popTransits ?? []).reduce(
+      (n, t) => n + (t.empireId === empireId ? t.units : 0),
+      0,
+    ),
     colonies,
     researching: field?.id ?? (empire.research.extraQueue[0] ? `extra: ${empire.research.extraQueue[0]}` : null),
     researchTurnsLeft:
