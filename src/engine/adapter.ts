@@ -370,9 +370,23 @@ function advancedStart(state: GameState, homePlanets: number[], traits: RaceTrai
           best = { colony: c, gain };
         }
       }
-      if (!best) break; // nothing left to convert: the region cannot self-feed
+      if (!best) break; // nothing left to convert: fields alone cannot feed us
       best.colony.groups[0]!.workers--;
       best.colony.groups[0]!.farmers++;
+    }
+    // a developed empire built hydroponics where fields cannot feed everyone:
+    // pre-built farms (a start CONDITION, like the average start's star base —
+    // the tech set stays exactly the default) on the hungriest colonies until
+    // the empire nets zero. farm_flat feeds even barren mining worlds.
+    let farms = 0;
+    while (empireNet() < 0 && farms++ < 200) {
+      const hungriest = mine
+        .filter((c) => !c.buildings.includes('hydroponic_farm'))
+        .map((c) => ({ c, net: colonyOutput(state, c).foodNet }))
+        .sort((a, b) => a.net - b.net || a.c.id - b.c.id)[0];
+      if (!hungriest) break;
+      hungriest.c.buildings.push('hydroponic_farm');
+      hungriest.c.buildings.sort();
     }
   }
 
