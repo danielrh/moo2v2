@@ -4,7 +4,7 @@
 // - No imports from outside src/engine (zero runtime dependencies).
 // - No sources of nondeterminism; randomness comes only from the seeded PRNG.
 
-export const ENGINE_VERSION = '0.4.0'; // unlock registry fix, tax, charters, cost variance, pre-warp default, real star names
+export const ENGINE_VERSION = '0.5.0'; // 0-unit colonies die, barren terraform branch, refits, trait reassignment, scrap = ¼ cost
 
 export * from './types';
 export * from './canonical';
