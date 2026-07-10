@@ -172,8 +172,23 @@ export class SoloBot {
     const planned = this.session.getPlanned() ?? state;
     const v2 = this.mode === 'fair' && this.brain === 'v2';
     const myWarships = planned.ships.filter((s) => s.owner === me && s.shipKind === 'design').length;
+    const queuedWarships = planned.colonies.reduce(
+      (n, c) => n + (c.owner === me ? c.queue.filter((q) => q.item.startsWith('design:')).length : 0),
+      0,
+    );
+    let warOrders = myWarships + queuedWarships;
     const myColonies = planned.colonies.filter((c) => c.owner === me && !c.outpost).length;
-    for (const colony of planned.colonies) {
+    // v2 walks colonies by production so the shipyards get the military work
+    const ordered = v2
+      ? [...planned.colonies].sort((a, b) => {
+          if (a.owner !== me || a.outpost) return 1;
+          if (b.owner !== me || b.outpost) return -1;
+          const pa = selectors.colonyRow(planned, a).output.prodToQueue;
+          const pb = selectors.colonyRow(planned, b).output.prodToQueue;
+          return pb - pa || a.id - b.id;
+        })
+      : planned.colonies;
+    for (const colony of ordered) {
       if (colony.owner !== me || colony.outpost) continue;
       // developed worlds shift toward research; young ones industrialize
       const preset = v2 && colony.buildings.length >= 4 ? 'blend' : 'industry';
@@ -194,24 +209,38 @@ export class SoloBot {
         const options = row.buildable.filter((b) => b !== 'housing' && b !== 'trade_goods' && b !== 'spy');
         if (!options.length) continue;
         if (v2) {
-          // 1. cheapest unbuilt BUILDING (economy compounds), 2. a warship
-          //    when the fleet is thin, 3. whatever else is on offer
+          // priorities: keep a real fleet (≥1 warship per colony — the wars
+          // are lost without one), then the cheapest unbuilt building
+          // (economy compounds), then anything else
           const buildings = options
             .filter((b) => !SHIP_BUILDABLES.has(b) && !PROJECT_BUILDABLES.has(b) && !b.startsWith('design:') && !b.startsWith('refit:'))
             .sort((a, b) => (itemCost(planned, me, a, colony) ?? 9999) - (itemCost(planned, me, b, colony) ?? 9999));
-          const designs = options.filter((b) => b.startsWith('design:'));
-          let item: string | undefined = buildings[0];
-          if (!item && myWarships < myColonies && designs.length) item = designs[0];
-          if (!item) item = designs[0] ?? options[Math.floor(rand() * options.length)];
+          const designs = options
+            .filter((b) => b.startsWith('design:'))
+            .sort((a, b) => (itemCost(planned, me, a, colony) ?? 9999) - (itemCost(planned, me, b, colony) ?? 9999));
+          let item: string | undefined;
+          if (warOrders < myColonies && designs.length) {
+            item = designs[0];
+            warOrders++;
+          } else if (buildings.length) {
+            item = buildings[0];
+          } else if (row.buildable.includes('housing') && row.popUnits + 2 < row.maxPop) {
+            item = 'housing'; // fully built world with room: grow people
+          } else {
+            item = designs[0] ?? options[Math.floor(rand() * options.length)];
+          }
           if (item) this.submit('set_build_queue', { colonyId: colony.id, items: [item] });
         } else {
           const item = options[Math.floor(rand() * options.length)]!;
           this.submit('set_build_queue', { colonyId: colony.id, items: [item] });
         }
       } else if (v2) {
-        // buy when it is cheap relative to the treasury (keep a reserve)
+        // money is for spending: colony ships get bought outright when the
+        // treasury covers them with a small buffer; everything else at 2:1
         const row = selectors.colonyRow(planned, colony);
-        if (row.canBuy && row.buyPrice !== null && row.buyPrice * 3 <= bot.bc) {
+        const head = colony.queue[0]?.item;
+        const limit = head === 'colony_ship' ? bot.bc - 60 : Math.floor(bot.bc / 2);
+        if (row.canBuy && row.buyPrice !== null && row.buyPrice <= limit) {
           this.submit('buy_production', { colonyId: colony.id });
         }
       } else if (bot.bc > 150 && rand() < 0.3) {
@@ -256,18 +285,25 @@ export class SoloBot {
         .find((o) => o.reachable && freePlanets.some((p) => p.starId === o.starId));
       if (dest) this.submit('move_ships', { shipIds: [ship.id], destStarId: dest.starId });
     }
-    // keep exactly one colony ship in the pipeline while there is room to grow
-    const building = planned.colonies.some(
-      (c) => c.owner === me && c.queue.some((q) => q.item === 'colony_ship'),
+    // keep colony ships in the pipeline while there is room to grow —
+    // the tuned brain runs TWO yards at once (expansion wins games)
+    const queued = planned.colonies.reduce(
+      (n, c) => n + (c.owner === me ? c.queue.filter((q) => q.item === 'colony_ship').length : 0),
+      0,
     );
-    if (freePlanets.length && !colonyShips.length && !building) {
+    const wantPipeline = this.brain === 'v2' ? Math.min(3, freePlanets.length) : 1;
+    let pipeline = colonyShips.length + queued;
+    if (freePlanets.length && pipeline < wantPipeline) {
       const rows = planned.colonies
         .filter((c) => c.owner === me && !c.outpost)
         .map((c) => selectors.colonyRow(planned, c))
-        .filter((r) => r.buildable.includes('colony_ship'))
+        .filter((r) => r.buildable.includes('colony_ship') && !r.queue.includes('colony_ship'))
         .sort((a, b) => (b.output.prodToQueue || b.output.prod) - (a.output.prodToQueue || a.output.prod));
-      const best = rows[0];
-      if (best) this.submit('set_build_queue', { colonyId: best.id, items: ['colony_ship', ...best.queue] });
+      for (const best of rows) {
+        if (pipeline >= wantPipeline) break;
+        this.submit('set_build_queue', { colonyId: best.id, items: ['colony_ship', ...best.queue] });
+        pipeline++;
+      }
     }
   }
 
