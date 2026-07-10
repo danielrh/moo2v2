@@ -1,6 +1,6 @@
 <script lang="ts">
   import { selectors, gameEngine } from '@engine/index';
-  import { app, getActive } from '../state.svelte';
+  import { app, getActive, leaveGame } from '../state.svelte';
   import { addBotForSeat, removeBotForSeat } from '../net';
   import { latchEdge, type EdgeLatch, type EdgeLevel } from '../commitEdge';
   import { describeSaveError, downloadRawDatabase, downloadSave } from '../saveload';
@@ -249,6 +249,10 @@
           title="Download the raw sqlite database">DB</button>
       {/if}
       {#if saveNote}<span class="dim" data-testid="save-note">{saveNote}</span>{/if}
+      <button data-testid="leave-room" onclick={leaveGame}
+        title={pbmInfo ? 'mail in: uploads your progress and hands the room to the next player' : 'leave this room (the game stays saved; rejoin any time)'}>
+        {pbmInfo ? '📬 mail in & leave' : '⏏ leave'}
+      </button>
     </span>
   </header>
   {#if edgeShown}

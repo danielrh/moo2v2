@@ -157,7 +157,7 @@ export async function enterPbmGame(params: PbmEnterParams): Promise<ActiveGame> 
         save: b64encode(bytes),
         turn: preview.verified.turn,
         committed: [],
-        players: preview.envelope.players.map((p) => ({ id: p.id, name: p.name })),
+        players: preview.envelope.players.map((p) => ({ id: p.player_id, name: p.name })),
       });
       if (create.status !== 200) throw new Error((create.data['error'] as string) ?? 'creating the PBM game failed');
     } else if (room.status === 200) {
@@ -201,7 +201,7 @@ export async function enterPbmGame(params: PbmEnterParams): Promise<ActiveGame> 
             save: b64encode(bytes),
             turn: state?.turn ?? 0,
             committed: active.host!.getCommittedSeats(),
-            players: envelope.players.map((p) => ({ id: p.id, name: p.name })),
+            players: envelope.players.map((p) => ({ id: p.player_id, name: p.name })),
           });
           setNote(res.status === 200 ? `uploaded turn ${state?.turn} ✓` : `⚠ upload failed: ${res.data['error']}`);
         } catch (e) {

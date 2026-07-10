@@ -124,9 +124,11 @@
     }
   }
 
-  // auto-join when arriving with a full URL (also the reload/resume path)
+  // auto-join when arriving with a full URL (also the reload/resume path);
+  // runs once so leaving a room doesn't bounce straight back in
   $effect(() => {
-    if (q.get('room') && q.get('name') && app.screen === 'home' && !app.connecting && !app.error) {
+    if (q.get('room') && q.get('name') && app.screen === 'home' && !app.connecting && !app.error && !app.autoJoined) {
+      app.autoJoined = true;
       void go();
     }
   });

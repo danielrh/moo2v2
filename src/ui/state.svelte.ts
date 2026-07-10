@@ -32,6 +32,8 @@ export const app = $state({
   reports: [] as ReportEntry[],
   /** host peer connectivity (clients only; host is always true) */
   hostConnected: true,
+  /** the ?room=&name= URL auto-join already ran (don't rejoin after leaving) */
+  autoJoined: false,
 });
 
 // Not reactive on purpose: session/transport are external objects.
