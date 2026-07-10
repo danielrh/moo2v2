@@ -362,7 +362,7 @@ const applyColonize: Applier = (state, cmd) => {
   state.ships = state.ships.filter((s) => s.id !== ship.id);
   const romans = ['I', 'II', 'III', 'IV', 'V'];
   state.colonies.push({
-    id: state.nextId++,
+    id: allocId(state, cmd.playerId),
     planetId: planet.id,
     owner: cmd.playerId,
     name: `${star.name} ${romans[planet.orbit - 1] ?? planet.orbit}`,
@@ -399,7 +399,7 @@ const applyOutpost: Applier = (state, cmd) => {
   const star = state.stars.find((s) => s.id === planet.starId)!;
   state.ships = state.ships.filter((s) => s.id !== ship.id);
   state.colonies.push({
-    id: state.nextId++,
+    id: allocId(state, cmd.playerId),
     planetId: planet.id,
     owner: cmd.playerId,
     name: `${star.name} Outpost`,
@@ -540,7 +540,7 @@ const applySaveDesign: Applier = (state, cmd) => {
   const p = cmd.payload as SaveDesignPayload;
   const empire = empireOf(state, cmd.playerId);
   empire.designs.push({
-    id: state.nextId++,
+    id: allocId(state, cmd.playerId),
     name: p.name.trim(),
     hull: p.hull,
     computer: p.computer,
@@ -777,7 +777,7 @@ const validatePropose: Validator = (state, cmd) => {
 const applyPropose: Applier = (state, cmd) => {
   const p = cmd.payload as { to: number; kind: ProposalKind; giveBc?: number; giveApp?: string; wantApp?: string };
   state.proposals.push({
-    id: state.nextId++,
+    id: allocId(state, cmd.playerId),
     from: cmd.playerId,
     to: p.to,
     kind: p.kind,
@@ -926,7 +926,7 @@ const applyAttackAntarans: Applier = (state, cmd) => {
   // the home garrison materializes on the far side of the portal
   const garrison: Array<keyof typeof MONSTER_SPECS> = ['antaran_fortress', 'antaran_intruder', 'antaran_intruder', 'antaran_marauder'];
   for (const kind of garrison) {
-    state.monsters.push({ id: state.nextId++, kind: kind as never, starId: planet.starId, dmgStructure: 0 });
+    state.monsters.push({ id: allocWorldId(state), kind: kind as never, starId: planet.starId, dmgStructure: 0 });
   }
   state.monsters.sort((a, b) => a.id - b.id);
 };
@@ -1017,9 +1017,9 @@ const applyMoveColonists: Applier = (state, cmd) => {
   const empire = empireOf(state, cmd.playerId);
   const fromStar = state.stars.find((s) => s.id === fromStarId)!;
   const toStar = state.stars.find((s) => s.id === toStarId)!;
-  const turns = travelTurns(state, empire, fromStar, toStar);
+  const turns = settlerTravelTurns(state, empire, fromStar, toStar);
   (state.popTransits ??= []).push({
-    id: state.nextId++,
+    id: allocId(state, cmd.playerId),
     empireId: cmd.playerId,
     race: p.race,
     fromColonyId: from.id,
@@ -1278,7 +1278,7 @@ const applyDebugFoundColony: Applier = (state, cmd) => {
   const star = state.stars.find((s) => s.id === planet.starId)!;
   const empire = empireOf(state, cmd.playerId);
   state.colonies.push({
-    id: state.nextId++,
+    id: allocId(state, cmd.playerId),
     planetId: planet.id,
     owner: cmd.playerId,
     name: star.name,
@@ -1304,7 +1304,7 @@ const applyDebugSpawnShips: Applier = (state, cmd) => {
   const p = cmd.payload as { starId: number; designId: number; count: number };
   for (let i = 0; i < Math.min(p.count, 20); i++) {
     state.ships.push({
-      id: state.nextId++,
+      id: allocId(state, cmd.playerId),
       owner: cmd.playerId,
       shipKind: 'design',
       designId: p.designId,

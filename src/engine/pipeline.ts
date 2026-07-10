@@ -9,11 +9,13 @@ import { diplomacyUpkeep } from './diplomacy';
 import { resolveEspionage } from './espionage';
 import { assimilate, isBlockaded, resolveInvasions } from './ground';
 import { leaderEmpireBonuses, leadersUpkeep } from './leaders';
-import { antaranUpkeep, randomEventsUpkeep } from './npc';
+import { antaranUpkeep, hostileMonsterAt, randomEventsUpkeep } from './npc';
+import { allocId } from './ids';
 import { itemCost, parseDesignItem, parseRefitItem } from './items';
 import { commandPoints } from './movement';
+import { ceilDiv } from './imath';
 import { applyTerraformStep, terraformCost, unsettledPlanetsInSystem } from './terraform';
-import { colonyMaxPop, colonyOutput, colonyPopUnits, farmingViable, freeFreighters, groupGrowthK, traitsOf } from './economy';
+import { busyFreighters, colonyMaxPop, colonyOutput, colonyPopUnits, farmingViable, freeFreighters, groupGrowthK, traitsOf } from './economy';
 import { normalizeJobsForGroup } from './commands';
 import { rngFor } from './rng';
 import { applyResearch } from './research';
@@ -205,6 +207,7 @@ function s2_colonyOutput(state: GameState, events: TurnEvent[]): TurnOutputs {
     // chartered civilian haulers beyond freighter capacity: 1 BC per food unit
     let charterBudget = Math.max(0, empire.bc + (empireBC.get(empire.id) ?? 0));
     let charterSpent = 0;
+    let freighterFood = 0; // food units hauled by OWN freighters this turn
     deficits = deficits.sort((a, b) => a.colony.id - b.colony.id);
     for (const d of deficits) {
       // blockaded colonies cannot receive deliveries at all
@@ -212,6 +215,7 @@ function s2_colonyOutput(state: GameState, events: TurnEvent[]): TurnOutputs {
       const moved = blockaded ? 0 : Math.min(d.lack, surplus, capacity);
       surplus -= moved;
       capacity -= moved;
+      freighterFood += moved;
       d.lack -= moved;
       const chartered = blockaded ? 0 : Math.min(d.lack, surplus, charterBudget);
       if (chartered > 0) {
@@ -232,6 +236,15 @@ function s2_colonyOutput(state: GameState, events: TurnEvent[]): TurnOutputs {
     if (charterSpent > 0) {
       empireBC.set(empire.id, (empireBC.get(empire.id) ?? 0) - charterSpent);
       events.push({ visibleTo: empire.id, kind: 'food_chartered', payload: { units: charterSpent, bc: charterSpent } });
+    }
+    // freighter maintenance: 0.5 BC per freighter IN USE this turn (one per
+    // food unit hauled, five per colonist unit in transit); idle hulls are
+    // free. Integer ledger: charge rounds up.
+    const freightersInUse = freighterFood + busyFreighters(state, empire.id);
+    if (freightersInUse > 0) {
+      const upkeep = ceilDiv(freightersInUse, 2);
+      empireBC.set(empire.id, (empireBC.get(empire.id) ?? 0) - upkeep);
+      events.push({ visibleTo: empire.id, kind: 'freighter_upkeep', payload: { inUse: freightersInUse, bc: upkeep } });
     }
     for (const c of mine) {
       if (!deficits.some((d) => d.colony.id === c.id)) c.foodLackPrev = 0;
@@ -316,7 +329,7 @@ function completeItem(state: GameState, colony: Colony, item: string, events: Tu
       const star = state.stars.find((st) => st.id === planet.starId)!;
       const romans = ['I', 'II', 'III', 'IV', 'V'];
       state.colonies.push({
-        id: state.nextId++,
+        id: allocId(state, colony.owner),
         planetId: target.id,
         owner: colony.owner,
         name: `${star.name} ${romans[target.orbit - 1] ?? target.orbit}`,
@@ -382,7 +395,7 @@ function completeItem(state: GameState, colony: Colony, item: string, events: Tu
   const designId = parseDesignItem(item);
   if (designId !== null) {
     state.ships.push({
-      id: state.nextId++,
+      id: allocId(state, colony.owner),
       owner: colony.owner,
       shipKind: 'design',
       designId,
@@ -397,7 +410,7 @@ function completeItem(state: GameState, colony: Colony, item: string, events: Tu
   }
   if (item === 'colony_ship' || item === 'outpost_ship' || item === 'transport') {
     state.ships.push({
-      id: state.nextId++,
+      id: allocId(state, colony.owner),
       owner: colony.owner,
       shipKind: item,
       designId: null,
@@ -459,6 +472,18 @@ function s6_movement(state: GameState, events: TurnEvent[]): void {
       kind: 'ship_arrived',
       payload: { shipId: ship.id, starId },
     });
+    // settling opportunity alert: a colony ship just reached a system with an
+    // open (unguarded) planet — the map view surfaces this like a breakthrough
+    if (ship.shipKind === 'colony_ship' && !hostileMonsterAt(state, starId)) {
+      const open = unsettledPlanetsInSystem(state, starId);
+      if (open.length > 0) {
+        events.push({
+          visibleTo: ship.owner,
+          kind: 'colony_ship_arrived',
+          payload: { shipId: ship.id, starId, planetId: open[0]!.id },
+        });
+      }
+    }
   }
 
   // colonists riding freighters land the same way (their 5-per-unit

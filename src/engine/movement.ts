@@ -23,6 +23,26 @@ export function driveSpeed(empire: Empire): number {
   return speed;
 }
 
+/** Drive speed for civilian settler traffic (move_colonists freighter runs):
+ * freighters fly the SECOND-best drive the empire knows — the newest engines
+ * are reserved for the warfleet — and never worse than the nuclear baseline.
+ * Racial physiology (trans-dimensional) and navigator officers still apply:
+ * they belong to the crews, not to the engine model. */
+export function settlerDriveSpeed(empire: Empire): number {
+  const k = (app: string) => empire.knownApps.includes(app);
+  const known = [2]; // nuclear drive baseline (always known)
+  if (k('fusion_drive')) known.push(3);
+  if (k('ion_drive')) known.push(4);
+  if (k('anti_matter_drive')) known.push(5);
+  if (k('hyper_drive')) known.push(6);
+  if (k('interphased_drive')) known.push(7);
+  known.sort((a, b) => b - a);
+  let speed = known[1] ?? known[0]!; // second-best; nuclear when only one drive known
+  if (empire.picks.includes('trans_dimensional')) speed += 2;
+  speed += leaderEmpireBonuses(empire).navigatorSpeed;
+  return speed;
+}
+
 /** fuel range in centiparsecs (thorium = effectively unlimited) */
 export function fuelRangeCp(empire: Empire): number {
   const k = (app: string) => empire.knownApps.includes(app);
@@ -57,6 +77,14 @@ export function travelTurns(state: GameState, empire: Empire, from: Star, to: St
   const dist = starDistance(from, to);
   const speed = driveSpeed(empire) * 100; // centiparsecs per turn
   return Math.max(1, ceilDiv(dist, speed));
+}
+
+/** Travel time for colonists riding freighters (settler runs use the
+ * second-best drive; wormholes still short-circuit to a single turn). */
+export function settlerTravelTurns(state: GameState, empire: Empire, from: Star, to: Star): number {
+  if (from.wormholeTo === to.id) return 1;
+  const dist = starDistance(from, to);
+  return Math.max(1, ceilDiv(dist, settlerDriveSpeed(empire) * 100));
 }
 
 // Orbital-base command points come solely from the buildings' cp_flat effect

@@ -5,6 +5,7 @@
 
 import { relationKey, setRelation } from './battles';
 import { colonyPopUnits } from './economy';
+import { allocId } from './ids';
 import { floorDiv } from './imath';
 import { leaderEmpireBonuses } from './leaders';
 import { grantApp } from './research';
@@ -112,7 +113,7 @@ export function executeSurrender(state: GameState, from: Empire, to: Empire, eve
   // designs: copy and remap
   const designMap = new Map<number, number>();
   for (const d of from.designs) {
-    const copy = { ...d, id: state.nextId++, name: `${d.name} (${from.name})`, weapons: d.weapons.map((w) => ({ ...w, mods: [...w.mods] })), specials: [...d.specials] };
+    const copy = { ...d, id: allocId(state, to.id), name: `${d.name} (${from.name})`, weapons: d.weapons.map((w) => ({ ...w, mods: [...w.mods] })), specials: [...d.specials] };
     designMap.set(d.id, copy.id);
     to.designs.push(copy);
   }

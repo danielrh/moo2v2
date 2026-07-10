@@ -17,6 +17,7 @@
 //     lucky races are never the victim of the bad ones.
 
 import { HOP_RANGE_CP, starDistance } from './galaxy';
+import { allocWorldId } from './ids';
 import { rngFor } from './rng';
 import { NEXT_TERRAFORM } from './terraform';
 import { grantApp } from './research';
@@ -351,7 +352,7 @@ export function antaranUpkeep(state: GameState, events: TurnEvent[]): void {
   if (tier >= 3) party.push('antaran_marauder');
   if (tier >= 4) party.push('antaran_marauder', 'antaran_intruder');
   for (const kind of party) {
-    state.monsters.push({ id: state.nextId++, kind, starId: planet.starId, dmgStructure: 0, raidStar: planet.starId, raidTurn: state.turn + 1, raidTargetEmpire: target.id });
+    state.monsters.push({ id: allocWorldId(state), kind, starId: planet.starId, dmgStructure: 0, raidStar: planet.starId, raidTurn: state.turn + 1, raidTargetEmpire: target.id });
   }
   state.monsters.sort((a, b) => a.id - b.id);
   state.antarans.nextRaidTurn = state.turn + 25 + rng.int(16);
