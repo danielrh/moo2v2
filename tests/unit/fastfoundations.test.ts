@@ -122,6 +122,9 @@ describe('freighter in-use upkeep', () => {
     withDeficitColony(s);
     const e = s.empires[0]!;
     e.freighters = 10;
+    // give the homeworld a real surplus so the deficit colony can be fed
+    const home = s.colonies.find((c) => c.owner === 0)!;
+    home.groups[0] = { race: 0, popK: 8000, farmers: 6, workers: 0, scientists: 2, unrest: false };
     // one colonist unit in transit ties up 5 freighters for the whole trip
     s.popTransits = [
       {
@@ -159,13 +162,13 @@ describe('Unification skips morale tech', () => {
     expect(appPickableBy(s.empires[0]!, 'pleasure_dome')).toBe(false);
     expect(appPickableBy(s.empires[0]!, 'holo_simulator')).toBe(false);
     expect(appPickableBy(s.empires[0]!, 'virtual_reality_network')).toBe(false);
-    expect(appPickableBy(s.empires[0]!, 'astro_university')).toBe(true);
+    expect(appPickableBy(s.empires[0]!, 'supercomputer')).toBe(true);
     expect(appPickableBy(s.empires[1]!, 'pleasure_dome')).toBe(true); // solari: fine
   });
 
   it("an uncreative unification empire's random grant never rolls a morale app", () => {
-    // field 73 holds alien_management_center + astro_university + holo_simulator
-    const field = fieldByNum.get(73)!;
+    // positronics (60) holds positronic_computer + supercomputer + holo_simulator
+    const field = fieldByNum.get(60)!;
     for (let salt = 0; salt < 8; salt++) {
       const s = newGame(HIVEX);
       s.turn = 1 + salt; // vary the roll stream
@@ -174,7 +177,7 @@ describe('Unification skips morale tech', () => {
         e.completedFields.push(field.previous);
         e.completedFields.sort((a, b) => a - b);
       }
-      e.research.fieldNum = 73;
+      e.research.fieldNum = 60;
       const events: TurnEvent[] = [];
       applyResearch(s, e, 1_000_000, rngFor(SEED, s.turn, 'research', 0), events);
       const done = events.find((ev) => ev.kind === 'research_complete');
@@ -188,7 +191,7 @@ describe('Unification skips morale tech', () => {
   it('a target-choosing unification race cannot pick a morale app while alternatives exist', () => {
     const s = newGame(JSON.stringify({ picks: ['unification'] })); // not uncreative
     const e = s.empires[0]!;
-    const field = fieldByNum.get(73)!;
+    const field = fieldByNum.get(60)!;
     if (field.previous !== 0 && !e.completedFields.includes(field.previous)) {
       e.completedFields.push(field.previous);
       e.completedFields.sort((a, b) => a - b);
@@ -198,7 +201,7 @@ describe('Unification skips morale tech', () => {
       turn: 1,
       playerId: 0,
       kind: 'set_research',
-      payload: { fieldNum: 73, targetApp: 'holo_simulator' },
+      payload: { fieldNum: 60, targetApp: 'holo_simulator' },
     } as never);
     expect(err).toMatch(/Unification/);
     const ok = validateCommand(s, {
@@ -206,7 +209,7 @@ describe('Unification skips morale tech', () => {
       turn: 1,
       playerId: 0,
       kind: 'set_research',
-      payload: { fieldNum: 73, targetApp: 'astro_university' },
+      payload: { fieldNum: 60, targetApp: 'supercomputer' },
     } as never);
     expect(ok).toBeNull();
   });

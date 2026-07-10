@@ -174,6 +174,11 @@ export class GameSession<S> {
   submit(kind: string, payload: unknown): { clientId: string; error?: string } {
     const clientId = `${this.playerId}:${this.clientNonce}:${++this.clientIdCounter}`;
     if (this.fastPhaseActive()) {
+      // blind after a reload: the screen shows the authoritative state but
+      // new orders would land on a future turn the player cannot see
+      if (this.fastBlind()) {
+        return { clientId, error: 'recovering your fast-forwarded turns — planning resumes when the sync catches up' };
+      }
       // fast phase: orders target the PREVIEW turn and validate against the
       // preview state; the host buffers anything past the authoritative turn
       const turn = this.fastTurn();
