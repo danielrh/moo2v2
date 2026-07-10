@@ -138,6 +138,33 @@ describe('fast start', () => {
     }
   }, 120_000);
 
+  it('both players ahead: the host cascades through every mutually-committed turn', async () => {
+    const { hub, hosted, joiner } = makeTable();
+    await hub.settle();
+    hosted.host.startGame(SEED);
+    await hub.settle();
+
+    const a = hosted.session;
+    const b = joiner;
+    // both race 3 turns without ever waiting for each other
+    for (let i = 0; i < 3; i++) {
+      expect(a.endTurnFast()).toBe(true);
+      await hub.settle();
+    }
+    expect(a.getState()!.turn).toBe(1); // Bob has not committed anything
+    for (let i = 0; i < 3; i++) {
+      expect(b.endTurnFast()).toBe(true);
+      await hub.settle();
+    }
+    // Bob's commits complete turns 1..3: the pump cascades all of them
+    expect(a.getState()!.turn).toBe(4);
+    expect(b.getState()!.turn).toBe(4);
+    expect(a.fastAheadTurns()).toBe(0);
+    expect(b.fastAheadTurns()).toBe(0);
+    const eng = engine();
+    expect(eng.hash(a.getState()!)).toBe(eng.hash(b.getState()!));
+  }, 120_000);
+
   it('blocks End Turn at the +10 cap over the slowest player', async () => {
     const { hub, hosted } = makeTable();
     await hub.settle();
