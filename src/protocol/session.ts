@@ -85,6 +85,8 @@ export class GameSession<S> {
   } | null = null;
   private pendingReveal: { bids: Record<string, number>; nonce: string } | null = null;
   private committedCache: number[] = [];
+  /** wall-clock ms when the host's auto-turn timer fires (null = not armed) */
+  private autoTurnDeadline: number | null = null;
   private startedFlag = false;
   private listeners: Array<(ev: SessionEvent) => void> = [];
   private persistChain: Promise<void> = Promise.resolve();
@@ -214,6 +216,7 @@ export class GameSession<S> {
       }
       case 'commit_status': {
         this.committedCache = msg.committed;
+        this.autoTurnDeadline = msg.autoTurnInMs !== undefined ? Date.now() + msg.autoTurnInMs : null;
         this.bump({ type: 'commit-status', turn: msg.turn, committed: msg.committed });
         return;
       }
@@ -476,6 +479,11 @@ export class GameSession<S> {
 
   getCommitted(): readonly number[] {
     return this.committedCache;
+  }
+
+  /** ms epoch when the host force-advances (auto-turn), or null. */
+  getAutoTurnDeadline(): number | null {
+    return this.autoTurnDeadline;
   }
 
   isStarted(): boolean {

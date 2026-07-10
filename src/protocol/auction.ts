@@ -54,7 +54,7 @@ export function findContested(players: Array<{ id: number; raceJson: string | nu
 export function budgetSlack(raceJson: string | null): number {
   const { picks } = resolvedPicks(raceJson);
   const v = validatePicks(picks);
-  return Math.max(0, MAX_POSITIVE_PICKS - v.cost);
+  return Math.max(0, budget - v.cost);
 }
 
 export interface ResolveInput {

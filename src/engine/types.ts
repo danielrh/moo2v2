@@ -224,6 +224,8 @@ export interface GameStateSettings {
   mirror?: boolean;
   /** home-system sibling world: 'good' = ultra-rich, 'min' = abundant */
   homeStart?: 'good' | 'min';
+  /** custom-race pick budget (absent = classic 10) */
+  pickPoints?: number;
 }
 
 export type ProposalKind =

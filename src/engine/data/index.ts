@@ -143,7 +143,7 @@ export interface PickValidationResult {
 }
 
 /** Validate a custom race pick set per the §02 rules. */
-export function validatePicks(pickIds: readonly string[]): PickValidationResult {
+export function validatePicks(pickIds: readonly string[], budget: number = MAX_POSITIVE_PICKS): PickValidationResult {
   const errors: string[] = [];
   const seen = new Set<string>();
   let cost = 0;
@@ -172,7 +172,7 @@ export function validatePicks(pickIds: readonly string[]): PickValidationResult 
   if (negatives < MAX_NEGATIVE_PICKS) {
     errors.push(`negative picks ${negatives} exceed allowance ${MAX_NEGATIVE_PICKS}`);
   }
-  if (cost > MAX_POSITIVE_PICKS) errors.push(`net cost ${cost} exceeds ${MAX_POSITIVE_PICKS}`);
+  if (cost > budget) errors.push(`net cost ${cost} exceeds ${budget}`);
   return { ok: errors.length === 0, cost, errors };
 }
 

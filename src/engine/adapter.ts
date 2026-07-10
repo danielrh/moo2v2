@@ -31,7 +31,7 @@ export interface EngineGameStart {
   dataVersion: string;
 }
 
-export function resolveRaceConfig(raceJson: string | null): { picks: string[]; raceName: string } {
+export function resolveRaceConfig(raceJson: string | null, pickBudget?: number): { picks: string[]; raceName: string } {
   let cfg: RaceConfig = {};
   if (raceJson) {
     try {
@@ -44,7 +44,7 @@ export function resolveRaceConfig(raceJson: string | null): { picks: string[]; r
     const preset = racePresetById.get(cfg.presetId);
     if (preset) return { picks: [...preset.picks], raceName: cfg.raceName ?? preset.name };
   }
-  if (cfg.picks && validatePicks(cfg.picks).ok) {
+  if (cfg.picks && validatePicks(cfg.picks, pickBudget).ok) {
     return { picks: [...cfg.picks].sort(), raceName: cfg.raceName ?? 'Custom' };
   }
   const fallback = racePresetById.get('solari')!;
@@ -52,7 +52,7 @@ export function resolveRaceConfig(raceJson: string | null): { picks: string[]; r
 }
 
 export function initGame(start: EngineGameStart): GameState {
-  const configs = start.players.map((p) => resolveRaceConfig(p.raceJson));
+  const configs = start.players.map((p) => resolveRaceConfig(p.raceJson, start.settings.pickPoints));
   const traits = configs.map((c) => resolveTraits(c.picks));
   const galaxy = generateGalaxy(start.seed, start.settings, traits);
 

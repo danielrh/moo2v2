@@ -1,3 +1,8 @@
+// Auto-turn timer (bug: the old mode jumped 60 turns at once). New rule:
+// turns ALWAYS advance one at a time; once every player except one has
+// committed, the host waits settings.autoTurnSeconds for the laggard and
+// then advances without them.
+
 import { describe, expect, it } from 'vitest';
 import { MemoryHub } from '@protocol/memoryTransport';
 import { stubEngine, type StubState } from '@protocol/engineAdapter';
@@ -16,19 +21,19 @@ function identity(name: string) {
   };
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function twoPlayerGame(settings: Partial<GameSettings>) {
   const hub = new MemoryHub(2);
-  const t0 = hub.join();
-  const t1 = hub.join();
   const hosted = createHostedGame<StubState>({
-    transport: t0,
+    transport: hub.join(),
     engine: stubEngine,
     store: null,
     settings: { ...DEFAULT_SETTINGS, playerCount: 2, ...settings },
     identity: identity('Host'),
   });
   const client = joinGame<StubState>({
-    transport: t1,
+    transport: hub.join(),
     engine: stubEngine,
     store: null,
     identity: identity('Client'),
@@ -37,33 +42,43 @@ async function twoPlayerGame(settings: Partial<GameSettings>) {
   return { hub, hosted, client };
 }
 
-describe('auto-turn option (bug: fast-forward the early game)', () => {
-  it('fast-forwards to the configured turn after the first all-commit', async () => {
-    const { hub, hosted, client } = await twoPlayerGame({ autoTurnUntil: 7 });
+describe('auto-turn timer (all-but-one committed → countdown → single advance)', () => {
+  it('advances exactly ONE turn after the timeout when one player lags', async () => {
+    const { hub, hosted, client } = await twoPlayerGame({ autoTurnSeconds: 0.05 });
     hosted.host.startGame(SEED);
     await hub.settle();
 
-    client.commitTurn();
+    client.commitTurn(); // 1 of 2 committed: timer arms
     await hub.settle();
-    expect(hosted.session.getState()!.turn).toBe(1); // still waiting on host
+    expect(hosted.session.getState()!.turn).toBe(1);
 
-    hosted.session.commitTurn();
+    await sleep(120);
     await hub.settle();
-    // one all-commit advanced turn 1, then auto-advance carried it to 7
-    expect(hosted.session.getState()!.turn).toBe(7);
-    expect(client.getState()!.turn).toBe(7);
+    expect(hosted.session.getState()!.turn).toBe(2); // one turn, not a jump
+    expect(client.getState()!.turn).toBe(2);
     expect(stubEngine.hash(hosted.session.getState()!)).toBe(stubEngine.hash(client.getState()!));
-    expect(client.getCommitted()).toEqual([]);
 
-    // past the target, normal commit flow resumes: one advance per all-commit
-    client.commitTurn();
-    hosted.session.commitTurn();
+    // nothing further happens without new commits
+    await sleep(120);
     await hub.settle();
-    expect(hosted.session.getState()!.turn).toBe(8);
+    expect(hosted.session.getState()!.turn).toBe(2);
   });
 
-  it('is off by default', async () => {
-    const { hub, hosted, client } = await twoPlayerGame({});
+  it('uncommitting below the threshold disarms the countdown', async () => {
+    const { hub, hosted, client } = await twoPlayerGame({ autoTurnSeconds: 0.05 });
+    hosted.host.startGame(SEED);
+    await hub.settle();
+    client.commitTurn();
+    await hub.settle();
+    client.uncommitTurn(); // back under all-but-one
+    await hub.settle();
+    await sleep(120);
+    await hub.settle();
+    expect(hosted.session.getState()!.turn).toBe(1);
+  });
+
+  it('a full table still advances immediately (no waiting)', async () => {
+    const { hub, hosted, client } = await twoPlayerGame({ autoTurnSeconds: 5 });
     hosted.host.startGame(SEED);
     await hub.settle();
     client.commitTurn();
@@ -72,35 +87,28 @@ describe('auto-turn option (bug: fast-forward the early game)', () => {
     expect(hosted.session.getState()!.turn).toBe(2);
   });
 
-  it('resumes fast-forwarding when a host restarts mid-run', async () => {
-    const { hub, hosted, client } = await twoPlayerGame({ autoTurnUntil: 9 });
+  it('is off by default: a lone commit waits forever', async () => {
+    const { hub, hosted, client } = await twoPlayerGame({});
     hosted.host.startGame(SEED);
     await hub.settle();
     client.commitTurn();
-    hosted.session.commitTurn();
     await hub.settle();
-    expect(hosted.session.getState()!.turn).toBe(9);
+    await sleep(120);
+    await hub.settle();
+    expect(hosted.session.getState()!.turn).toBe(1);
+  });
 
-    // simulate a resume from a log that stopped short of the target: the
-    // fast-forward continues without any new commits
-    const log = hosted.host.getLog();
-    const advances = log.filter((c) => c.kind === 'advance_turn');
-    const cut = log.indexOf(advances[2]!) + 1; // log through turn 3's advance
-    hosted.host.close();
-    hub.leave(0);
+  it('the countdown deadline reaches clients via commit_status', async () => {
+    const { hub, hosted, client } = await twoPlayerGame({ autoTurnSeconds: 5 });
+    hosted.host.startGame(SEED);
     await hub.settle();
-    const t0 = hub.rejoinSlot(0);
-    const resumed = createHostedGame<StubState>({
-      transport: t0,
-      engine: stubEngine,
-      store: null,
-      settings: { ...DEFAULT_SETTINGS, playerCount: 2, autoTurnUntil: 9 },
-      identity: identity('Host'),
-      resume: { gameId: 'g-0123456789abcdef', log: [...log.slice(0, cut)] },
-    });
+    expect(client.getAutoTurnDeadline()).toBeNull();
+    client.commitTurn();
     await hub.settle();
-    expect(resumed.session.getState()!.turn).toBe(9);
-    // client had already folded to 9; both agree
-    expect(stubEngine.hash(resumed.session.getState()!)).toBe(stubEngine.hash(client.getState()!));
+    const deadline = client.getAutoTurnDeadline();
+    expect(deadline).not.toBeNull();
+    expect(deadline! - Date.now()).toBeGreaterThan(3000);
+    expect(deadline! - Date.now()).toBeLessThanOrEqual(5000);
+    void hosted;
   });
 });

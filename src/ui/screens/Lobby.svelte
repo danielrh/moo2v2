@@ -4,7 +4,6 @@
   import { app, getActive } from '../state.svelte';
 
   let ready = $state(false);
-  let autoTurnTarget = $state(60);
   let presetId = $state('solari');
   let custom = $state(false);
   let customPicks = $state<string[]>(['dictatorship']);
@@ -175,33 +174,25 @@
         {m.label}
       </label>
     {/each}
-    <label title="Once everyone has committed the first turn, the host fast-forwards turns automatically up to this turn (battles still pause for orders).">
-      <input
-        type="checkbox"
-        data-testid="auto-turn"
-        checked={(settings.autoTurnUntil ?? 0) > 0}
-        onchange={(e) => updateSetting('autoTurnUntil', (e.target as HTMLInputElement).checked ? autoTurnTarget : 0)}
-      />
-      Auto-turn to
-      <input
-        type="number"
-        data-testid="auto-turn-until"
-        min="2"
-        max="500"
-        value={(settings.autoTurnUntil ?? 0) > 0 ? settings.autoTurnUntil : autoTurnTarget}
-        disabled={(settings.autoTurnUntil ?? 0) <= 0}
-        oninput={(e) => {
-          autoTurnTarget = Math.max(2, Math.floor(Number((e.target as HTMLInputElement).value) || 0));
-          updateSetting('autoTurnUntil', autoTurnTarget);
-        }}
-        style="width:4rem"
-      />
+    <label title="Once every player except one has committed, the turn advances automatically after this long — nobody can hold the table hostage. Turns always advance one at a time.">
+      Auto-turn timer:
+      <select
+        data-testid="auto-turn-seconds"
+        value={settings.autoTurnSeconds ?? 0}
+        onchange={(e) => updateSetting('autoTurnSeconds', Number((e.target as HTMLSelectElement).value))}
+      >
+        <option value={0}>off</option>
+        <option value={30}>30s after all but one commit</option>
+        <option value={60}>60s after all but one commit</option>
+        <option value={120}>2min after all but one commit</option>
+        <option value={300}>5min after all but one commit</option>
+      </select>
     </label>
   </fieldset>
 {:else if settings}
   <p class="dim" data-testid="settings-view">
     {settings.galaxySize} galaxy, {settings.startMode} start —
-    {MODE_HELP.filter((m) => settings.modes[m.key]).map((m) => m.label).join(', ') || 'no optional modes'}{(settings.autoTurnUntil ?? 0) > 0 ? ` — auto-turn to ${settings.autoTurnUntil}` : ''}
+    {MODE_HELP.filter((m) => settings.modes[m.key]).map((m) => m.label).join(', ') || 'no optional modes'}{(settings.autoTurnSeconds ?? 0) > 0 ? ` — auto-turn ${settings.autoTurnSeconds}s after all but one commit` : ''}
   </p>
 {/if}
 

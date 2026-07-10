@@ -47,6 +47,8 @@ export interface GameSettings {
   mirror?: boolean;
   /** home-system sibling world: 'good' = ultra-rich, 'min' = abundant */
   homeStart?: 'good' | 'min';
+  /** custom-race pick budget (classic 10; 14 for richer races) */
+  pickPoints?: number;
 }
 
 export type ClientToHost =
@@ -132,6 +134,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   debugCommands: false,
   autoTurnUntil: 0,
   autoTurnSeconds: 0,
+  pickPoints: 10,
   mirror: false,
   homeStart: 'good',
 };

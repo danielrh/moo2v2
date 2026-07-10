@@ -108,9 +108,21 @@
     return getActive()?.memoryOnly ?? false;
   });
   let memoryNoteDismissed = $state(false);
-  const autoTurnUntil = $derived.by(() => {
+  const autoTurnSeconds = $derived.by(() => {
     void app.version;
-    return session().getSettings()?.autoTurnUntil ?? 0;
+    return session().getSettings()?.autoTurnSeconds ?? 0;
+  });
+  // countdown display for the armed auto-turn timer (ticks locally)
+  let nowTick = $state(Date.now());
+  $effect(() => {
+    const iv = setInterval(() => (nowTick = Date.now()), 1000);
+    return () => clearInterval(iv);
+  });
+  const autoTurnRemaining = $derived.by(() => {
+    void app.version;
+    const deadline = session().getAutoTurnDeadline();
+    if (deadline === null) return null;
+    return Math.max(0, Math.ceil((deadline - nowTick) / 1000));
   });
   /** live leader offers for this player (drives the nav badge) */
   const leaderOfferCount = $derived.by(() => {
@@ -295,10 +307,16 @@
       {/if}
     </div>
   {/each}
-  {#if autoTurnUntil > 0 && gs.turn < autoTurnUntil}
-    <div class="banner dim" data-testid="auto-turn-banner">
-      ⏩ Auto-turn: once everyone commits, turns fast-forward to turn {autoTurnUntil}.
+  {#if autoTurnRemaining !== null && !iCommitted}
+    <div class="banner warn" data-testid="auto-turn-banner">
+      ⏱ Everyone else has committed — the turn advances in {autoTurnRemaining}s unless you commit (or someone uncommits).
     </div>
+  {:else if autoTurnRemaining !== null}
+    <div class="banner dim" data-testid="auto-turn-banner">
+      ⏱ Auto-turn armed: advancing in {autoTurnRemaining}s.
+    </div>
+  {:else if autoTurnSeconds > 0}
+    <!-- timer not armed: nothing to show -->
   {/if}
   {#if winner !== null}
     {@const winLabel = gs.winType === 'council' ? 'is elected supreme ruler of the council' : gs.winType === 'antaran' ? 'has conquered the Antaran home' : 'wins by conquest'}
