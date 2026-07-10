@@ -4,7 +4,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { gameEngine } from '@engine/index';
-import { resolveInvasions, setRelation } from '@engine/battles';
+import { setRelation } from '@engine/battles';
+import { resolveInvasions } from '@engine/ground';
 import type { GameState, TurnEvent } from '@engine/types';
 
 const SEED = 'aaaabbbbccccddddeeeeffff00001111';

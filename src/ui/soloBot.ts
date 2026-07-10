@@ -22,6 +22,32 @@ export type BotMode = 'parity' | 'fair';
 /** fair-bot strategy generation: v1 = the original random-build brain (kept
  * as the self-play benchmark), v2 = the tuned brain that beats it */
 export type BotBrain = 'v1' | 'v2';
+/** deterministic play-style profiles so the bots don't all play the same */
+export type BotPersonality = 'balanced' | 'techer' | 'rusher' | 'industrialist' | 'expander' | 'militarist';
+
+interface Profile {
+  /** min scientists forced per developed colony (research emphasis) */
+  scienceBias: number;
+  /** target warships as a fraction of colonies */
+  fleetRatio: number;
+  /** colony-ship pipeline depth */
+  expand: number;
+  /** always aggressive regardless of the toggle */
+  warlike: boolean;
+  /** prefers buying production */
+  buyEager: boolean;
+}
+
+const PROFILES: Record<BotPersonality, Profile> = {
+  balanced: { scienceBias: 1, fleetRatio: 1, expand: 3, warlike: false, buyEager: false },
+  techer: { scienceBias: 2, fleetRatio: 0.5, expand: 2, warlike: false, buyEager: false },
+  rusher: { scienceBias: 0, fleetRatio: 1.5, expand: 1, warlike: true, buyEager: true },
+  industrialist: { scienceBias: 0, fleetRatio: 1, expand: 2, warlike: false, buyEager: true },
+  expander: { scienceBias: 1, fleetRatio: 0.5, expand: 4, warlike: false, buyEager: false },
+  militarist: { scienceBias: 0, fleetRatio: 2, expand: 2, warlike: true, buyEager: true },
+};
+
+const PERSONALITIES: BotPersonality[] = ['techer', 'rusher', 'industrialist', 'expander', 'militarist'];
 
 export interface SoloBotOptions {
   session: GameSession<GameState>;
@@ -30,6 +56,8 @@ export interface SoloBotOptions {
   mode?: BotMode;
   /** strategy version (fair mode); default v2 */
   brain?: BotBrain;
+  /** play-style; 'auto' picks one deterministically from the seat */
+  personality?: BotPersonality | 'auto';
 }
 
 /** deterministic-enough tiny PRNG for bot whims (commands are logged anyway) */
@@ -45,6 +73,9 @@ export class SoloBot {
   private readonly session: GameSession<GameState>;
   readonly mode: BotMode;
   readonly brain: BotBrain;
+  personality: BotPersonality;
+  private requestedPersonality: BotPersonality | 'auto';
+  private profile: Profile;
   private aggressive = false;
   private lastPlayedTurn = 0;
   private orderedBattles = new Set<string>();
@@ -54,6 +85,10 @@ export class SoloBot {
     this.session = opts.session;
     this.mode = opts.mode ?? 'parity';
     this.brain = opts.brain ?? 'v2';
+    this.requestedPersonality = opts.personality ?? 'balanced';
+    // resolved lazily once the seat is assigned (auto varies by seat)
+    this.personality = this.requestedPersonality === 'auto' ? 'balanced' : this.requestedPersonality;
+    this.profile = PROFILES[this.personality];
     const raceJson = opts.raceJson ?? JSON.stringify({ presetId: 'hivex' });
     this.session.setRaceConfig(raceJson, true);
     this.unsub = this.session.subscribe((ev) => {
@@ -114,6 +149,13 @@ export class SoloBot {
 
   private playTurn(state: GameState): void {
     const me = this.session.playerId;
+    if (this.requestedPersonality === 'auto' && me >= 0) {
+      this.personality = PERSONALITIES[me % PERSONALITIES.length]!;
+      this.profile = PROFILES[this.personality];
+      this.requestedPersonality = this.personality; // resolved once
+    }
+    const prof = this.profile;
+    const alwaysWar = this.aggressive || prof.warlike;
     const human = state.empires.find((e) => e.id !== me && !e.eliminated);
     const bot = state.empires.find((e) => e.id === me);
     if (!bot || !human) return;
@@ -134,7 +176,8 @@ export class SoloBot {
       const choices = selectors.researchChoices(planned, me);
       const open = choices.filter((c) => c.apps.some((a) => !a.known));
       if (open.length) {
-        // v2: cheapest field first — quick breakthroughs compound; v1: random
+        // v2: cheapest field first — quick breakthroughs compound; techers
+        // still take the cheapest (fast tech throughput); v1: random
         const pick =
           this.mode === 'fair' && this.brain === 'v2'
             ? open.sort((a, b) => a.cost - b.cost || a.field.num - b.field.num)[0]!
@@ -191,11 +234,13 @@ export class SoloBot {
     for (const colony of ordered) {
       if (colony.owner !== me || colony.outpost) continue;
       // developed worlds shift toward research; young ones industrialize
-      const preset = v2 && colony.buildings.length >= 4 ? 'blend' : 'industry';
+      const techy = v2 && (prof.scienceBias >= 2 || colony.buildings.length >= 4);
+      const preset = techy ? 'blend' : 'industry';
       const jobs = selectors.presetJobs(planned, colony.id, preset);
       if (jobs) {
-        if (!v2 || preset === 'industry') {
-          // one researcher per planet "so it has a chance to research more"
+        // shift up to scienceBias workers into research (kept fed)
+        const shifts = v2 ? prof.scienceBias : 1;
+        for (let k = 0; k < shifts; k++) {
           const g = jobs.find((x) => x.workers > 0);
           if (g) {
             g.workers--;
@@ -218,8 +263,9 @@ export class SoloBot {
           const designs = options
             .filter((b) => b.startsWith('design:'))
             .sort((a, b) => (itemCost(planned, me, a, colony) ?? 9999) - (itemCost(planned, me, b, colony) ?? 9999));
+          const wantFleet = Math.ceil(myColonies * prof.fleetRatio);
           let item: string | undefined;
-          if (warOrders < myColonies && designs.length) {
+          if (warOrders < wantFleet && designs.length) {
             item = designs[0];
             warOrders++;
           } else if (buildings.length) {
@@ -239,7 +285,7 @@ export class SoloBot {
         // treasury covers them with a small buffer; everything else at 2:1
         const row = selectors.colonyRow(planned, colony);
         const head = colony.queue[0]?.item;
-        const limit = head === 'colony_ship' ? bot.bc - 60 : Math.floor(bot.bc / 2);
+        const limit = head === 'colony_ship' ? bot.bc - 60 : Math.floor(bot.bc / (prof.buyEager ? 1.3 : 2));
         if (row.canBuy && row.buyPrice !== null && row.buyPrice <= limit) {
           this.submit('buy_production', { colonyId: colony.id });
         }
@@ -254,7 +300,7 @@ export class SoloBot {
     if (this.mode === 'fair') this.fairExpansion(me);
 
     // ---- aggression: half the warfleet at the human's two nearest systems ----
-    if (this.aggressive) this.attack(state, me, human.id);
+    if (alwaysWar) this.attack(state, me, human.id);
   }
 
   /** Non-cheating expansion: settle with real colony ships. Colony ships at a
@@ -291,7 +337,7 @@ export class SoloBot {
       (n, c) => n + (c.owner === me ? c.queue.filter((q) => q.item === 'colony_ship').length : 0),
       0,
     );
-    const wantPipeline = this.brain === 'v2' ? Math.min(3, freePlanets.length) : 1;
+    const wantPipeline = this.brain === 'v2' ? Math.min(this.profile.expand, freePlanets.length) : 1;
     let pipeline = colonyShips.length + queued;
     if (freePlanets.length && pipeline < wantPipeline) {
       const rows = planned.colonies
@@ -379,10 +425,10 @@ export class SoloBot {
       this.submit('battle_orders', {
         battleId: b.id,
         orders: {
-          stance: this.aggressive ? 'charge' : 'hold_range',
-          priority: 'nearest',
-          retreatThresholdPct: 25,
-          bombard: this.aggressive && b.attacker === me,
+          stance: this.aggressive || this.profile.warlike ? 'charge' : 'hold_range',
+          priority: this.profile.fleetRatio >= 1.5 ? 'deadliest' : 'nearest',
+          retreatThresholdPct: this.profile.warlike ? 15 : 25,
+          bombard: (this.aggressive || this.profile.warlike) && b.attacker === me,
         },
       });
     }
