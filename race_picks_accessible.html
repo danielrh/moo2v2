@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accessible Race Picks</title>
+<style>
+:root {
+  color-scheme: dark;
+  --background: #050a06;
+  --panel: #0a130c;
+  --panel-2: #0e1c11;
+  --text: #d9ffe0;
+  --muted: #a6c9aa;
+  --green: #78ff88;
+  --green-bright: #a8ffb2;
+  --border: #3c6543;
+  --focus: #fff3a0;
+  --danger: #ffb3b3;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #132316 0, var(--background) 50%);
+  color: var(--text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.45;
+}
+a { color: var(--green-bright); }
+header, main, footer { max-width: 1280px; margin: 0 auto; padding: 1rem 1.25rem; }
+header { padding-top: 1.5rem; }
+h1 { color: var(--green); margin: 0 0 .25rem; font-size: clamp(1.5rem, 4vw, 2.4rem); }
+.intro { color: var(--muted); max-width: 78ch; margin: 0; }
+.toolbar {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) auto auto;
+  gap: .75rem;
+  align-items: end;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 1rem;
+  border-radius: .7rem;
+}
+.toolbar label { display: grid; gap: .25rem; font-weight: 700; }
+input[type="text"] {
+  min-height: 2.5rem;
+  padding: .5rem .65rem;
+  background: #020603;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: .35rem;
+  font: inherit;
+}
+.status {
+  min-width: 8rem;
+  background: #020603;
+  border: 1px solid var(--border);
+  border-radius: .35rem;
+  padding: .45rem .65rem;
+  text-align: center;
+}
+.status strong { display: block; color: var(--green-bright); font-size: 1.25rem; }
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .65rem 1rem;
+  align-items: center;
+  margin: 1rem 0;
+}
+.controls label { display: inline-flex; align-items: center; gap: .45rem; }
+button {
+  min-height: 2.5rem;
+  padding: .45rem .9rem;
+  border: 1px solid var(--border);
+  border-radius: .4rem;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+button:hover { border-color: var(--green); }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.columns { display: grid; grid-template-columns: 1fr 1fr 1.15fr; gap: 1rem; align-items: start; }
+.column { display: grid; gap: 1rem; }
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: .75rem;
+  border: 1px solid var(--border);
+  border-radius: .65rem;
+  background: linear-gradient(180deg, var(--panel), #071008);
+}
+legend {
+  padding: 0 .45rem;
+  color: var(--green);
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+.option {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+  gap: .5rem;
+  align-items: center;
+  min-height: 2.15rem;
+  padding: .35rem .4rem;
+  border-radius: .35rem;
+  cursor: pointer;
+}
+.option:hover { background: #122516; }
+.option:has(input:checked) { background: #18351d; color: #ffffff; }
+.option:has(input:disabled) { opacity: .48; cursor: not-allowed; }
+.option input { width: 1rem; height: 1rem; margin: 0; accent-color: #59ef6c; }
+.option-name { min-width: 0; }
+.pick-cost {
+  min-width: 2.25rem;
+  text-align: right;
+  color: var(--green-bright);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+.normal-option { color: var(--muted); font-size: .92rem; }
+.detail {
+  position: absolute;
+  z-index: 50;
+  left: 1.9rem;
+  right: .2rem;
+  top: calc(100% + .15rem);
+  padding: .7rem;
+  border: 1px solid #6aa873;
+  border-radius: .4rem;
+  background: #010502;
+  color: #f0fff2;
+  box-shadow: 0 .5rem 1.25rem rgba(0,0,0,.6);
+  opacity: 0;
+  transform: translateY(-.25rem);
+  pointer-events: none;
+  transition: opacity .12s ease, transform .12s ease;
+  font-size: .92rem;
+}
+.option:hover .detail, .option:focus-within .detail { opacity: 1; transform: translateY(0); }
+body.show-details .detail {
+  position: static;
+  grid-column: 2 / 4;
+  opacity: 1;
+  transform: none;
+  padding: .35rem 0 .5rem .65rem;
+  border: 0;
+  border-left: 2px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+  pointer-events: auto;
+}
+#announcement {
+  margin-top: 1rem;
+  min-height: 2.5rem;
+  padding: .75rem;
+  border-left: 4px solid var(--green);
+  background: var(--panel);
+}
+#announcement.error { border-color: var(--danger); color: var(--danger); }
+.notes { color: var(--muted); font-size: .95rem; }
+footer { padding-bottom: 2rem; }
+footer h2 { color: var(--green); font-size: 1.1rem; }
+@media (max-width: 950px) {
+  .columns { grid-template-columns: 1fr 1fr; }
+  .special-column { grid-column: 1 / -1; }
+  .toolbar { grid-template-columns: 1fr auto auto; }
+}
+@media (max-width: 650px) {
+  .columns, .toolbar { grid-template-columns: 1fr; }
+  .status { text-align: left; }
+  .detail { left: .2rem; }
+}
+@media (prefers-reduced-motion: reduce) { .detail { transition: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Race Picks</h1>
+  <p class="intro">An accessible HTML rendering of the classic custom-race screen. Move the pointer over an option or focus it with the keyboard to read its description. Screen readers receive the same description through each control's accessible name and description.</p>
+</header>
+<main>
+  <section class="toolbar" aria-label="Race information">
+    <label for="race-name">Race name
+      <input id="race-name" type="text" value="Tolth" autocomplete="off">
+    </label>
+    <div class="status" aria-live="polite"><span>Picks remaining</span><strong id="picks">10</strong></div>
+    <div class="status" aria-live="polite"><span>Score multiplier</span><strong id="score">200%</strong></div>
+  </section>
+
+  <div class="controls">
+    <button type="button" id="clear">Clear</button>
+    <button type="button" id="accept">Accept and read summary</button>
+    <label><input type="checkbox" id="show-details"> Show all descriptions</label>
+  </div>
+
+  <form id="race-form">
+    <div class="columns">
+      <div class="column"><fieldset id="fieldset-population"><legend>Population</legend>
+<label class="option normal-option" for="population-normal" title="No racial modifier is applied to population.">
+  <input type="radio" id="population-normal" name="population" value="0" data-label="Normal growth" aria-describedby="population-normal-description" checked>
+  <span class="option-name">Normal growth</span>
+  <span class="pick-cost" aria-label="Costs 0 picks">+0</span>
+  <span class="detail" id="population-normal-description" role="tooltip">No racial modifier is applied to population.</span>
+</label>
+<label class="option " for="growth-minus-50" title="All colonies grow at half the normal population-growth rate.">
+  <input type="radio" id="growth-minus-50" name="population" value="-4" data-label="-50% Growth" aria-describedby="growth-minus-50-description">
+  <span class="option-name">-50% Growth</span>
+  <span class="pick-cost" aria-label="Grants 4 picks">-4</span>
+  <span class="detail" id="growth-minus-50-description" role="tooltip">All colonies grow at half the normal population-growth rate.</span>
+</label>
+<label class="option " for="growth-plus-50" title="All colonies grow at 150 percent of the normal population-growth rate.">
+  <input type="radio" id="growth-plus-50" name="population" value="3" data-label="+50% Growth" aria-describedby="growth-plus-50-description">
+  <span class="option-name">+50% Growth</span>
+  <span class="pick-cost" aria-label="Costs 3 picks">+3</span>
+  <span class="detail" id="growth-plus-50-description" role="tooltip">All colonies grow at 150 percent of the normal population-growth rate.</span>
+</label>
+<label class="option " for="growth-plus-100" title="All colonies grow at twice the normal population-growth rate.">
+  <input type="radio" id="growth-plus-100" name="population" value="6" data-label="+100% Growth" aria-describedby="growth-plus-100-description">
+  <span class="option-name">+100% Growth</span>
+  <span class="pick-cost" aria-label="Costs 6 picks">+6</span>
+  <span class="detail" id="growth-plus-100-description" role="tooltip">All colonies grow at twice the normal population-growth rate.</span>
+</label>
+</fieldset>
+<fieldset id="fieldset-farming"><legend>Farming</legend>
+<label class="option normal-option" for="farming-normal" title="No racial modifier is applied to farming.">
+  <input type="radio" id="farming-normal" name="farming" value="0" data-label="Normal food production" aria-describedby="farming-normal-description" checked>
+  <span class="option-name">Normal food production</span>
+  <span class="pick-cost" aria-label="Costs 0 picks">+0</span>
+  <span class="detail" id="farming-normal-description" role="tooltip">No racial modifier is applied to farming.</span>
+</label>
+<label class="option " for="food-minus-half" title="Each farmer produces 0.5 less base food. On a life-bearing world, this penalty cannot reduce output below 1 food per farmer.">
+  <input type="radio" id="food-minus-half" name="farming" value="-3" data-label="-1/2 Food" aria-describedby="food-minus-half-description">
+  <span class="option-name">-1/2 Food</span>
+  <span class="pick-cost" aria-label="Grants 3 picks">-3</span>
+  <span class="detail" id="food-minus-half-description" role="tooltip">Each farmer produces 0.5 less base food. On a life-bearing world, this penalty cannot reduce output below 1 food per farmer.</span>
+</label>
+<label class="option " for="food-plus-1" title="Each farmer produces 1 additional unit of base food.">
+  <input type="radio" id="food-plus-1" name="farming" value="4" data-label="+1 Food" aria-describedby="food-plus-1-description">
+  <span class="option-name">+1 Food</span>
+  <span class="pick-cost" aria-label="Costs 4 picks">+4</span>
+  <span class="detail" id="food-plus-1-description" role="tooltip">Each farmer produces 1 additional unit of base food.</span>
+</label>
+<label class="option " for="food-plus-2" title="Each farmer produces 2 additional units of base food.">
+  <input type="radio" id="food-plus-2" name="farming" value="7" data-label="+2 Food" aria-describedby="food-plus-2-description">
+  <span class="option-name">+2 Food</span>
+  <span class="pick-cost" aria-label="Costs 7 picks">+7</span>
+  <span class="detail" id="food-plus-2-description" role="tooltip">Each farmer produces 2 additional units of base food.</span>
+</label>
+</fieldset>
+<fieldset id="fieldset-industry"><legend>Industry</legend>
+<label class="option normal-option" for="industry-normal" title="No racial modifier is applied to industry.">
+  <input type="radio" id="industry-normal" name="industry" value="0" data-label="Normal production" aria-describedby="industry-normal-description" checked>
+  <span class="option-name">Normal production</span>
+  <span class="pick-cost" aria-label="Costs 0 picks">+0</span>
+  <span class="detail" id="industry-normal-description" role="tooltip">No racial modifier is applied to industry.</span>
+</label>
+<label class="option " for="production-minus-1" title="Each worker produces 1 fewer production point. Output cannot fall below 1 production per worker.">
+  <input type="radio" id="production-minus-1" name="industry" value="-3" data-label="-1 Production" aria-describedby="production-minus-1-description">
+  <span class="option-name">-1 Production</span>
+  <span class="pick-cost" aria-label="Grants 3 picks">-3</span>
+  <span class="detail" id="production-minus-1-description" role="tooltip">Each worker produces 1 fewer production point. Output cannot fall below 1 production per worker.</span>
+</label>
+<label class="option " for="production-plus-1" title="Each worker produces 1 additional production point.">
+  <input type="radio" id="production-plus-1" name="industry" value="3" data-label="+1 Production" aria-describedby="production-plus-1-description">
+  <span class="option-name">+1 Production</span>
+  <span class="pick-cost" aria-label="Costs 3 picks">+3</span>
+  <span class="detail" id="production-plus-1-description" role="tooltip">Each worker produces 1 additional production point.</span>
+</label>
+<label class="option " for="production-plus-2" title="Each worker produces 2 additional production points.">
+  <input type="radio" id="production-plus-2" name="industry" value="6" data-label="+2 Production" aria-describedby="production-plus-2-description">
+  <span class="option-name">+2 Production</span>
+  <span class="pick-cost" aria-label="Costs 6 picks">+6</span>
+  <span class="detail" id="production-plus-2-description" role="tooltip">Each worker produces 2 additional production points.</span>
+</label>
+</fieldset>
+<fieldset id="fieldset-science"><legend>Science</legend>
+<label class="option normal-option" for="science-normal" title="No racial modifier is applied to science.">
+  <input type="radio" id="science-normal" name="science" value="0" data-label="Normal research" aria-describedby="science-normal-description" checked>
+  <span class="option-name">Normal research</span>
+  <span class="pick-cost" aria-label="Costs 0 picks">+0</span>
+  <span class="detail" id="science-normal-description" role="tooltip">No racial modifier is applied to science.</span>
+</label>
+<label class="option " for="research-minus-1" title="Each scientist produces 1 fewer research point. Output cannot fall below 1 research point per scientist.">
+  <input type="radio" id="research-minus-1" name="science" value="-3" data-label="-1 Research" aria-describedby="research-minus-1-description">
+  <span class="option-name">-1 Research</span>
+  <span class="pick-cost" aria-label="Grants 3 picks">-3</span>
+  <span class="detail" id="research-minus-1-description" role="tooltip">Each scientist produces 1 fewer research point. Output cannot fall below 1 research point per scientist.</span>
+</label>
+<label class="option " for="research-plus-1" title="Each scientist produces 1 additional research point.">
+  <input type="radio" id="research-plus-1" name="science" value="3" data-label="+1 Research" aria-describedby="research-plus-1-description">
+  <span class="option-name">+1 Research</span>
+  <span class="pick-cost" aria-label="Costs 3 picks">+3</span>
+  <span class="detail" id="research-plus-1-description" role="tooltip">Each scientist produces 1 additional research point.</span>
+</label>
+<label class="option " for="research-plus-2" title="Each scientist produces 2 additional research points.">
+  <input type="radio" id="research-plus-2" name="science" value="6" data-label="+2 Research" aria-describedby="research-plus-2-description">
+  <span class="option-name">+2 Research</span>
+  <span class="pick-cost" aria-label="Costs 6 picks">+6</span>
+  <span class="detail" id="research-plus-2-description" role="tooltip">Each scientist produces 2 additional research points.</span>
+</label>
+</fieldset>
+<fieldset id="fieldset-money"><legend>Money</legend>
+<label class="option normal-option" for="money-normal" title="No racial modifier is applied to money.">
+  <input type="radio" id="money-normal" name="money" value="0" data-label="Normal tax income" aria-describedby="money-normal-description" checked>
+  <span class="option-name">Normal tax income</span>
+  <span class="pick-cost" aria-label="Costs 0 picks">+0</span>
+  <span class="detail" id="money-normal-description" role="tooltip">No racial modifier is applied to money.</span>
+</label>
+<label class="option " for="money-minus-half" title="Tax income is reduced by 0.5 BC per population unit, but cannot fall below zero.">
+  <input type="radio" id="money-minus-half" name="money" value="-4" data-label="-0.5 BC" aria-describedby="money-minus-half-description">
+  <span class="option-name">-0.5 BC</span>
+  <span class="pick-cost" aria-label="Grants 4 picks">-4</span>
+  <span class="detail" id="money-minus-half-description" role="tooltip">Tax income is reduced by 0.5 BC per population unit, but cannot fall below zero.</span>
+</label>
+<label class="option " for="money-plus-half" title="Tax income increases by 0.5 BC per population unit.">
+  <input type="radio" id="money-plus-half" name="money" value="5" data-label="+0.5 BC" aria-describedby="money-plus-half-description">
+  <span class="option-name">+0.5 BC</span>
+  <span class="pick-cost" aria-label="Costs 5 picks">+5</span>
+  <span class="detail" id="money-plus-half-description" role="tooltip">Tax income increases by 0.5 BC per population unit.</span>
+</label>
+<label class="option " for="money-plus-1" title="Tax income increases by 1 BC per population unit.">
+  <input type="radio" id="money-plus-1" name="money" value="8" data-label="+1.0 BC" aria-describedby="money-plus-1-description">
+  <span class="option-name">+1.0 BC</span>
+  <span class="pick-cost" aria-label="Costs 8 picks">+8</span>
+  <span class="detail" id="money-plus-1-description" role="tooltip">Tax income increases by 1 BC per population unit.</span>
+</label>
+</fieldset></div>
+      <div class="column"><fieldset id="fieldset-ship-defense"><legend>Ship Defense</legend>
+<label class="option normal-option" for="ship-defense-normal" title="No racial modifier is applied to ship defense.">
+  <input type="radio" id="ship-defense-normal" name="ship-defense" value="0" data-label="Normal ship defense" aria-describedby="ship-defense-normal-description" checked>
+  <span class="option-name">Normal ship defense</span>
+  <span class="pick-cost" aria-label="Costs 0 picks">+0</span>
+  <span class="detail" id="ship-defense-normal-description" role="tooltip">No racial modifier is applied to ship defense.</span>
+</label>
+<label class="option " for="ship-defense-minus-20" title="Reduces your ships beam defense by 20 percentage points, making enemy beam weapons more likely to hit.">
+  <input type="radio" id="ship-defense-minus-20" name="ship-defense" value="-2" data-label="-20" aria-describedby="ship-defense-minus-20-description">
+  <span class="option-name">-20</span>
+  <span class="pick-cost" aria-label="Grants 2 picks">-2</span>
+  <span class="detail" id="ship-defense-minus-20-description" role="tooltip">Reduces your ships beam defense by 20 percentage points, making enemy beam weapons more likely to hit.</span>
+</label>
+<label class="option " for="ship-defense-plus-25" title="Increases your ships beam defense by 25 percentage points, making enemy beam weapons less likely to hit.">
+  <input type="radio" id="ship-defense-plus-25" name="ship-defense" value="3" data-label="+25" aria-describedby="ship-defense-plus-25-description">
+  <span class="option-name">+25</span>
+  <span class="pick-cost" aria-label="Costs 3 picks">+3</span>
+  <span class="detail" id="ship-defense-plus-25-description" role="tooltip">Increases your ships beam defense by 25 percentage points, making enemy beam weapons less likely to hit.</span>
+</label>
+<label class="option " for="ship-defense-plus-50" title="Increases your ships beam defense by 50 percentage points, making enemy beam weapons less likely to hit.">
+  <input type="radio" id="ship-defense-plus-50" name="ship-defense" value="7" data-label="+50" aria-describedby="ship-defense-plus-50-description">
+  <span class="option-name">+50</span>
+  <span class="pick-cost" aria-label="Costs 7 picks">+7</span>
+  <span class="detail" id="ship-defense-plus-50-description" role="tooltip">Increases your ships beam defense by 50 percentage points, making enemy beam weapons less likely to hit.</span>
+</label>
+</fieldset>
+<fieldset id="fieldset-ship-attack"><legend>Ship Attack</legend>
+<label class="option normal-option" for="ship-attack-normal" title="No racial modifier is applied to ship attack.">
+  <input type="radio" id="ship-attack-normal" name="ship-attack" value="0" data-label="Normal ship attack" aria-describedby="ship-attack-normal-description" checked>
+  <span class="option-name">Normal ship attack</span>
+  <span class="pick-cost" aria-label="Costs 0 picks">+0</span>
+  <span class="detail" id="ship-attack-normal-description" role="tooltip">No racial modifier is applied to ship attack.</span>
+</label>
+<label class="option " for="ship-attack-minus-20" title="Reduces your ships chance to hit with beam weapons by 20 percentage points.">
+  <input type="radio" id="ship-attack-minus-20" name="ship-attack" value="-2" data-label="-20" aria-describedby="ship-attack-minus-20-description">
+  <span class="option-name">-20</span>
+  <span class="pick-cost" aria-label="Grants 2 picks">-2</span>
+  <span class="detail" id="ship-attack-minus-20-description" role="tooltip">Reduces your ships chance to hit with beam weapons by 20 percentage points.</span>
+</label>
+<label class="option " for="ship-attack-plus-20" title="Increases your ships chance to hit with beam weapons by 20 percentage points.">
+  <input type="radio" id="ship-attack-plus-20" name="ship-attack" value="2" data-label="+20" aria-describedby="ship-attack-plus-20-description">
+  <span class="option-name">+20</span>
+  <span class="pick-cost" aria-label="Costs 2 picks">+2</span>
+  <span class="detail" id="ship-attack-plus-20-description" role="tooltip">Increases your ships chance to hit with beam weapons by 20 percentage points.</span>
+</label>
+<label class="option " for="ship-attack-plus-50" title="Increases your ships chance to hit with beam weapons by 50 percentage points.">
+  <input type="radio" id="ship-attack-plus-50" name="ship-attack" value="4" data-label="+50" aria-describedby="ship-attack-plus-50-description">
+  <span class="option-name">+50</span>
+  <span class="pick-cost" aria-label="Costs 4 picks">+4</span>
+  <span class="detail" id="ship-attack-plus-50-description" role="tooltip">Increases your ships chance to hit with beam weapons by 50 percentage points.</span>
+</label>
+</fieldset>
+<fieldset id="fieldset-ground-combat"><legend>Ground Combat</legend>
+<label class="option normal-option" for="ground-combat-normal" title="No racial modifier is applied to ground combat.">
+  <input type="radio" id="ground-combat-normal" name="ground-combat" value="0" data-label="Normal ground combat" aria-describedby="ground-combat-normal-description" checked>
+  <span class="option-name">Normal ground combat</span>
+  <span class="pick-cost" aria-label="Costs 0 picks">+0</span>
+  <span class="detail" id="ground-combat-normal-description" role="tooltip">No racial modifier is applied to ground combat.</span>
+</label>
+<label class="option " for="ground-minus-10" title="Reduces troop effectiveness by 10 points in planetary invasions and ship boarding actions.">
+  <input type="radio" id="ground-minus-10" name="ground-combat" value="-2" data-label="-10" aria-describedby="ground-minus-10-description">
+  <span class="option-name">-10</span>
+  <span class="pick-cost" aria-label="Grants 2 picks">-2</span>
+  <span class="detail" id="ground-minus-10-description" role="tooltip">Reduces troop effectiveness by 10 points in planetary invasions and ship boarding actions.</span>
+</label>
+<label class="option " for="ground-plus-10" title="Increases troop effectiveness by 10 points in planetary invasions and ship boarding actions.">
+  <input type="radio" id="ground-plus-10" name="ground-combat" value="2" data-label="+10" aria-describedby="ground-plus-10-description">
+  <span class="option-name">+10</span>
+  <span class="pick-cost" aria-label="Costs 2 picks">+2</span>
+  <span class="detail" id="ground-plus-10-description" role="tooltip">Increases troop effectiveness by 10 points in planetary invasions and ship boarding actions.</span>
+</label>
+<label class="option " for="ground-plus-20" title="Increases troop effectiveness by 20 points in planetary invasions and ship boarding actions.">
+  <input type="radio" id="ground-plus-20" name="ground-combat" value="4" data-label="+20" aria-describedby="ground-plus-20-description">
+  <span class="option-name">+20</span>
+  <span class="pick-cost" aria-label="Costs 4 picks">+4</span>
+  <span class="detail" id="ground-plus-20-description" role="tooltip">Increases troop effectiveness by 20 points in planetary invasions and ship boarding actions.</span>
+</label>
+</fieldset>
+<fieldset id="fieldset-spying"><legend>Spying</legend>
+<label class="option normal-option" for="spying-normal" title="No racial modifier is applied to spying.">
+  <input type="radio" id="spying-normal" name="spying" value="0" data-label="Normal spying" aria-describedby="spying-normal-description" checked>
+  <span class="option-name">Normal spying</span>
+  <span class="pick-cost" aria-label="Costs 0 picks">+0</span>
+  <span class="detail" id="spying-normal-description" role="tooltip">No racial modifier is applied to spying.</span>
+</label>
+<label class="option " for="spying-minus-10" title="Reduces the effectiveness of offensive and defensive espionage and sabotage by 10 points.">
+  <input type="radio" id="spying-minus-10" name="spying" value="-3" data-label="-10" aria-describedby="spying-minus-10-description">
+  <span class="option-name">-10</span>
+  <span class="pick-cost" aria-label="Grants 3 picks">-3</span>
+  <span class="detail" id="spying-minus-10-description" role="tooltip">Reduces the effectiveness of offensive and defensive espionage and sabotage by 10 points.</span>
+</label>
+<label class="option " for="spying-plus-10" title="Increases the effectiveness of offensive and defensive espionage and sabotage by 10 points.">
+  <input type="radio" id="spying-plus-10" name="spying" value="3" data-label="+10" aria-describedby="spying-plus-10-description">
+  <span class="option-name">+10</span>
+  <span class="pick-cost" aria-label="Costs 3 picks">+3</span>
+  <span class="detail" id="spying-plus-10-description" role="tooltip">Increases the effectiveness of offensive and defensive espionage and sabotage by 10 points.</span>
+</label>
+<label class="option " for="spying-plus-20" title="Increases the effectiveness of offensive and defensive espionage and sabotage by 20 points.">
+  <input type="radio" id="spying-plus-20" name="spying" value="6" data-label="+20" aria-describedby="spying-plus-20-description">
+  <span class="option-name">+20</span>
+  <span class="pick-cost" aria-label="Costs 6 picks">+6</span>
+  <span class="detail" id="spying-plus-20-description" role="tooltip">Increases the effectiveness of offensive and defensive espionage and sabotage by 20 points.</span>
+</label>
+</fieldset>
+<fieldset id="fieldset-government"><legend>Governments</legend>
+<label class="option " for="government-feudal" title="Ship construction costs two-thirds of normal, but research is halved. Colonies without a Marine or Armor Barracks suffer 20 percent lower morale; conquered population takes 8 turns to assimilate; losing the capital causes a 50 percent morale penalty until it is rebuilt.">
+  <input type="radio" id="government-feudal" name="government" value="-4" data-label="Feudal" aria-describedby="government-feudal-description">
+  <span class="option-name">Feudal</span>
+  <span class="pick-cost" aria-label="Grants 4 picks">-4</span>
+  <span class="detail" id="government-feudal-description" role="tooltip">Ship construction costs two-thirds of normal, but research is halved. Colonies without a Marine or Armor Barracks suffer 20 percent lower morale; conquered population takes 8 turns to assimilate; losing the capital causes a 50 percent morale penalty until it is rebuilt.</span>
+</label>
+<label class="option " for="government-dictatorship" title="Defensive spies receive a 10 point bonus. Colonies without a Marine or Armor Barracks suffer 20 percent lower morale; conquered population takes 8 turns to assimilate; losing the capital causes a 35 percent morale penalty until it is rebuilt.">
+  <input type="radio" id="government-dictatorship" name="government" value="0" data-label="Dictatorship" aria-describedby="government-dictatorship-description" checked>
+  <span class="option-name">Dictatorship</span>
+  <span class="pick-cost" aria-label="Costs 0 picks">+0</span>
+  <span class="detail" id="government-dictatorship-description" role="tooltip">Defensive spies receive a 10 point bonus. Colonies without a Marine or Armor Barracks suffer 20 percent lower morale; conquered population takes 8 turns to assimilate; losing the capital causes a 35 percent morale penalty until it is rebuilt.</span>
+</label>
+<label class="option " for="government-democracy" title="Research and tax income increase by 50 percent, and conquered population assimilates in 4 turns. Defensive spies suffer a 10 point penalty; conquered populations cannot be exterminated; losing the capital causes a 20 percent morale penalty until it is rebuilt.">
+  <input type="radio" id="government-democracy" name="government" value="7" data-label="Democracy" aria-describedby="government-democracy-description">
+  <span class="option-name">Democracy</span>
+  <span class="pick-cost" aria-label="Costs 7 picks">+7</span>
+  <span class="detail" id="government-democracy-description" role="tooltip">Research and tax income increase by 50 percent, and conquered population assimilates in 4 turns. Defensive spies suffer a 10 point penalty; conquered populations cannot be exterminated; losing the capital causes a 20 percent morale penalty until it is rebuilt.</span>
+</label>
+<label class="option " for="government-unification" title="Food and industrial production increase by 50 percent and defensive spies receive a 15 point bonus. The empire has no morale and no capital, but conquered population takes 20 turns to assimilate.">
+  <input type="radio" id="government-unification" name="government" value="6" data-label="Unification" aria-describedby="government-unification-description">
+  <span class="option-name">Unification</span>
+  <span class="pick-cost" aria-label="Costs 6 picks">+6</span>
+  <span class="detail" id="government-unification-description" role="tooltip">Food and industrial production increase by 50 percent and defensive spies receive a 15 point bonus. The empire has no morale and no capital, but conquered population takes 20 turns to assimilate.</span>
+</label>
+</fieldset></div>
+      <div class="column special-column"><fieldset id="fieldset-special"><legend>Special Abilities</legend>
+<label class="option " for="low-g" title="No gravity penalty on Low-G worlds. Farming, production, and research are reduced by 25 percent on Normal-G worlds and 50 percent on High-G worlds; troops also suffer a 10 point ground-combat penalty. Mutually exclusive with High-G World.">
+  <input type="checkbox" id="low-g" name="special" value="-5" data-label="Low-G World" aria-describedby="low-g-description">
+  <span class="option-name">Low-G World</span>
+  <span class="pick-cost" aria-label="Grants 5 picks">-5</span>
+  <span class="detail" id="low-g-description" role="tooltip">No gravity penalty on Low-G worlds. Farming, production, and research are reduced by 25 percent on Normal-G worlds and 50 percent on High-G worlds; troops also suffer a 10 point ground-combat penalty. Mutually exclusive with High-G World.</span>
+</label>
+<label class="option " for="high-g" title="No gravity penalty on Normal-G or High-G worlds, and ground troops survive one additional hit. Low-G worlds still impose their normal penalty. Mutually exclusive with Low-G World.">
+  <input type="checkbox" id="high-g" name="special" value="6" data-label="High-G World" aria-describedby="high-g-description">
+  <span class="option-name">High-G World</span>
+  <span class="pick-cost" aria-label="Costs 6 picks">+6</span>
+  <span class="detail" id="high-g-description" role="tooltip">No gravity penalty on Normal-G or High-G worlds, and ground troops survive one additional hit. Low-G worlds still impose their normal penalty. Mutually exclusive with Low-G World.</span>
+</label>
+<label class="option " for="aquatic" title="Tundra and Swamp worlds count as Terran, while Ocean and Terran worlds count as Gaia for food production and maximum population.">
+  <input type="checkbox" id="aquatic" name="special" value="5" data-label="Aquatic" aria-describedby="aquatic-description">
+  <span class="option-name">Aquatic</span>
+  <span class="pick-cost" aria-label="Costs 5 picks">+5</span>
+  <span class="detail" id="aquatic-description" role="tooltip">Tundra and Swamp worlds count as Terran, while Ocean and Terran worlds count as Gaia for food production and maximum population.</span>
+</label>
+<label class="option " for="subterranean" title="Maximum population increases by planet size: plus 2 on Tiny, plus 4 on Small, plus 6 on Medium, plus 8 on Large, and plus 10 on Huge worlds. Defending troops receive a 10 point ground-combat bonus.">
+  <input type="checkbox" id="subterranean" name="special" value="6" data-label="Subterranean" aria-describedby="subterranean-description">
+  <span class="option-name">Subterranean</span>
+  <span class="pick-cost" aria-label="Costs 6 picks">+6</span>
+  <span class="detail" id="subterranean-description" role="tooltip">Maximum population increases by planet size: plus 2 on Tiny, plus 4 on Small, plus 6 on Medium, plus 8 on Large, and plus 10 on Huge worlds. Defending troops receive a 10 point ground-combat bonus.</span>
+</label>
+<label class="option " for="large-home" title="The homeworld starts Large instead of Medium, increasing its maximum population by about one third.">
+  <input type="checkbox" id="large-home" name="special" value="1" data-label="Large Home World" aria-describedby="large-home-description">
+  <span class="option-name">Large Home World</span>
+  <span class="pick-cost" aria-label="Costs 1 pick">+1</span>
+  <span class="detail" id="large-home-description" role="tooltip">The homeworld starts Large instead of Medium, increasing its maximum population by about one third.</span>
+</label>
+<label class="option " for="rich-home" title="The homeworld starts Rich instead of Abundant, increasing base industrial production from 3 to 5 per worker.">
+  <input type="checkbox" id="rich-home" name="special" value="2" data-label="Rich Home World" aria-describedby="rich-home-description">
+  <span class="option-name">Rich Home World</span>
+  <span class="pick-cost" aria-label="Costs 2 picks">+2</span>
+  <span class="detail" id="rich-home-description" role="tooltip">The homeworld starts Rich instead of Abundant, increasing base industrial production from 3 to 5 per worker.</span>
+</label>
+<label class="option " for="poor-home" title="The homeworld starts Poor instead of Abundant, reducing base industrial production from 3 to 2 per worker.">
+  <input type="checkbox" id="poor-home" name="special" value="-1" data-label="Poor Home World" aria-describedby="poor-home-description">
+  <span class="option-name">Poor Home World</span>
+  <span class="pick-cost" aria-label="Grants 1 pick">-1</span>
+  <span class="detail" id="poor-home-description" role="tooltip">The homeworld starts Poor instead of Abundant, reducing base industrial production from 3 to 2 per worker.</span>
+</label>
+<label class="option " for="artifacts" title="Scientists on the homeworld produce 5 research points each instead of the usual 3.">
+  <input type="checkbox" id="artifacts" name="special" value="3" data-label="Artifacts World" aria-describedby="artifacts-description">
+  <span class="option-name">Artifacts World</span>
+  <span class="pick-cost" aria-label="Costs 3 picks">+3</span>
+  <span class="detail" id="artifacts-description" role="tooltip">Scientists on the homeworld produce 5 research points each instead of the usual 3.</span>
+</label>
+<label class="option " for="cybernetic" title="Each population unit consumes 0.5 food and 0.5 production. Ships fully repair after combat and repair 10 percent of armor and structure plus 5 percent of systems each combat round. Incompatible with Lithovore.">
+  <input type="checkbox" id="cybernetic" name="special" value="4" data-label="Cybernetic" aria-describedby="cybernetic-description">
+  <span class="option-name">Cybernetic</span>
+  <span class="pick-cost" aria-label="Costs 4 picks">+4</span>
+  <span class="detail" id="cybernetic-description" role="tooltip">Each population unit consumes 0.5 food and 0.5 production. Ships fully repair after combat and repair 10 percent of armor and structure plus 5 percent of systems each combat round. Incompatible with Lithovore.</span>
+</label>
+<label class="option " for="lithovore" title="Population requires no food and can live on minerals, so farming is unnecessary except for profit or feeding captured non-Lithovores. Incompatible with Cybernetic and with Farming modifiers.">
+  <input type="checkbox" id="lithovore" name="special" value="10" data-label="Lithovore" aria-describedby="lithovore-description">
+  <span class="option-name">Lithovore</span>
+  <span class="pick-cost" aria-label="Costs 10 picks">+10</span>
+  <span class="detail" id="lithovore-description" role="tooltip">Population requires no food and can live on minerals, so farming is unnecessary except for profit or feeding captured non-Lithovores. Incompatible with Cybernetic and with Farming modifiers.</span>
+</label>
+<label class="option " for="repulsive" title="Most diplomacy is unavailable. Conquered colonists assimilate 50 percent more slowly, and mercenary leaders appear less often and cost more. Mutually exclusive with Charismatic.">
+  <input type="checkbox" id="repulsive" name="special" value="-6" data-label="Repulsive" aria-describedby="repulsive-description">
+  <span class="option-name">Repulsive</span>
+  <span class="pick-cost" aria-label="Grants 6 picks">-6</span>
+  <span class="detail" id="repulsive-description" role="tooltip">Most diplomacy is unavailable. Conquered colonists assimilate 50 percent more slowly, and mercenary leaders appear less often and cost more. Mutually exclusive with Charismatic.</span>
+</label>
+<label class="option " for="charismatic" title="Positive diplomatic effects are doubled, negative effects are halved, and proposed deals receive a 50 percent acceptance bonus. Assimilation and mercenary leader recruitment are also improved. Mutually exclusive with Repulsive.">
+  <input type="checkbox" id="charismatic" name="special" value="3" data-label="Charismatic" aria-describedby="charismatic-description">
+  <span class="option-name">Charismatic</span>
+  <span class="pick-cost" aria-label="Costs 3 picks">+3</span>
+  <span class="detail" id="charismatic-description" role="tooltip">Positive diplomatic effects are doubled, negative effects are halved, and proposed deals receive a 50 percent acceptance bonus. Assimilation and mercenary leader recruitment are also improved. Mutually exclusive with Repulsive.</span>
+</label>
+<label class="option " for="uncreative" title="At each research field, the game randomly chooses the single technology your empire receives. Mutually exclusive with Creative.">
+  <input type="checkbox" id="uncreative" name="special" value="-4" data-label="Uncreative" aria-describedby="uncreative-description">
+  <span class="option-name">Uncreative</span>
+  <span class="pick-cost" aria-label="Grants 4 picks">-4</span>
+  <span class="detail" id="uncreative-description" role="tooltip">At each research field, the game randomly chooses the single technology your empire receives. Mutually exclusive with Creative.</span>
+</label>
+<label class="option " for="creative" title="Researching a field grants every technology available at that level. Mutually exclusive with Uncreative.">
+  <input type="checkbox" id="creative" name="special" value="8" data-label="Creative" aria-describedby="creative-description">
+  <span class="option-name">Creative</span>
+  <span class="pick-cost" aria-label="Costs 8 picks">+8</span>
+  <span class="detail" id="creative-description" role="tooltip">Researching a field grants every technology available at that level. Mutually exclusive with Uncreative.</span>
+</label>
+<label class="option " for="tolerant" title="Adds 25 percentage points to the habitable portion of most planets, up to Gaia capacity. Pollution causes no harm and requires no cleanup.">
+  <input type="checkbox" id="tolerant" name="special" value="10" data-label="Tolerant" aria-describedby="tolerant-description">
+  <span class="option-name">Tolerant</span>
+  <span class="pick-cost" aria-label="Costs 10 picks">+10</span>
+  <span class="detail" id="tolerant-description" role="tooltip">Adds 25 percentage points to the habitable portion of most planets, up to Gaia capacity. Pollution causes no harm and requires no cleanup.</span>
+</label>
+<label class="option " for="fantastic-traders" title="Commonly documented game behavior gives 50 percent more income from trade treaties. Surplus food and Trade Goods convert at 1 BC per unit instead of 0.5 BC.">
+  <input type="checkbox" id="fantastic-traders" name="special" value="4" data-label="Fantastic Traders" aria-describedby="fantastic-traders-description">
+  <span class="option-name">Fantastic Traders</span>
+  <span class="pick-cost" aria-label="Costs 4 picks">+4</span>
+  <span class="detail" id="fantastic-traders-description" role="tooltip">Commonly documented game behavior gives 50 percent more income from trade treaties. Surplus food and Trade Goods convert at 1 BC per unit instead of 0.5 BC.</span>
+</label>
+<label class="option " for="telepathic" title="Provides a 25 point diplomacy bonus and a 10 point spying bonus. Large or larger ships can mind-control undefended non-Telepathic colonies and instantly assimilate them; captured ships can be used immediately.">
+  <input type="checkbox" id="telepathic" name="special" value="6" data-label="Telepathic" aria-describedby="telepathic-description">
+  <span class="option-name">Telepathic</span>
+  <span class="pick-cost" aria-label="Costs 6 picks">+6</span>
+  <span class="detail" id="telepathic-description" role="tooltip">Provides a 25 point diplomacy bonus and a 10 point spying bonus. Large or larger ships can mind-control undefended non-Telepathic colonies and instantly assimilate them; captured ships can be used immediately.</span>
+</label>
+<label class="option " for="lucky" title="Receives favorable random events and avoids harmful ones. Space monsters and Antarans are substantially less likely to target its colonies.">
+  <input type="checkbox" id="lucky" name="special" value="3" data-label="Lucky" aria-describedby="lucky-description">
+  <span class="option-name">Lucky</span>
+  <span class="pick-cost" aria-label="Costs 3 picks">+3</span>
+  <span class="detail" id="lucky-description" role="tooltip">Receives favorable random events and avoids harmful ones. Space monsters and Antarans are substantially less likely to target its colonies.</span>
+</label>
+<label class="option " for="omniscient" title="From the start of the game, reveals every system and planet and tracks enemy fleet locations and destinations, including stealthy ships.">
+  <input type="checkbox" id="omniscient" name="special" value="3" data-label="Omniscient" aria-describedby="omniscient-description">
+  <span class="option-name">Omniscient</span>
+  <span class="pick-cost" aria-label="Costs 3 picks">+3</span>
+  <span class="detail" id="omniscient-description" role="tooltip">From the start of the game, reveals every system and planet and tracks enemy fleet locations and destinations, including stealthy ships.</span>
+</label>
+<label class="option " for="stealthy-ships" title="Warships are hidden from long-range scanners on the galaxy map until they arrive. This has no effect in tactical combat, and Omniscient races can still see them.">
+  <input type="checkbox" id="stealthy-ships" name="special" value="4" data-label="Stealthy Ships" aria-describedby="stealthy-ships-description">
+  <span class="option-name">Stealthy Ships</span>
+  <span class="pick-cost" aria-label="Costs 4 picks">+4</span>
+  <span class="detail" id="stealthy-ships-description" role="tooltip">Warships are hidden from long-range scanners on the galaxy map until they arrive. This has no effect in tactical combat, and Omniscient races can still see them.</span>
+</label>
+<label class="option " for="trans-dimensional" title="Ships can travel before FTL drives are researched. With FTL drives they gain plus 2 interstellar speed and plus 4 combat speed, and they are immune to Hyperspace Flux.">
+  <input type="checkbox" id="trans-dimensional" name="special" value="5" data-label="Trans Dimensional" aria-describedby="trans-dimensional-description">
+  <span class="option-name">Trans Dimensional</span>
+  <span class="pick-cost" aria-label="Costs 5 picks">+5</span>
+  <span class="detail" id="trans-dimensional-description" role="tooltip">Ships can travel before FTL drives are researched. With FTL drives they gain plus 2 interstellar speed and plus 4 combat speed, and they are immune to Hyperspace Flux.</span>
+</label>
+<label class="option " for="warlord" title="Ship crews start one experience level higher and can reach Ultra-Elite. Each colony adds 2 command points; barracks support and produce ground troops at twice the normal rate; mercenary leaders act one level higher.">
+  <input type="checkbox" id="warlord" name="special" value="4" data-label="Warlord" aria-describedby="warlord-description">
+  <span class="option-name">Warlord</span>
+  <span class="pick-cost" aria-label="Costs 4 picks">+4</span>
+  <span class="detail" id="warlord-description" role="tooltip">Ship crews start one experience level higher and can reach Ultra-Elite. Each colony adds 2 command points; barracks support and produce ground troops at twice the normal rate; mercenary leaders act one level higher.</span>
+</label>
+</fieldset></div>
+    </div>
+  </form>
+
+  <div id="announcement" role="status" aria-live="polite">Cleared race: Dictatorship government, no racial modifiers, 10 picks remaining, 200 percent score multiplier.</div>
+
+  <section class="notes" aria-labelledby="usage-notes">
+    <h2 id="usage-notes">Usage notes</h2>
+    <p>The explicit Normal choices are an accessibility addition; the original game represented them by leaving a category unselected. The calculator enforces the classic limit of no more than 10 picks gained from disadvantages, prevents spending more picks than are available, and applies the most obvious mutually exclusive trait pairs.</p>
+    <p>Pick costs follow the supplied screenshot. Fan patches and mods can change costs or effects.</p>
+  </section>
+</main>
+<footer>
+</footer>
+<script>
+(() => {
+  const form = document.getElementById('race-form');
+  const picksEl = document.getElementById('picks');
+  const scoreEl = document.getElementById('score');
+  const announcement = document.getElementById('announcement');
+  const showDetails = document.getElementById('show-details');
+  const allInputs = [...form.querySelectorAll('input')];
+  let lastValid = new Map();
+
+  const incompatiblePairs = [
+    ['low-g', 'high-g'],
+    ['rich-home', 'poor-home'],
+    ['cybernetic', 'lithovore'],
+    ['repulsive', 'charismatic'],
+    ['uncreative', 'creative']
+  ];
+
+  function selectedInputs() {
+    return allInputs.filter(input => input.checked);
+  }
+
+  function totals() {
+    const costs = selectedInputs().map(input => Number(input.value));
+    const totalCost = costs.reduce((sum, value) => sum + value, 0);
+    const negativeCost = costs.filter(value => value < 0).reduce((sum, value) => sum + value, 0);
+    const remaining = 10 - totalCost;
+    return { totalCost, negativeCost, remaining, score: 100 + remaining * 10 };
+  }
+
+  function saveSnapshot() {
+    lastValid = new Map(allInputs.map(input => [input.id, input.checked]));
+  }
+
+  function restoreSnapshot() {
+    allInputs.forEach(input => { input.checked = Boolean(lastValid.get(input.id)); });
+    updateFarmingAvailability();
+    updateStatus();
+  }
+
+  function updateStatus() {
+    const t = totals();
+    picksEl.textContent = String(t.remaining);
+    scoreEl.textContent = `${t.score}%`;
+  }
+
+  function updateFarmingAvailability() {
+    const lithovore = document.getElementById('lithovore').checked;
+    [...form.querySelectorAll('input[name="farming"]')].forEach(input => {
+      input.disabled = lithovore && input.id !== 'farming-normal';
+    });
+  }
+
+  function applyCompatibility(changed) {
+    incompatiblePairs.forEach(([a, b]) => {
+      if (changed.id === a && changed.checked) document.getElementById(b).checked = false;
+      if (changed.id === b && changed.checked) document.getElementById(a).checked = false;
+    });
+
+    if (changed.id === 'lithovore' && changed.checked) {
+      document.getElementById('farming-normal').checked = true;
+    }
+    if (changed.name === 'farming' && changed.id !== 'farming-normal' && changed.checked) {
+      document.getElementById('lithovore').checked = false;
+    }
+    updateFarmingAvailability();
+  }
+
+  function validateAndCommit(changed) {
+    applyCompatibility(changed);
+    const t = totals();
+    if (t.negativeCost < -10) {
+      restoreSnapshot();
+      announcement.className = 'error';
+      announcement.textContent = 'That choice would exceed the limit of 10 picks gained from disadvantages.';
+      return;
+    }
+    if (t.remaining < 0) {
+      restoreSnapshot();
+      announcement.className = 'error';
+      announcement.textContent = 'That choice costs more picks than are available.';
+      return;
+    }
+    saveSnapshot();
+    updateStatus();
+    announcement.className = '';
+    const label = changed.dataset.label || changed.id;
+    announcement.textContent = `${label} ${changed.checked ? 'selected' : 'cleared'}. ${t.remaining} picks remain; score multiplier ${t.score} percent.`;
+  }
+
+  allInputs.forEach(input => input.addEventListener('change', () => validateAndCommit(input)));
+
+  document.getElementById('clear').addEventListener('click', () => {
+    allInputs.forEach(input => { input.checked = false; input.disabled = false; });
+    ['population', 'farming', 'industry', 'science', 'money', 'ship-defense', 'ship-attack', 'ground-combat', 'spying'].forEach(group => {
+      document.getElementById(`${group}-normal`).checked = true;
+    });
+    document.getElementById('government-dictatorship').checked = true;
+    updateFarmingAvailability();
+    saveSnapshot();
+    updateStatus();
+    announcement.className = '';
+    announcement.textContent = 'Cleared race: Dictatorship government, no racial modifiers, 10 picks remaining, 200 percent score multiplier.';
+  });
+
+  document.getElementById('accept').addEventListener('click', () => {
+    const raceName = document.getElementById('race-name').value.trim() || 'Unnamed race';
+    const choices = selectedInputs()
+      .filter(input => !input.id.endsWith('-normal'))
+      .map(input => input.dataset.label);
+    const t = totals();
+    announcement.className = '';
+    announcement.textContent = `${raceName}. Selected traits: ${choices.length ? choices.join(', ') : 'none'}. ${t.remaining} picks remain. Score multiplier ${t.score} percent.`;
+  });
+
+  showDetails.addEventListener('change', () => {
+    document.body.classList.toggle('show-details', showDetails.checked);
+  });
+
+  updateFarmingAvailability();
+  saveSnapshot();
+  updateStatus();
+})();
+</script>
+</body>
+</html>

@@ -1,45 +1,96 @@
-- [x] Wormhole shouldn't be visible till you visit the planet or your scanners show the planet
-  — done: wormhole lines (and the partner halo) only draw once an endpoint star was visited OR falls inside your scanner envelope. This also finally gives scanner techs a real effect: every colony and parked ship scans 2 parsecs, +1 parsec per scan point (Space +2 / Neutron +5 / Tachyon +7); scanned systems also show ship activity.
+I had two colonies. I built 5 freighter fleets and I dragged a colonist to another colony at a different star but I wasn't able to drop the colonist. It didn't tell me why and I couldn't reinforce my new colony despite having so many idle freighter fleets. It's probably a bug.
 
-- [x] Wormhole transit should be 1 turn
-  — verified: the engine already resolves wormhole moves in exactly 1 turn regardless of distance/speed (movement.ts travelTurns; covered by tests/unit/wormhole.test.ts). Nothing to change.
+If I have two fights in the same turn, the  second fight locks the game for several minutes. And for that fight here's no way to select the strategy. Maybe the second dialog blocked the first one and I couldn't see it. it was very repeatable
 
-- [x] Colony can't be 0 pop
-  — done: a colony starved below one whole colonist unit dies (colony_died) instead of lingering at "0/12". Bombing/invasion/transport paths already kept ≥1 unit. Engine behavior change → ENGINE_VERSION bumped to 0.5.0 (old saves load snapshot-first, per the save-compat contract).
+picks should be sorted and obvious what they each do. It's very inaccessible. I've mocked an accessible html that shows how it should work at race_picks_accessible.html
 
-- [x] Text tick colonies to bulk-select — done: hint reads "tick colonies to bulk-select".
-- [x] Remove plus and minus buttons — done (drag replaced them).
-- [x] Planet tag button way too big — done: the +tag control is a tiny transparent "+".
-- [x] Pop change estimate should update when workers are moved
-  — done: the growth projection now uses THIS turn's planned jobs — it simulates the empire-wide food distribution (freighters, chartered haulers, blockades) on the planned state, so moving farmers changes the estimate instantly instead of one turn late. (The pipeline itself is unchanged; only the projection reads live values.)
-- [x] Button to hide tags part of column — done: 🏷 toggle in the bar (persists).
-- [x] Search should also find planet names not just tag — done: the filter matches star/system names too (colony names already matched).
 
-- [x] How will captured colonists work. How do we distinguish them
-  — answered + fixed: captured colonists keep their own race group on the colony (flip owner with unrest on invasion; unrest = −25% output until they assimilate at 1/N chance per turn by government). They now render as their own citizen icons with a violet ring (red-gray while in unrest) and a tooltip naming their race. Critically, job dragging was rewritten to be group-aware — reassigning YOUR people no longer clobbers (or gets rejected by) foreign groups, presets already distributed across groups, and captured colonists can be dragged/shuttled as their own race.
+technologies should be described what they do
 
-- [x] If you select multiple colonies we should allow bulk queue (back or front)
-  — done: "⤴ queue next for all…" (right after each colony's current build) and "⤵ queue last for all…" joined the existing "set build for all…".
+we need cache busting so we can upgrade versions in the .
 
-- [x] Name your empire when custom
-  — done: the custom-race field is labeled "empire name" (it always became Empire.raceName); the in-game header now shows "👤 you · YourEmpire" and the Empires tab already listed it.
+no wormholes on the homeworld planet
 
-- [x] Battle simulator should also be in the ship design screen and work on wip ships
-  — done: "⚗ Simulate" in the Designer opens the Battle Lab with the exact work-in-progress fit (no save needed, 3 copies) vs every enemy type you've met in battle — or a mirror of itself before first contact.
 
-- [x] We need to have retrofit ships with new designs of the same class and scrap ships. Use the same moo formula for retrofits
-  — done: Fleets tab "⟳ retrofit…" per warship — rebuilds it to another design of the SAME hull class at a colony with a star base (or better) in that system. MOO2 formula: cost = newCost − oldCost, minimum ¼ of the new design's cost, paid in production through that colony's build queue (refit:<ship>:<design> item); completion swaps the design and repairs the hull; if the ship sails away mid-refit, half comes back as BC. Scrapping now returns ¼ of build cost in BC for ALL ships including designed warships (previously warships scrapped for 0).
+the game moved forward 60 turns on the first turn when we have the expiry set. Instead every turn should skip ahead one turn. And the timer is to auto-turn after a certain time limit after everyone but one has committed.
 
-- [x] Ensure terraforming and planetary construction works correctly
-  — verified with a new suite (tests/unit/terraform.test.ts) through the real build pipeline: chains desert→arid→terran, tundra→swamp→terran, ocean→terran; cost 250 + 250·steps; hostile/energized never terraformable; gaia (Habitat Transformation) terran-only; max pop rises. One doc/code mismatch fixed: the docs say "barren becomes desert OR tundra" — the code always picked desert; now deterministic per planet (both branches reach terran in 3 steps). habitat_domes works (+2 max pop); artificial_planet remains an explicit deferred stub.
 
-- [x] And the tech that gives new skill picks. How does this work
-  — answered + implemented: it's **Trait Reassignment** (Trans Adaptation field, ecology, 7500 RP). Per the docs it grants 4 additional pick points, once, to remove disadvantages or add advantages (never governments). Now a real command + a "🧬 Trait Reassignment" panel on the Empires tab when researched; traits resolve dynamically from picks so the respec applies immediately. Flaws costing more than 4 (e.g. repulsive −6) can't be shed — the budget is a hard 4.
+selected rich world got ultra rich
 
-- [x] Planets should show the leader in gray letters and what the features are for production
-  — done: the assigned governor's name appears in gray next to the colony name; the planet cell shows special-feature icons (🥇 gold / 💎 gems / 🏺 artifacts) and its hover now explains everything in production terms (minerals → prod per worker, gravity penalty, special bonuses).
+if you put something on the queue it can't be added to the main building and is locked in until you build
 
-- [x] + and − removed; citizen icons always overlap with negative kerning (tighter as counts grow).
+you can put a farmer on barren
 
----
-Verification (2026-07-10): `npm test` 310 passed (46 files — new suites: retrofit, terraform, traitreassign, multirace, zeropop, wormhole-visibility), `MOO2_BALANCE=1` combat envelope, `svelte-check` 0 errors, `npm run build`, and the full Playwright suite 8/8 (incl. solo-standalone and play-by-mail) all pass. ENGINE_VERSION 0.4.0 → 0.5.0 (behavioral changes); the golden save fixture confirmed old saves fall back to snapshot-first loading exactly as designed.
+
+"tick colonies to bulk-select · click headers to sort · click a citizen to grab them + everyone to their right, then drag onto another job or a same-system colony" is not useful text.
+
+Monsters should protect planets worth taking (eg ultra rich or gaia or artifacts worlds)
+
+Host offline warning is not great and is not accurate since it seems to actually be online. What casues that. Cna that be fixed? it annoys the UI
+
+scouts should have 1 laser and be able to fight
+
+
+planets should not have size 1.
+
+The dots underneath should show gray for other planets not colonized and x for features like asteroid or gas giant
+
+
+Display of free freighters somewhere
+
+food should not starve below 1 pop
+
+only participants should be able to watch the battle
+
+when it says 1t to arrival sometimes it takes multiple. I suspect the turn estimates are wrong 
+
+outposts shouldn't show up in the colonies table
+
+the help on "Your ships travel star-to-star within fuel range. Fleets under way show as ▶ markers with their ETA." should only appear once per game
+
+
+weapons shoudlnt' have mirv or eccm until you have 2 layers deeper in the associated technology. likewise I think point defense is one layer newer
+
+stars with nothing are too common and planets seem a bit too small on average
+
+the saved dialog sticks around for players
+
+barren worlds should block farming if you can't farm there so you don't accidentally waste farmer people in that job producing nothing
+
+tundra world had the farmer farming but the pop went down to zero. Farmers should self sustain there.
+
+You should be able to choose not to fight noncombat ships even at war: this may be possible by selecting retreat as the strat
+
+when you do mirv it does not increase the DPS
+
+
+The range may be calculated wrongly--the first chem research gave me a huge range in medium. The base range is fine but maybe the increments of upgrading chemistry are too large?
+
+
+Leader Expiration should tell the turn before he expires
+
+
+can't tell what kind of warship an opposing fleet is
+
+
+
+doom stars should be roundish
+
+
+why do they get stuck in the corner when trying to flee sometimes and other times they can leave. Anyone should be able to leave from the edge of the map
+
+in the battle simulator we should be able to choose armor class and read it from the observed ships
+mauler device should always hit
+
+different weapons with overkill should target different ships
+
+starlight projector should be flashy
+
+we need assault shuttles and fighter bays for the battle simulator
+
+When ships retreat in the battle simulator they stay in the corner. They should retreat for the battle sim I imagine so we can see what survives. Ensure that real battles actually do retreat
+add telemetry for user actions so we can learn what users
+we need a picks = 14
+antaran should be called andromedan (since in this different game they are from from the andromeda galaxy)
+
+
