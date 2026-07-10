@@ -54,6 +54,10 @@ export const app = $state({
   rejectedNote: '',
   /** the ?room=&name= URL auto-join already ran (don't rejoin after leaving) */
   autoJoined: false,
+  /** fast start: the CONTACT flash overlay (null = dismissed / never) */
+  contactFlash: null as null | { turn: number; pairs: Array<[number, number]> },
+  /** map view: star to center/select on next open (colony-ship arrival alert) */
+  focusStarId: null as number | null,
 });
 
 let rejectedNoteTimer: ReturnType<typeof setTimeout> | null = null;
@@ -117,31 +121,14 @@ export function bindActive(active: ActiveGame): void {
       app.chat.push({ id: ev.id, from: ev.from, to: ev.to, text: ev.text });
       if (app.chat.length > 100) app.chat.shift();
     } else if (ev.type === 'turn-advanced') {
-      const me = active.session.playerId;
-      for (const e of active.session.lastTurnEvents) {
-        if (e.kind === 'ground_battle') {
-          if (e.visibleTo !== me) continue; // participants only
-          const gp = e.payload as GroundBattleEntry['payload'];
-          if (!app.groundBattles.some((g) => g.turn === ev.turn - 1 && g.payload.colonyId === gp.colonyId)) {
-            app.groundBattles.push({ turn: ev.turn - 1, payload: gp });
-            if (app.groundBattles.length > 20) app.groundBattles.shift();
-          }
-          continue;
-        }
-        if (e.kind === 'battle_replay') {
-          if (e.visibleTo !== -1 && e.visibleTo !== me) continue; // participants only
-          const p = e.payload as { battleId: string; seed: string; input: unknown; summary: Record<string, unknown> };
-          if (!app.replays.some((r) => r.battleId === p.battleId)) {
-            app.replays.push({ ...p, turn: ev.turn - 1, watched: false });
-            if (app.replays.length > 20) app.replays.shift();
-          }
-          continue;
-        }
-        if (e.visibleTo === -1 || e.visibleTo === me) {
-          app.reports.push({ turn: ev.turn - 1, kind: e.kind, payload: e.payload as Record<string, unknown> });
-          if (app.reports.length > 300) app.reports.shift();
-        }
-      }
+      // authoritative boundary. In a fast game the preview already showed
+      // (identical) events for this turn — the dedupe below drops repeats.
+      ingestTurnEvents(active, active.session.lastTurnEvents, ev.turn - 1);
+    } else if (ev.type === 'fast-advanced') {
+      // fast preview boundary: show the player what their turn produced
+      ingestTurnEvents(active, [...active.session.getFastEvents()], ev.turn - 1);
+    } else if (ev.type === 'contact') {
+      app.contactFlash = { turn: ev.turn, pairs: ev.pairs };
     }
   });
   if (import.meta.env.DEV) {

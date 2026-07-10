@@ -115,6 +115,8 @@ export class GameSession<S> {
   } | null = null;
   private pendingReveal: { bids: Record<string, number>; nonce: string } | null = null;
   private committedCache: number[] = [];
+  /** fast phase: per-seat committed-through turns from the last commit_status */
+  private fastTurnsCache: Record<string, number> = {};
   /** wall-clock ms when the host's auto-turn timer fires (null = not armed) */
   private autoTurnDeadline: number | null = null;
   private startedFlag = false;
@@ -406,6 +408,7 @@ export class GameSession<S> {
         this.autoTurnDeadline = msg.autoTurnInMs !== undefined ? Date.now() + msg.autoTurnInMs : null;
         // fast phase: the host remembers commits this tab lost in a reload —
         // adopt them as "blind" turns and wait for the log to replay them
+        this.fastTurnsCache = msg.fastTurns ?? {};
         if (msg.fastTurns && this.fastConfigured()) {
           const mine = msg.fastTurns[String(this.playerId)];
           if (mine !== undefined && mine > this.fastEndedThrough && mine > this.fastBlindThrough) {
@@ -721,6 +724,11 @@ export class GameSession<S> {
   /** Events from the newest locally-previewed turn (fast phase, when ahead). */
   getFastEvents(): ReadonlyArray<{ visibleTo: number; kind: string; payload: Record<string, unknown> }> {
     return this.fastEvents;
+  }
+
+  /** Fast phase: per-seat committed-through turns (host commit_status). */
+  getFastTurns(): Readonly<Record<string, number>> {
+    return this.fastTurnsCache;
   }
 
   /** Contact record once the fast phase ended (never cleared). */
