@@ -51,7 +51,17 @@ export interface GameSettings {
   pickPoints?: number;
   /** big-empire start: every player begins with a 10-20 colony bubble */
   bigStart?: boolean;
+  /** fast start: players end turns without waiting for each other until two
+   * empires make contact. The host simulation (the truth) advances only as
+   * fast as the slowest player; everyone ahead plays a local preview that is
+   * reconciled — possibly rewound — when CONTACT flashes. NPC battles
+   * auto-resolve during the fast phase. */
+  fastStart?: boolean;
 }
+
+/** fast start: nobody may run more than this many turns past the slowest
+ * player (bounds both the rewind disappointment and the replay cost) */
+export const FAST_MAX_AHEAD = 10;
 
 export type ClientToHost =
   | {
