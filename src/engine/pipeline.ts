@@ -13,7 +13,7 @@ import { antaranUpkeep, randomEventsUpkeep } from './npc';
 import { itemCost, parseDesignItem, parseRefitItem } from './items';
 import { commandPoints } from './movement';
 import { applyTerraformStep, unsettledPlanetsInSystem } from './terraform';
-import { colonyMaxPop, colonyOutput, colonyPopUnits, groupGrowthK, traitsOf } from './economy';
+import { colonyMaxPop, colonyOutput, colonyPopUnits, freeFreighters, groupGrowthK, traitsOf } from './economy';
 import { normalizeJobsForGroup } from './commands';
 import { rngFor } from './rng';
 import { applyResearch } from './research';
@@ -198,7 +198,7 @@ function s2_colonyOutput(state: GameState, events: TurnEvent[]): TurnOutputs {
       if (out.foodNet >= 0) surplus += out.foodNet;
       else deficits.push({ colony: c, lack: -out.foodNet });
     }
-    let capacity = empire.freighters * 5;
+    let capacity = freeFreighters(state, empire) * 5;
     // chartered civilian haulers beyond freighter capacity: 1 BC per food unit
     let charterBudget = Math.max(0, empire.bc + (empireBC.get(empire.id) ?? 0));
     let charterSpent = 0;

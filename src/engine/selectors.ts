@@ -3,7 +3,7 @@
 // from here so alternate front ends and headless bots agree exactly.
 
 import { fieldByNum, applicationsOfField, FIELD_SUBJECTS, type FieldRow } from './data/index';
-import { buyCost, colonyMaxPop, colonyOutput, colonyPopUnits, groupGrowthK, type ColonyOutput } from './economy';
+import { buyCost, colonyMaxPop, colonyOutput, colonyPopUnits, freeFreighters, groupGrowthK, type ColonyOutput } from './economy';
 import { buildableItems, itemCost, refitCost, SHIPYARD_BASES } from './items';
 import { empireAccum } from './effects';
 import { isBlockaded } from './ground';
@@ -77,7 +77,7 @@ export function projectedFoodShortages(state: GameState, empireId: number): Map<
     else deficits.push({ colony: c, lack: -o.foodNet });
     out.set(c.id, 0);
   }
-  let capacity = empire.freighters * 5;
+  let capacity = freeFreighters(state, empire) * 5;
   let charterBudget = Math.max(0, empire.bc + bcIncome);
   deficits.sort((a, b) => a.colony.id - b.colony.id);
   for (const d of deficits) {

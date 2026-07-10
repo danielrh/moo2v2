@@ -304,8 +304,22 @@ export interface GameState {
   leaderOffers: LeaderOffer[];
   monsters: MonsterUnit[];
   antarans: AntaranState;
+  /** colonists riding freighters between systems (5 freighters per unit are
+   * tied up for the whole trip). Optional-additive for save compatibility. */
+  popTransits?: PopTransit[];
   winner: number | null;
   winType: 'conquest' | 'council' | 'antaran' | null;
+}
+
+export interface PopTransit {
+  id: number;
+  empireId: number;
+  race: number;
+  fromColonyId: number;
+  toColonyId: number;
+  units: number;
+  departedTurn: number;
+  arrivalTurn: number;
 }
 
 /** Deterministic turn event emitted during resolution (not part of hashed state). */

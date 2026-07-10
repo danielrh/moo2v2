@@ -13,7 +13,7 @@ import {
   PICK_EXCLUSIVE_GROUPS,
 } from './data/index';
 import { areAtWar, relationKey, setRelation } from './battles';
-import { buyCost, colonyMaxPop, empireOf, traitsOf } from './economy';
+import { buyCost, colonyMaxPop, colonyPopUnits as popUnitsOf, empireOf, freeFreighters, traitsOf } from './economy';
 import { canQueue, itemCost } from './items';
 import { inRange, shipStar, travelTurns } from './movement';
 import { availableFields, fieldGrantsAll } from './research';

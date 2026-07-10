@@ -18,6 +18,21 @@ export function traitsOf(empire: Empire): RaceTraits {
   return resolveTraits(empire.picks);
 }
 
+/** Freighters tied up hauling colonists between systems (5 per unit) — they
+ * cannot move food while en route. */
+export function busyFreighters(state: GameState, empireId: number): number {
+  let n = 0;
+  for (const t of state.popTransits ?? []) {
+    if (t.empireId === empireId) n += 5 * t.units;
+  }
+  return n;
+}
+
+/** Freighters available for food logistics right now. */
+export function freeFreighters(state: GameState, empire: Empire): number {
+  return Math.max(0, empire.freighters - busyFreighters(state, empire.id));
+}
+
 export function planetOf(state: GameState, colony: Colony): Planet {
   const p = state.planets.find((x) => x.id === colony.planetId);
   if (!p) throw new Error(`colony ${colony.id} planet missing`);
