@@ -180,9 +180,12 @@ function shipToCombat(state: GameState, empire: Empire, ship: Ship, side: 0 | 1)
       weapons: stats.weapons.map((w) => ({
         weaponId: w.row.id,
         classId: w.row.classId,
-        dmgMin: w.row.tacticalDamage.min,
-        dmgMax: w.row.tacticalDamage.max,
-        mods: w.mods,
+        // strike craft (classId 4) hit with their strategic payload
+        dmgMin: w.row.classId === 4 ? w.row.strategicDamage.min : w.row.tacticalDamage.min,
+        dmgMax: w.row.classId === 4 ? w.row.strategicDamage.max : w.row.tacticalDamage.max,
+        // built-in weapon behaviors (mauler 'hit', starlight 'mar/co', ...)
+        // ride along with the design-chosen mods
+        mods: [...new Set([...w.mods, ...w.row.naturalMods])],
         ammo: w.row.ammo,
         cooldown: 0,
         count: w.count,
@@ -214,9 +217,9 @@ function shipToCombat(state: GameState, empire: Empire, ship: Ship, side: 0 | 1)
     weapons: stats.weapons.map((w) => ({
       weaponId: w.row.id,
       classId: w.row.classId,
-      dmgMin: w.row.tacticalDamage.min,
-      dmgMax: w.row.tacticalDamage.max,
-      mods: w.mods,
+      dmgMin: w.row.classId === 4 ? w.row.strategicDamage.min : w.row.tacticalDamage.min,
+      dmgMax: w.row.classId === 4 ? w.row.strategicDamage.max : w.row.tacticalDamage.max,
+      mods: [...new Set([...w.mods, ...w.row.naturalMods])],
       ammo: w.row.ammo,
       cooldown: 0,
       count: w.count,
@@ -267,9 +270,9 @@ function baseToCombat(state: GameState, empire: Empire, colony: Colony, syntheti
     weapons: stats.weapons.map((w) => ({
       weaponId: w.row.id,
       classId: w.row.classId,
-      dmgMin: w.row.tacticalDamage.min,
-      dmgMax: w.row.tacticalDamage.max,
-      mods: w.mods,
+      dmgMin: w.row.classId === 4 ? w.row.strategicDamage.min : w.row.tacticalDamage.min,
+      dmgMax: w.row.classId === 4 ? w.row.strategicDamage.max : w.row.tacticalDamage.max,
+      mods: [...new Set([...w.mods, ...w.row.naturalMods])],
       ammo: w.row.ammo,
       cooldown: 0,
       count: w.count,

@@ -121,9 +121,9 @@
       weapons: stats.weapons.map((w) => ({
         weaponId: w.row.id,
         classId: w.row.classId,
-        dmgMin: w.row.tacticalDamage.min,
-        dmgMax: w.row.tacticalDamage.max,
-        mods: w.mods,
+        dmgMin: w.row.classId === 4 ? w.row.strategicDamage.min : w.row.tacticalDamage.min,
+        dmgMax: w.row.classId === 4 ? w.row.strategicDamage.max : w.row.tacticalDamage.max,
+        mods: [...new Set([...w.mods, ...w.row.naturalMods])],
         ammo: w.row.ammo,
         cooldown: 0,
         count: w.count,

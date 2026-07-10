@@ -149,6 +149,8 @@ export interface ShotEvent {
   classId: number;
   hit: boolean;
   dmg: number;
+  /** this hit destroyed the target (viewer highlights the killing blow) */
+  kill?: boolean;
 }
 
 export interface BattleTickFrame {
@@ -237,6 +239,7 @@ interface Projectile {
   classId: number;
   weaponId: string;
   hp: number;
+  mods: string[];
 }
 
 const BAND_SHORT = 96 * FP;
@@ -438,9 +441,20 @@ export function runBattle(
           } else travel = 0;
           break;
         }
-        case 'evade_retreat':
-          steer(s.x - dir * FIELD_W, s.y, 1);
+        case 'evade_retreat': {
+          // run for the NEAREST edge — a fleeing ship may leave the field
+          // from any side, so nobody gets cornered (bug fix)
+          const dl = s.x;
+          const dr = FIELD_W - s.x;
+          const dt = s.y;
+          const db = FIELD_H - s.y;
+          const m = Math.min(dl, dr, dt, db);
+          if (m === dl) steer(s.x - FIELD_W, s.y, 1);
+          else if (m === dr) steer(s.x + FIELD_W, s.y, 1);
+          else if (m === dt) steer(s.x, s.y - FIELD_H, 1);
+          else steer(s.x, s.y + FIELD_H, 1);
           break;
+        }
       }
 
       if (desiredX !== 0 || desiredY !== 0) {
@@ -459,9 +473,9 @@ export function runBattle(
         s.x += roundDiv(TRIG[s.heading]![0] * travel, 16384);
         s.y = clamp(s.y + roundDiv(TRIG[s.heading]![1] * travel, 16384), 8 * FP, FIELD_H - 8 * FP);
       }
-      // edges (warp dissipaters pin the enemy on the field)
+      // edges (warp dissipaters pin the enemy on the field): ANY edge works
       if (s.stance === 'evade_retreat' && !noRetreat[s.init.side]) {
-        if ((s.init.side === 0 && s.x <= 4 * FP) || (s.init.side === 1 && s.x >= FIELD_W - 4 * FP)) {
+        if (s.x <= 4 * FP || s.x >= FIELD_W - 4 * FP || s.y <= 9 * FP || s.y >= FIELD_H - 9 * FP) {
           s.retreated = true;
         }
       }
@@ -491,12 +505,12 @@ export function runBattle(
           p.hp = 0;
           continue;
         }
-        if (t.missileEvasion > 0 && rng.chancePct(t.missileEvasion)) {
+        if (!p.mods.includes('eccm') && t.missileEvasion > 0 && rng.chancePct(t.missileEvasion)) {
           frameShots.push({ tick, from: p.from, to: t.init.shipId, weaponId: p.weaponId, classId: p.classId, hit: false, dmg: 0 });
           p.hp = 0;
           continue;
         }
-        applyDamage(t, p.dmg, ['guided'], frameShots, tick, p.from, p.targetIdx, p.weaponId, p.classId, frameDeaths, sims, rng);
+        applyDamage(t, p.dmg, ['guided', ...p.mods], frameShots, tick, p.from, p.targetIdx, p.weaponId, p.classId, frameDeaths, sims, rng);
         p.hp = 0;
       } else {
         p.x += roundDiv(ddx * step, d);
@@ -505,6 +519,16 @@ export function runBattle(
     }
 
     // --- firing (deterministic ship order) ---
+    // overkill spread: damage already dealt this tick plus warheads in flight;
+    // a weapon whose target is already dead-on-paper picks a fresh one
+    const hurtThisTick = new Map<number, number>();
+    const overkilled = (idx: number): boolean => {
+      const t2 = sims[idx];
+      if (!t2) return true;
+      let incoming = hurtThisTick.get(idx) ?? 0;
+      for (const p of projectiles) if (p.hp > 0 && p.targetIdx === idx) incoming += p.dmg;
+      return incoming >= t2.shield + t2.armor + t2.structure;
+    };
     for (let si = 0; si < sims.length; si++) {
       const s = sims[si]!;
       if (!active(s)) continue;
@@ -534,7 +558,14 @@ export function runBattle(
           }
         }
 
-        const t = s.targetIdx >= 0 ? sims[s.targetIdx] : undefined;
+        let t = s.targetIdx >= 0 ? sims[s.targetIdx] : undefined;
+        if (t && active(t) && overkilled(s.targetIdx)) {
+          const alt = pickTarget(sims, s, (i) => !overkilled(i));
+          if (alt >= 0) {
+            s.targetIdx = alt;
+            t = sims[alt];
+          }
+        }
         if (!t || !active(t)) continue;
         const dist = idist(Math.abs(t.x - s.x), Math.abs(t.y - s.y));
         // firing arc: the mount must bear on the target (PD turrets track 360°)
@@ -558,6 +589,7 @@ export function runBattle(
                 95,
               );
               if (t.specials.has('displacement_device')) hitPct = Math.floor((hitPct * 67) / 100);
+              if (w.mods.includes('hit')) hitPct = 100; // mauler device: never misses
               const hit = rng.chancePct(hitPct);
               if (!hit) {
                 frameShots.push({ tick, from: s.init.shipId, to: t.init.shipId, weaponId: w.weaponId, classId: 0, hit: false, dmg: 0 });
@@ -572,6 +604,7 @@ export function runBattle(
               if (s.specials.has('structural_analyzer')) dmg *= 2;
               const mods = s.specials.has('achilles_targeting_unit') ? [...w.mods, 'achilles'] : w.mods;
               applyDamage(t, dmg, mods, frameShots, tick, s.init.shipId, s.targetIdx, w.weaponId, 0, frameDeaths, sims, rng);
+              hurtThisTick.set(s.targetIdx, (hurtThisTick.get(s.targetIdx) ?? 0) + dmg);
             }
           }
           s.cds[wi] = cooldownOf(w, crippled, s.specials);
@@ -579,7 +612,10 @@ export function runBattle(
           const launchRange = w.classId === 1 ? 600 * FP : 500 * FP;
           if (dist > launchRange) continue;
           const volley = Math.min(w.count, s.ammo[wi]! < 0 ? w.count : s.ammo[wi]!);
-          for (let n = 0; n < volley; n++) {
+          // MIRV missiles split into four independent warheads (each can be
+          // point-defensed and each pays shield flat separately, like MOO2)
+          const warheads = w.classId === 1 && w.mods.includes('mv') ? 4 : 1;
+          for (let n = 0; n < volley * warheads; n++) {
             projectiles.push({
               from: s.init.shipId,
               targetIdx: s.targetIdx,
@@ -590,6 +626,31 @@ export function runBattle(
               classId: w.classId,
               weaponId: w.weaponId,
               hp: 1,
+              mods: w.mods,
+            });
+          }
+          if (s.ammo[wi]! > 0) s.ammo[wi] = Math.max(0, s.ammo[wi]! - volley);
+          s.cds[wi] = cooldownOf(w, crippled, s.specials);
+        } else if (w.classId === 4) {
+          // fighter bays / assault shuttles: strike craft fly out like guided
+          // munitions (point defense can splash them) and hit with their
+          // strategic payload; boarding craft cripple systems instead
+          const launchRange = 450 * FP;
+          if (dist > launchRange) continue;
+          const volley = Math.min(w.count, s.ammo[wi]! < 0 ? w.count : s.ammo[wi]!);
+          for (let n = 0; n < volley; n++) {
+            const boarding = w.dmgMax <= 0; // assault shuttles carry marines, not bombs
+            projectiles.push({
+              from: s.init.shipId,
+              targetIdx: s.targetIdx,
+              x: s.x,
+              y: s.y,
+              dmg: boarding ? 6 : w.dmgMin + rng.int(w.dmgMax - w.dmgMin + 1),
+              speed: 6,
+              classId: 4,
+              weaponId: w.weaponId,
+              hp: 1,
+              mods: boarding ? [...w.mods, 'board', 'sp', 'ap'] : w.mods,
             });
           }
           if (s.ammo[wi]! > 0) s.ammo[wi] = Math.max(0, s.ammo[wi]! - volley);
@@ -689,11 +750,15 @@ function cooldownOf(w: CombatWeapon, crippled: boolean, specials?: Set<string>):
   return crippled ? base * 2 : base;
 }
 
-function pickTarget(sims: Sim[], s: Sim): number {
-  const enemies: number[] = [];
+function pickTarget(sims: Sim[], s: Sim, accept?: (idx: number) => boolean): number {
+  let enemies: number[] = [];
   for (let i = 0; i < sims.length; i++) {
     const e = sims[i]!;
     if (e.init.side !== s.init.side && e.alive && !e.retreated && !e.crossed) enemies.push(i);
+  }
+  if (accept) {
+    const filtered = enemies.filter(accept);
+    if (filtered.length) enemies = filtered; // else: everyone is saturated, keep firing
   }
   if (!enemies.length) return -1;
   const priority = s.priority;
@@ -751,15 +816,17 @@ function applyDamage(
       t.structure -= structDmg;
     }
   }
-  shots.push({ tick, from: fromId, to: t.init.shipId, weaponId, classId, hit: true, dmg: raw });
-  if (t.structure <= 0 && t.alive) {
+  const killed = t.structure <= 0 && t.alive;
+  shots.push({ tick, from: fromId, to: t.init.shipId, weaponId, classId, hit: true, dmg: raw, ...(killed ? { kill: true } : {}) });
+  if (killed) {
     t.alive = false;
     t.structure = 0;
     deaths.push(t.init.shipId);
   }
   // internal hits can knock out systems for the rest of the fight (transient:
-  // only structure/armor percentages persist after the battle)
-  if (structDmg > 0 && t.alive && rng.chancePct(SYSTEM_KNOCKOUT_PCT)) {
+  // only structure/armor percentages persist after the battle). Boarding
+  // craft (assault shuttles) ALWAYS cripple something they reach.
+  if (structDmg > 0 && t.alive && (mods.includes('board') || rng.chancePct(SYSTEM_KNOCKOUT_PCT))) {
     const knockable: Array<'drive' | 'computer' | 'shield'> = [];
     if (!t.sysDrive && t.init.speed > 0) knockable.push('drive');
     if (!t.sysComputer && t.init.beamAttack > 0) knockable.push('computer');
@@ -787,7 +854,8 @@ export function designDps(weapons: CombatWeapon[], beamAttack: number): number {
     if (w.classId === 3) continue; // bombs don't fire in the pass
     const expected = roundDiv(w.dmgMin + w.dmgMax, 2);
     const perShot = w.classId === 0 ? roundDiv(expected * (50 + clamp(beamAttack, 0, 100)), 100) : expected;
-    const shots = w.classId === 0 && w.mods.includes('af') ? 3 : 1;
+    let shots = w.classId === 0 && w.mods.includes('af') ? 3 : 1;
+    if (w.classId === 1 && w.mods.includes('mv')) shots *= 4; // MIRV: four warheads
     const cd = Math.max(1, cooldownOf(w, false));
     total += roundDiv(perShot * shots * w.count * 10 * 100, cd); // 10 ticks/sec
   }
