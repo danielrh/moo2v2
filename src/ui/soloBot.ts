@@ -40,7 +40,7 @@ interface Profile {
 
 const PROFILES: Record<BotPersonality, Profile> = {
   balanced: { scienceBias: 1, fleetRatio: 1, expand: 3, warlike: false, buyEager: false },
-  techer: { scienceBias: 2, fleetRatio: 0.5, expand: 2, warlike: false, buyEager: false },
+  techer: { scienceBias: 1, fleetRatio: 0.6, expand: 3, warlike: false, buyEager: false },
   rusher: { scienceBias: 0, fleetRatio: 1.5, expand: 1, warlike: true, buyEager: true },
   industrialist: { scienceBias: 0, fleetRatio: 1, expand: 2, warlike: false, buyEager: true },
   expander: { scienceBias: 1, fleetRatio: 0.5, expand: 4, warlike: false, buyEager: false },
