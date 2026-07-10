@@ -157,40 +157,49 @@
   }
 
   type Job = 'farmers' | 'workers' | 'scientists';
-  function moveJob(row: selectors.ColonyRow, fromJob: Job, toJob: Job, count = 1) {
-    const n = Math.min(count, row.jobs[fromJob]);
+  /** reassign within ONE race group — captured colonists keep their own
+   * group, so a multi-race colony never gets its groups overwritten */
+  function moveJob(row: selectors.ColonyRow, race: number, fromJob: Job, toJob: Job, count = 1) {
+    const grp = row.groups.find((g) => g.race === race);
+    if (!grp) return;
+    const n = Math.min(count, grp[fromJob]);
     if (fromJob === toJob || n <= 0) return;
-    const jobs = { ...row.jobs };
+    const jobs = { race: grp.race, farmers: grp.farmers, workers: grp.workers, scientists: grp.scientists };
     jobs[fromJob] -= n;
     jobs[toJob] += n;
-    session().submit('set_jobs', {
-      colonyId: row.id,
-      groups: [{ race: session().playerId, ...jobs }],
-    });
+    session().submit('set_jobs', { colonyId: row.id, groups: [jobs] });
   }
 
   // (the old +/- buttons are gone: dragging citizens replaced them)
 
   // ---- drag colonists: between job columns, or onto a same-system colony ----
-  // Clicking citizen i selects it AND everyone to its right in that cell; a
-  // drag then carries the whole selection (dragging without clicking first
-  // does the same from the grabbed icon).
+  // Clicking citizen i selects it AND everyone to its right in its own race
+  // group; a drag then carries the whole selection (dragging without clicking
+  // first does the same from the grabbed icon).
   const JOB_ICONS: Record<Job, string> = { farmers: '🌾', workers: '🔨', scientists: '🧪' };
-  let picked = $state<{ colonyId: number; job: Job; from: number } | null>(null);
-  function pickFrom(row: selectors.ColonyRow, job: Job, i: number) {
-    if (picked && picked.colonyId === row.id && picked.job === job && picked.from === i) picked = null;
-    else picked = { colonyId: row.id, job, from: i };
+  let picked = $state<{ colonyId: number; job: Job; race: number; from: number } | null>(null);
+  function pickFrom(row: selectors.ColonyRow, job: Job, race: number, i: number) {
+    if (picked && picked.colonyId === row.id && picked.job === job && picked.race === race && picked.from === i) {
+      picked = null;
+    } else {
+      picked = { colonyId: row.id, job, race, from: i };
+    }
   }
-  const isPicked = (row: selectors.ColonyRow, job: Job, i: number): boolean =>
-    !!picked && picked.colonyId === row.id && picked.job === job && i >= picked.from;
-  /** how many citizens a drag starting at icon i carries */
-  function grabCount(row: selectors.ColonyRow, job: Job, i: number): number {
-    const from = picked && picked.colonyId === row.id && picked.job === job && picked.from <= i ? picked.from : i;
-    return row.jobs[job] - from;
+  const isPicked = (row: selectors.ColonyRow, job: Job, race: number, i: number): boolean =>
+    !!picked && picked.colonyId === row.id && picked.job === job && picked.race === race && i >= picked.from;
+  /** how many citizens a drag starting at icon i of a group carries */
+  function grabCount(row: selectors.ColonyRow, job: Job, race: number, i: number): number {
+    const grp = row.groups.find((g) => g.race === race);
+    if (!grp) return 1;
+    const from =
+      picked && picked.colonyId === row.id && picked.job === job && picked.race === race && picked.from <= i
+        ? picked.from
+        : i;
+    return grp[job] - from;
   }
   /** icons always overlap a bit (negative kerning), tighter as counts grow */
   const overlapPx = (count: number): number => (count <= 4 ? 3 : count <= 8 ? 6 : count <= 14 ? 8 : 10);
-  let drag = $state<{ colonyId: number; job: Job; count: number } | null>(null);
+  let drag = $state<{ colonyId: number; job: Job; race: number; count: number } | null>(null);
   let dragOver = $state<{ colonyId: number; job: Job } | null>(null);
   let dragOverColony = $state<number | null>(null);
   let moveNote = $state('');
@@ -200,13 +209,13 @@
     if (moveNoteTimer) clearTimeout(moveNoteTimer);
     moveNoteTimer = setTimeout(() => (moveNote = ''), 5000);
   }
-  function onDragStart(row: selectors.ColonyRow, job: Job, i: number, ev: DragEvent) {
-    drag = { colonyId: row.id, job, count: Math.max(1, grabCount(row, job, i)) };
-    ev.dataTransfer?.setData('text/plain', `${row.id}:${job}:${drag.count}`);
+  function onDragStart(row: selectors.ColonyRow, job: Job, race: number, i: number, ev: DragEvent) {
+    drag = { colonyId: row.id, job, race, count: Math.max(1, grabCount(row, job, race, i)) };
+    ev.dataTransfer?.setData('text/plain', `${row.id}:${job}:${race}:${drag.count}`);
     if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
   }
   function onDrop(row: selectors.ColonyRow, job: Job) {
-    if (drag && drag.colonyId === row.id) moveJob(row, drag.job, job, drag.count);
+    if (drag && drag.colonyId === row.id) moveJob(row, drag.race, drag.job, job, drag.count);
     else if (drag && drag.colonyId !== row.id) dropOnColony(row); // job cell of another colony works too
     drag = null;
     picked = null;
@@ -225,7 +234,7 @@
       const res = session().submit('move_colonists', {
         fromColonyId: src.id,
         toColonyId: row.id,
-        race: session().playerId,
+        race: drag.race,
         count: n,
       });
       if (res.error) note(`⛔ ${res.error}`);
@@ -488,18 +497,27 @@
               {#if row.jobs[job] === 0}
                 <span class="zero">0</span>
               {/if}
-              {#each Array(row.jobs[job]) as _, i (i)}
-                <span
-                  class="citizen"
-                  class:sel={isPicked(row, job, i)}
-                  style={i > 0 ? `margin-left:-${overlapPx(row.jobs[job])}px` : ''}
-                  draggable="true"
-                  role="button"
-                  tabindex="-1"
-                  onclick={() => pickFrom(row, job, i)}
-                  onkeydown={(e) => e.key === 'Enter' && pickFrom(row, job, i)}
-                  ondragstart={(e) => onDragStart(row, job, i, e)}
-                >{JOB_ICONS[job]}</span>
+              {#each row.groups as grp (grp.race)}
+                {#each Array(grp[job]) as _, i (i)}
+                  <span
+                    class="citizen"
+                    class:foreign={grp.race !== session().playerId}
+                    class:unrest={grp.unrest}
+                    class:sel={isPicked(row, job, grp.race, i)}
+                    style={i > 0 ? `margin-left:-${overlapPx(row.jobs[job])}px` : ''}
+                    draggable="true"
+                    role="button"
+                    tabindex="-1"
+                    title={grp.race !== session().playerId
+                      ? `captured ${grp.raceName} colonist${grp.unrest ? ' — in unrest (−25% output until assimilated)' : ''}`
+                      : grp.unrest
+                        ? 'in unrest (−25% output until assimilated)'
+                        : ''}
+                    onclick={() => pickFrom(row, job, grp.race, i)}
+                    onkeydown={(e) => e.key === 'Enter' && pickFrom(row, job, grp.race, i)}
+                    ondragstart={(e) => onDragStart(row, job, grp.race, i, e)}
+                  >{JOB_ICONS[job]}</span>
+                {/each}
               {/each}
             </span>
           </td>

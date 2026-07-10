@@ -6,6 +6,7 @@ import { fieldByNum, applicationsOfField, FIELD_SUBJECTS, type FieldRow } from '
 import { buyCost, colonyMaxPop, colonyOutput, colonyPopUnits, groupGrowthK, type ColonyOutput } from './economy';
 import { buildableItems, itemCost } from './items';
 import { empireAccum } from './effects';
+import { isBlockaded } from './ground';
 import { commandPoints, driveSpeed, fuelRangeCp, inRange, supportStars } from './movement';
 import { availableFields, fieldCost, fieldGrantsAll } from './research';
 import { starDistance } from './galaxy';
@@ -22,6 +23,16 @@ export interface ColonyRow {
   popK: number;
   maxPop: number;
   jobs: { farmers: number; workers: number; scientists: number };
+  /** per-race population groups (captured colonists appear as their own race) */
+  groups: Array<{
+    race: number;
+    raceName: string;
+    units: number;
+    farmers: number;
+    workers: number;
+    scientists: number;
+    unrest: boolean;
+  }>;
   output: ColonyOutput;
   activeItem: string | null;
   queue: string[];
@@ -120,9 +131,14 @@ export function colonyRow(state: GameState, colony: Colony, projectedFoodLack?: 
   if (!colony.outpost && colony.groups.length > 0) {
     const maxPop = colonyMaxPop(state, colony);
     const totalUnits = colonyPopUnits(colony);
+    // live estimate: use THIS turn's planned food/housing results, so moving
+    // farmers around updates the projection immediately
+    const foodLack =
+      projectedFoodLack ?? projectedFoodShortages(state, colony.owner).get(colony.id) ?? 0;
+    const growthInputs = { foodLack, prodLack: output.prodLack, housingPP: output.housingPP };
     let projected = popK;
     for (const g of colony.groups) {
-      const inc = groupGrowthK(state, colony, g, maxPop, totalUnits);
+      const inc = groupGrowthK(state, colony, g, maxPop, totalUnits, growthInputs);
       const applied = inc > 0 ? Math.min(inc, Math.max(0, maxPop * 1000 - projected)) : Math.max(inc, -g.popK);
       projected += applied;
       growthK += applied;
@@ -138,6 +154,15 @@ export function colonyRow(state: GameState, colony: Colony, projectedFoodLack?: 
     popK,
     maxPop: colony.outpost ? 0 : colonyMaxPop(state, colony),
     jobs,
+    groups: colony.groups.map((g) => ({
+      race: g.race,
+      raceName: state.empires.find((e) => e.id === g.race)?.raceName ?? `race ${g.race}`,
+      units: Math.floor(g.popK / 1000),
+      farmers: g.farmers,
+      workers: g.workers,
+      scientists: g.scientists,
+      unrest: g.unrest,
+    })),
     output,
     activeItem: active,
     stickyInvested: colony.stickyInvested,
