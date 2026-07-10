@@ -6,10 +6,10 @@
 
   let { battle, onclose }: { battle: GroundBattleEntry; onclose: () => void } = $props();
 
-  const p = battle.payload;
+  const p = $derived(battle.payload);
   let step = $state(0);
   let playing = $state(true);
-  const rounds = p.rounds.length ? p.rounds : [{ t: p.startTroops, m: p.startMilitia }];
+  const rounds = $derived(p.rounds.length ? p.rounds : [{ t: p.startTroops, m: p.startMilitia }]);
   const cur = $derived(rounds[Math.min(step, rounds.length - 1)]!);
   const done = $derived(step >= rounds.length - 1);
 
