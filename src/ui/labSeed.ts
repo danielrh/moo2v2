@@ -1,5 +1,9 @@
 // Hand-off from a live game to the Battle Lab: "test the ship types I have
-// built or encountered". Set by the Empires tab, consumed once by BattleLab.
+// built or encountered". Set by the Empires tab (all designs) or the Designer
+// (the work-in-progress design), consumed once by BattleLab.
+
+import { HULLS_BUILDABLE, type BattleInput } from '@engine/index';
+import { weaponById } from '@engine/data/index';
 
 export interface LabSeedGroup {
   label: string;
@@ -21,4 +25,47 @@ export function takeLabSeed(): { a: LabSeedGroup[]; d: LabSeedGroup[] } | null {
   const out = pending;
   pending = null;
   return out;
+}
+
+const SHIELD_FLAT_TIERS = [0, 1, 3, 5, 7, 10];
+
+/** Enemy ship types seen across the battles we hold replays for, deduped,
+ * with approximated computer/shield tiers (they are not directly observable). */
+export function enemySeedsFromReplays(
+  replays: Array<{ input: unknown }>,
+  selfId: number,
+): LabSeedGroup[] {
+  const seen = new Map<string, LabSeedGroup>();
+  for (const r of replays) {
+    const input = r.input as BattleInput;
+    const mySide = input.attacker === selfId ? 0 : input.defender === selfId ? 1 : -1;
+    for (const s of input.ships) {
+      if (s.side === mySide || s.isBase) continue;
+      if (!(HULLS_BUILDABLE as readonly string[]).includes(s.hull)) continue; // monsters stay wild
+      const weapons = s.weapons
+        .filter((w) => w.classId <= 2 && weaponById.has(w.weaponId))
+        .map((w) => ({
+          weapon: w.weaponId,
+          count: w.count,
+          mods: [...w.mods],
+          arc: (w.arc ?? 'F') as LabSeedGroup['weapons'][number]['arc'],
+        }));
+      const key = JSON.stringify([s.hull, weapons, s.specials ?? []]);
+      const existing = seen.get(key);
+      if (existing) {
+        existing.count += 1;
+        continue;
+      }
+      seen.set(key, {
+        label: `encountered ${s.hull}`,
+        hull: s.hull,
+        computer: Math.max(0, Math.min(6, Math.round(s.beamAttack / 25))),
+        shield: Math.max(0, SHIELD_FLAT_TIERS.findIndex((f) => f >= s.shieldFlat)),
+        specials: [...(s.specials ?? [])],
+        weapons,
+        count: 1,
+      });
+    }
+  }
+  return [...seen.values()];
 }

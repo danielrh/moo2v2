@@ -20,6 +20,30 @@
   };
   const pretty = (id: string) => id.replaceAll('_', ' ');
 
+  /** what each planet feature means for production (hover on the planet cell) */
+  const MINERAL_PROD_INFO: Record<string, string> = {
+    ultra_poor: '1 production per worker',
+    poor: '2 production per worker',
+    abundant: '3 production per worker',
+    rich: '5 production per worker',
+    ultra_rich: '8 production per worker',
+  };
+  const SPECIAL_INFO: Record<string, { icon: string; text: string }> = {
+    gold_deposits: { icon: '🥇', text: 'gold deposits: +5 BC per turn' },
+    gem_deposits: { icon: '💎', text: 'gem deposits: +10 BC per turn' },
+    ancient_artifacts: { icon: '🏺', text: 'ancient artifacts: +2 research per scientist' },
+  };
+  function planetTitle(row: selectors.ColonyRow): string {
+    const p = row.planet;
+    const lines = [
+      `${p.climate} · size ${p.sizeClass}`,
+      `${pretty(p.minerals)} minerals — ${MINERAL_PROD_INFO[p.minerals] ?? ''}`,
+      p.gravity === 'normal' ? 'normal gravity' : `${p.gravity} gravity — −25% output per step without a gravity generator`,
+    ];
+    if (p.special && SPECIAL_INFO[p.special]) lines.push(`${SPECIAL_INFO[p.special]!.icon} ${SPECIAL_INFO[p.special]!.text}`);
+    return lines.join('\n');
+  }
+
   // ---- filter + sort ----
   let filter = $state('');
   let showTags = $state(localStorage.getItem('moo2.showTags') !== '0');
@@ -433,6 +457,9 @@
               ondblclick={() => startRename(row)}
               data-testid="colony-name-{row.id}">{row.name}</span>{row.outpost ? ' (outpost)' : ''}
             <button class="mini ghost" data-testid="rename-{row.id}" title="rename colony" onclick={() => startRename(row)}>✏️</button>
+            {#if row.leaderName}
+              <span class="leader" data-testid="leader-{row.id}" title="governor assigned to this colony (Empires tab)">{row.leaderName}</span>
+            {/if}
           {/if}
           {#if showTags}
             <span class="tagsline">
@@ -460,8 +487,8 @@
         </td>
         <td
           class="dim planet"
-          title="{row.planet.climate} {pretty(row.planet.minerals)} {row.planet.gravity}-g size {row.planet.sizeClass}"
-        >{row.planet.climate} {pretty(row.planet.minerals)} {row.planet.gravity}-g s{row.planet.sizeClass}</td>
+          title={planetTitle(row)}
+        >{#if row.planet.special && SPECIAL_INFO[row.planet.special]}{SPECIAL_INFO[row.planet.special]!.icon} {/if}{row.planet.climate} {pretty(row.planet.minerals)} {row.planet.gravity}-g s{row.planet.sizeClass}</td>
         <td data-testid="pop-{row.id}" title="projected growth next turn: {growthLabel(row.growthK)}">
           {row.popUnits}/{row.maxPop}
           {#if !row.outpost}
@@ -690,6 +717,16 @@
     filter: drop-shadow(0 0 3px var(--accent)) brightness(1.3);
     z-index: 1;
   }
+  /* captured colonists of another race: violet ring so they stand apart */
+  .citizen.foreign {
+    filter: drop-shadow(0 0 2px #c084fc) hue-rotate(45deg);
+  }
+  .citizen.foreign.sel {
+    filter: drop-shadow(0 0 3px var(--accent)) hue-rotate(45deg) brightness(1.3);
+  }
+  .citizen.unrest {
+    filter: drop-shadow(0 0 3px var(--bad)) grayscale(0.5);
+  }
   .zero {
     color: var(--text-dim);
     opacity: 0.5;
@@ -762,6 +799,12 @@
     opacity: 0;
     border: none;
     background: transparent;
+  }
+  .leader {
+    color: #8b93a7;
+    font-weight: 400;
+    font-size: 0.72rem;
+    margin-left: 0.3rem;
   }
   .name:hover .ghost {
     opacity: 0.7;

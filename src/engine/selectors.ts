@@ -7,6 +7,7 @@ import { buyCost, colonyMaxPop, colonyOutput, colonyPopUnits, groupGrowthK, type
 import { buildableItems, itemCost } from './items';
 import { empireAccum } from './effects';
 import { isBlockaded } from './ground';
+import { leaderById } from './leaders';
 import { commandPoints, driveSpeed, fuelRangeCp, inRange, supportStars } from './movement';
 import { availableFields, fieldCost, fieldGrantsAll } from './research';
 import { starDistance } from './galaxy';
@@ -23,6 +24,8 @@ export interface ColonyRow {
   popK: number;
   maxPop: number;
   jobs: { farmers: number; workers: number; scientists: number };
+  /** governor assigned to this colony (null = none) */
+  leaderName: string | null;
   /** per-race population groups (captured colonists appear as their own race) */
   groups: Array<{
     race: number;
@@ -154,6 +157,10 @@ export function colonyRow(state: GameState, colony: Colony, projectedFoodLack?: 
     popK,
     maxPop: colony.outpost ? 0 : colonyMaxPop(state, colony),
     jobs,
+    leaderName: (() => {
+      const hired = empire.leaders.find((l) => l.colonyId === colony.id);
+      return hired ? (leaderById.get(hired.leaderId)?.name ?? null) : null;
+    })(),
     groups: colony.groups.map((g) => ({
       race: g.race,
       raceName: state.empires.find((e) => e.id === g.race)?.raceName ?? `race ${g.race}`,
