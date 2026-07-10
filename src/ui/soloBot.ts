@@ -253,7 +253,19 @@ export class SoloBot {
         }
         this.submit('set_jobs', { colonyId: colony.id, groups: jobs });
       }
-      if (colony.queue.length === 0) {
+      // v2 debt rescue: a negative treasury bleeds forever (maintenance, CP
+      // overage, freighter upkeep). Flip the strongest yard to trade goods
+      // until solvent; the queue-empty branch below reclaims it once the
+      // books recover past a buffer (hysteresis).
+      if (v2 && colony === ordered[0]) {
+        const onTradeGoods = colony.queue[0]?.item === 'trade_goods';
+        if (bot.bc < 0 && !onTradeGoods) {
+          this.submit('set_build_queue', { colonyId: colony.id, items: ['trade_goods'] });
+          continue;
+        }
+        if (onTradeGoods && bot.bc <= 50) continue; // still digging out
+      }
+      if (colony.queue.length === 0 || (v2 && colony.queue[0]?.item === 'trade_goods' && bot.bc > 50)) {
         const row = selectors.colonyRow(planned, colony);
         const options = row.buildable.filter((b) => b !== 'housing' && b !== 'trade_goods' && b !== 'spy');
         if (!options.length) continue;
