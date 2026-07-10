@@ -1,19 +1,13 @@
 #!/usr/bin/env bash
 # Runs the moo2v2 game server (lobbylink lobby linked in as a library + the
 # /pbm/ play-by-mail endpoints) for development and e2e tests.
-# Requires Go and a checkout of https://github.com/danielrh/lobbylink as a
-# SIBLING of this repo (default: ~/dev/lobbylink; the server/go.mod replace
-# directive points at ../../lobbylink — override with LOBBYLINK_DIR only if
-# you also adjust that).
+# Requires Go; the lobbylink dependency is fetched from GitHub (pinned in
+# server/go.mod). To develop against a local lobbylink checkout, create a
+# workspace in server/: go work init . && go work use <path-to-lobbylink>
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVER_DIR="$SCRIPT_DIR/../server"
-LOBBYLINK_DIR="${LOBBYLINK_DIR:-$HOME/dev/lobbylink}"
-if [ ! -d "$LOBBYLINK_DIR/lobbyserver" ]; then
-  echo "lobbylink checkout (with the lobbyserver package) not found at $LOBBYLINK_DIR" >&2
-  exit 1
-fi
 
 # Play-by-mail endpoints (/pbm/): dev password "moo2", saves under /tmp.
 PBM_CONFIG="${PBM_CONFIG:-$SCRIPT_DIR/pbm-config.dev.json}"

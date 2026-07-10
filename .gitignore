@@ -6,3 +6,7 @@ playwright-report/
 *.local
 *.log
 .DS_Store
+
+# Go workspace files (local cross-repo dev in server/)
+go.work
+go.work.sum

@@ -105,8 +105,9 @@ can reload mid-game and resume, and any player can download a verified
 
 For games where nobody can agree on a time. The game's own Go server lives in
 `server/` (`cmd/moo2v2-server`): it links the generic lobbylink lobby in as a
-library (the public `lobbyserver` package; lobbylink itself stays game-agnostic
-and must be checked out as a sibling — see `server/go.mod`) and mounts moo2v2's
+library (the public `lobbyserver` package, fetched from GitHub and pinned in
+`server/go.mod` — lobbylink itself stays game-agnostic; use a `go.work`
+pointing at a local checkout to hack on both) and mounts moo2v2's
 play-by-mail routes next to it. Started with `--pbm-config <file>` (JSON:
 `{"password", "data_dir", "lock_ttl_seconds"}`, example in
 `server/pbm-config.example.json`), it stores one authoritative save per room
