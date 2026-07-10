@@ -173,6 +173,7 @@ export async function enterRoom(params: RoomParams): Promise<ActiveGame> {
       transport,
       engine: createGameEngine() as unknown as EngineAdapter<GameState>,
       hostEngine: createGameEngine() as unknown as EngineAdapter<GameState>,
+      branchEngine: createGameEngine() as unknown as EngineAdapter<GameState>,
       store,
       settings: { ...DEFAULT_SETTINGS, playerCount: params.playerCount, debugCommands: params.debug ?? false },
       identity,
@@ -196,6 +197,7 @@ export async function enterRoom(params: RoomParams): Promise<ActiveGame> {
   const session = joinGame<GameState>({
     transport,
     engine: createGameEngine() as unknown as EngineAdapter<GameState>,
+    branchEngine: createGameEngine() as unknown as EngineAdapter<GameState>,
     store,
     identity,
     ...(resume ? { resume: { gameId: resume.gameId, lastSeq: resume.lastSeq, state: resume.state } } : {}),
@@ -251,6 +253,7 @@ export async function enterSoloGame(
     transport: hostTransport,
     engine: createGameEngine() as unknown as EngineAdapter<GameState>,
     hostEngine: createGameEngine() as unknown as EngineAdapter<GameState>,
+    branchEngine: createGameEngine() as unknown as EngineAdapter<GameState>,
     store,
     // debugCommands power the parity bot's logged "grants" — the sim has no
     // bot cases; the fair bot never uses them

@@ -29,6 +29,8 @@ export function createHostedGame<S>(opts: {
    * event buffer, and the host sharing one with its own session dropped
    * pre-combat reports and doubled combat events on battle turns */
   hostEngine?: EngineAdapter<S>;
+  /** separate adapter instance for the session's fast-start preview branch */
+  branchEngine?: EngineAdapter<S>;
   store: SessionStore | null;
   settings: GameSettings;
   identity: PeerIdentity;
@@ -67,6 +69,7 @@ export function createHostedGame<S>(opts: {
   const session = new GameSession<S>({
     link: host.localLink,
     engine,
+    ...(opts.branchEngine ? { branchEngine: opts.branchEngine } : {}),
     store,
     playerId: 0,
     name: identity.name,
@@ -82,6 +85,8 @@ export function createHostedGame<S>(opts: {
 export function joinGame<S>(opts: {
   transport: NetTransport;
   engine: EngineAdapter<S>;
+  /** separate adapter instance for the fast-start preview branch */
+  branchEngine?: EngineAdapter<S>;
   store: SessionStore | null;
   identity: PeerIdentity;
   resume?: { gameId: string; lastSeq: number; state: S | null };
@@ -90,6 +95,7 @@ export function joinGame<S>(opts: {
   return new GameSession<S>({
     link,
     engine: opts.engine,
+    ...(opts.branchEngine ? { branchEngine: opts.branchEngine } : {}),
     store: opts.store,
     playerId: opts.transport.selfId,
     name: opts.identity.name,
