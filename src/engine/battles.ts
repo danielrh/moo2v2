@@ -8,6 +8,7 @@ import { leaderCombatBonuses } from './leaders';
 import { floorDiv } from './imath';
 import { rngFor } from './rng';
 import { baseDesign, designStats, knownWeapons, HULLS_BUILDABLE, BASE_HULLS, type ShipDesign } from './shipdesign';
+import { shipStyleOf } from './shipstyles';
 import { ANTARAN_EMPIRE, antaranRaze, factionOf, guardianReward, monstersAt, monsterToCombat } from './npc';
 import type { Colony, Empire, GameState, PendingBattle, Ship, TurnEvent } from './types';
 
@@ -194,6 +195,9 @@ function shipToCombat(state: GameState, empire: Empire, ship: Ship, side: 0 | 1)
       startingStructure: Math.max(1, stats.structureHp - ship.dmgStructure),
       startingArmor: Math.max(0, stats.armorHp - ship.dmgArmor),
       specials: [],
+      style: shipStyleOf(empire),
+      modelIdx: ship.id, // designless hulls: stable per-ship variety
+      modelKind: 'scout',
     };
   }
   if (!isWarship(ship) || ship.designId === null) return null;
@@ -228,6 +232,8 @@ function shipToCombat(state: GameState, empire: Empire, ship: Ship, side: 0 | 1)
     startingStructure: Math.max(1, stats.structureHp - ship.dmgStructure),
     startingArmor: Math.max(0, stats.armorHp - ship.dmgArmor),
     specials: design.specials,
+    style: shipStyleOf(empire),
+    modelIdx: design.modelIdx ?? design.id,
   };
 }
 
@@ -280,6 +286,8 @@ function baseToCombat(state: GameState, empire: Empire, colony: Colony, syntheti
     })),
     startingStructure: stats.structureHp,
     startingArmor: stats.armorHp,
+    style: shipStyleOf(empire),
+    modelIdx: colony.id, // stations vary per colony
   };
 }
 

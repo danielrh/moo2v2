@@ -64,7 +64,12 @@ src/storage    kysely over better-sqlite3 (node) / sqlocal+OPFS (browser):
                .moo2save binary save files with full replay verification.
 src/ui         Svelte 5 screens (colonies spreadsheet, map, research, fleets,
                designer, empires, reports) + pixi.js battle viewer that re-runs
-               the deterministic sim for playback.
+               the deterministic sim for playback. Warships are procedural
+               pixel-art sprites: every empire picks one of ten fleet styles
+               (set_ship_style, cosmetic) and every design one model variant of
+               its hull class; battle/shipart.ts generates the grids, shiptex.ts
+               rasterizes/tints them, effects.ts draws weapon, shield, engine
+               and explosion VFX on an additive glow layer.
 src/headless   scripted bots (expander, chaos) driving full games for tests.
 ```
 

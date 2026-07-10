@@ -18,8 +18,12 @@
     type GameState,
   } from '@engine/index';
   import { rngFor } from '@engine/rng';
+  import { SHIP_STYLES } from '@engine/index';
   import { APPLICATION_ROWS, FIELD_ROWS, WEAPON_ROWS, hullById } from '@engine/data/index';
   import BattleViewer from '../battle/BattleViewer.svelte';
+  import ShipPreview from '../battle/ShipPreview.svelte';
+  import { variantsFor, wrapVariant, type ArtClass } from '../battle/shipart';
+  import { playerColor } from '../colors';
   import { takeLabSeed } from '../labSeed';
   import type { ReplayEntry } from '../state.svelte';
 
@@ -56,10 +60,14 @@
     specials: string[];
     weapons: Array<{ weapon: string; count: number; mods: string[]; arc: 'F' | 'FX' | 'R' | '360' }>;
     count: number;
+    /** cosmetic model variant within the side's ship style */
+    model?: number;
   }
   interface LabSide {
     groups: LabGroup[];
     orders: BattleOrders;
+    /** cosmetic fleet style for this side's sprites */
+    style: string;
   }
 
   const weaponChoices = WEAPON_ROWS.filter((w) => w.techId !== 0 && w.classId <= 2);
@@ -93,8 +101,8 @@
       : null;
 
   let sides = $state<[LabSide, LabSide]>([
-    { groups: seedGroups(seeded?.a) ?? [newGroup()], orders: { ...DEFAULT_ORDERS } },
-    { groups: seedGroups(seeded?.d) ?? [newGroup()], orders: { ...DEFAULT_ORDERS, stance: 'hold_range' } },
+    { groups: seedGroups(seeded?.a) ?? [newGroup()], orders: { ...DEFAULT_ORDERS }, style: 'raptor' },
+    { groups: seedGroups(seeded?.d) ?? [newGroup()], orders: { ...DEFAULT_ORDERS, stance: 'hold_range' }, style: 'lattice' },
   ]);
   const fromGame = seeded !== null;
   let seed = $state('battle-lab-0001');
@@ -112,7 +120,7 @@
     });
   }
 
-  function toCombat(side: 0 | 1, g: LabGroup, idx: number, n: number): CombatShipInit | string {
+  function toCombat(side: 0 | 1, g: LabGroup, idx: number, n: number, style: string): CombatShipInit | string {
     const stats = groupStats(side, g);
     if (typeof stats === 'string') return stats;
     // armor class override: the lab empire knows xentronium (x10); rescale
@@ -149,6 +157,8 @@
       startingStructure: structureHp,
       startingArmor: armorHp,
       specials: g.specials,
+      style,
+      modelIdx: g.model ?? 0,
     };
   }
 
@@ -160,7 +170,7 @@
     for (const side of [0, 1] as const) {
       snap[side].groups.forEach((g, gi) => {
         for (let n = 0; n < Math.min(g.count, 12); n++) {
-          const cs = toCombat(side, g, gi, n);
+          const cs = toCombat(side, g, gi, n, snap[side].style);
           if (typeof cs === 'string') {
             error = `side ${side === 0 ? 'A' : 'B'} group ${gi + 1}: ${cs}`;
             return;
@@ -242,6 +252,13 @@
       <section class:red={side === 1}>
         <h3>{side === 0 ? '🔵 Side A — attacker' : '🔴 Side B — defender'}</h3>
         <div class="orders">
+          <label>ship style
+            <select bind:value={s.style} data-testid="lab-style-{side}">
+              {#each SHIP_STYLES as st (st.id)}
+                <option value={st.id}>{st.name}</option>
+              {/each}
+            </select>
+          </label>
           <label>stance
             <select bind:value={s.orders.stance}>
               <option value="charge">charge</option>
@@ -270,6 +287,21 @@
           {@const st = groupStats(side, g)}
           <div class="group">
             <div class="row">
+              <ShipPreview
+                style={s.style}
+                cls={g.hull as ArtClass}
+                variant={g.model ?? 0}
+                color={playerColor(side)}
+                specials={[...g.specials]}
+                heavyBeams={g.weapons.some((w) => w.mods.includes('hv'))}
+                missileTubes={g.weapons.reduce((t, w) => t + ((weaponChoices.find((wc) => wc.id === w.weapon)?.classId ?? 0) === 1 ? w.count : 0), 0)}
+                px={2}
+              />
+              <button
+                class="mini"
+                title="cycle this group's model variant"
+                onclick={() => (g.model = (wrapVariant(g.hull as ArtClass, g.model ?? 0) + 1) % variantsFor(g.hull as ArtClass))}
+              >model {wrapVariant(g.hull as ArtClass, g.model ?? 0) + 1}/{variantsFor(g.hull as ArtClass)}</button>
               <input type="number" min="1" max="12" bind:value={g.count} title="ships in this group" />×
               <select bind:value={g.hull}>
                 {#each HULLS_BUILDABLE as h (h)}<option value={h}>{h} ({maxHullSpace(h)} space)</option>{/each}

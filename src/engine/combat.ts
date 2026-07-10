@@ -126,6 +126,14 @@ export interface CombatShipInit {
   startingArmor: number;
   /** design specials with in-battle behavior (ecm, damper_field, ...) */
   specials?: string[];
+  /** cosmetic: owning empire's fleet style id at battle time (shipstyles.ts).
+   * Display-only — the sim never reads it. */
+  style?: string;
+  /** cosmetic: model variant within the style's hull class (viewer wraps by
+   * the class's variant count). Display-only. */
+  modelIdx?: number;
+  /** cosmetic: overrides the art class ('scout' for designless scout hulls) */
+  modelKind?: string;
 }
 
 export interface BattleInput {
@@ -151,6 +159,12 @@ export interface ShotEvent {
   dmg: number;
   /** this hit destroyed the target (viewer highlights the killing blow) */
   kill?: boolean;
+  /** damage points soaked by the target's shield (viewer draws the fizzle) */
+  sh?: number;
+  /** point-defense intercepts (to === -1): field position of the downed
+   * projectile, so the viewer can draw the tracer and the pop */
+  ix?: number;
+  iy?: number;
 }
 
 export interface BattleTickFrame {
@@ -170,8 +184,10 @@ export interface BattleTickFrame {
     sys: string;
   }>;
   shots: ShotEvent[];
-  /** guided munitions in flight this tick (missiles classId 1, torpedoes 2) */
-  projectiles: Array<{ x: number; y: number; classId: number }>;
+  /** guided munitions in flight this tick (missiles classId 1, torpedoes 2,
+   * strike craft 4). id is stable across ticks (launch order) so the viewer
+   * can track headings and draw trails; w = weapon id; from = launcher. */
+  projectiles: Array<{ id: number; x: number; y: number; classId: number; w: string; from: number }>;
   deaths: number[];
 }
 
@@ -570,7 +586,7 @@ export function runBattle(
           );
           if (incoming) {
             const hit = rng.chancePct(70);
-            frameShots.push({ tick, from: s.init.shipId, to: -1, weaponId: w.weaponId, classId: 0, hit, dmg: 0 });
+            frameShots.push({ tick, from: s.init.shipId, to: -1, weaponId: w.weaponId, classId: 0, hit, dmg: 0, ix: incoming.x, iy: incoming.y });
             if (hit) incoming.hp = 0;
             s.cds[wi] = cooldownOf(w, crippled, s.specials);
             continue;
@@ -729,8 +745,9 @@ export function runBattle(
       onFrame({
         tick,
         projectiles: projectiles
+          .map((p, pi) => ({ id: pi, x: p.x, y: p.y, classId: p.classId, w: p.weaponId, from: p.from, hp: p.hp }))
           .filter((p) => p.hp > 0)
-          .map((p) => ({ x: p.x, y: p.y, classId: p.classId })),
+          .map(({ hp: _hp, ...p }) => p),
         ships: sims.map((s) => ({
           id: s.init.shipId,
           x: s.x,
@@ -854,12 +871,18 @@ function applyDamage(
   // energy absorber (monster trait): quarter of the damage is drunk
   if (t.specials.has('energy_absorber')) dmg = Math.max(1, Math.floor((dmg * 3) / 4));
   const pierces = mods.includes('sp') && !t.specials.has('hard_shields');
+  let soaked = 0; // shield-stopped damage (flat + pool) — the viewer's fizzle cue
   if (!pierces) {
     // flat per-hit reduction then pool absorption
-    if (!mods.includes('ap')) dmg = Math.max(0, dmg - t.init.shieldFlat);
+    if (!mods.includes('ap')) {
+      const flat = Math.min(dmg, t.init.shieldFlat);
+      if (t.shield > 0) soaked += flat; // a collapsed shield deflects nothing visible
+      dmg = Math.max(0, dmg - t.init.shieldFlat);
+    }
     const absorbed = Math.min(t.shield, dmg);
     t.shield -= absorbed;
     dmg -= absorbed;
+    soaked += absorbed;
   }
   let structDmg = 0;
   if (dmg > 0) {
@@ -874,7 +897,7 @@ function applyDamage(
     }
   }
   const killed = t.structure <= 0 && t.alive;
-  shots.push({ tick, from: fromId, to: t.init.shipId, weaponId, classId, hit: true, dmg: raw, ...(killed ? { kill: true } : {}) });
+  shots.push({ tick, from: fromId, to: t.init.shipId, weaponId, classId, hit: true, dmg: raw, ...(killed ? { kill: true } : {}), ...(soaked > 0 ? { sh: soaked } : {}) });
   if (killed) {
     t.alive = false;
     t.structure = 0;

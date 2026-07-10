@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { selectors } from '@engine/index';
+  import { selectors, shipStyleOf, type EmpireDesign } from '@engine/index';
   import { app, getActive } from '../state.svelte';
+  import { playerColor } from '../colors';
+  import ShipPreview from '../battle/ShipPreview.svelte';
+  import type { ArtClass } from '../battle/shipart';
 
   const session = () => getActive()!.session;
   const gs = $derived.by(() => {
@@ -8,6 +11,10 @@
     return session().getPlanned();
   });
   const fleets = $derived.by(() => (gs ? selectors.fleetRows(gs, session().playerId) : []));
+  const empire = $derived(gs?.empires.find((e) => e.id === session().playerId) ?? null);
+  const myStyle = $derived(empire ? shipStyleOf(empire) : 'raptor');
+  const myColor = $derived(playerColor(session().playerId));
+  const designOf = (id: number | null): EmpireDesign | null => empire?.designs.find((d) => d.id === id) ?? null;
 
   let note = $state('');
   function submit(kind: string, payload: unknown) {
@@ -44,7 +51,14 @@
     <tbody>
       {#each fleets as f (f.ship.id)}
         <tr data-testid="fleet-{f.ship.id}">
-          <td class="shipname">{f.name} <span class="dim">#{f.ship.id}</span></td>
+          <td class="shipname">
+            {#if f.ship.shipKind === 'design' && designOf(f.ship.designId)}
+              {@const d = designOf(f.ship.designId)!}
+              <ShipPreview style={myStyle} cls={d.hull as ArtClass} variant={d.modelIdx ?? d.id} color={myColor} specials={[...d.specials]} px={1} />
+            {:else if f.ship.shipKind === 'scout'}
+              <ShipPreview style={myStyle} cls="scout" variant={f.ship.id} color={myColor} px={1} />
+            {/if}
+            {f.name} <span class="dim">#{f.ship.id}</span></td>
           <td class="dim">{f.kind === 'design' ? 'warship' : f.kind.replaceAll('_', ' ')}</td>
           <td>
             {#if f.transit}

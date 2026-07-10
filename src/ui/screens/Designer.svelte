@@ -7,13 +7,19 @@
     designStats,
     modUnlocked,
     knownWeapons,
+    shipStyleOf,
     HULLS_BUILDABLE,
+    SHIP_STYLES,
     SPECIALS,
     type DesignStats,
     type EmpireDesign,
     type WeaponArc,
   } from '@engine/index';
+  import { weaponById } from '@engine/data/index';
   import { app, getActive } from '../state.svelte';
+  import { playerColor } from '../colors';
+  import ShipPreview from '../battle/ShipPreview.svelte';
+  import { variantsFor, wrapVariant, type ArtClass } from '../battle/shipart';
   import { enemySeedsFromReplays, setLabSeed, type LabSeedGroup } from '../labSeed';
 
   const ARCS: Array<{ id: WeaponArc; label: string; help: string }> = [
@@ -55,6 +61,34 @@
   let weapons = $state<Array<{ weapon: string; count: number; mods: string[]; arc: WeaponArc }>>([
     { weapon: 'laser_cannon', count: 2, mods: [], arc: 'F' },
   ]);
+  /** cosmetic model variant within the hull class (scroll with ◀ ▶) */
+  let modelIdx = $state(0);
+
+  // ---- fleet appearance (cosmetic; visible to everyone in battle replays) ----
+  const myColor = $derived(playerColor(session().playerId));
+  const currentStyle = $derived(empire ? shipStyleOf(empire) : SHIP_STYLES[0]!.id);
+  let styleSel = $state<string | null>(null); // null = the applied style
+  const shownStyle = $derived(styleSel ?? currentStyle);
+  const shownStyleInfo = $derived(SHIP_STYLES.find((s) => s.id === shownStyle) ?? SHIP_STYLES[0]!);
+  const PREVIEW_CLASSES: ArtClass[] = ['scout', 'frigate', 'destroyer', 'cruiser', 'battleship', 'titan', 'doomstar', 'star_base'];
+  function cycleStyle(dir: 1 | -1) {
+    const i = SHIP_STYLES.findIndex((s) => s.id === shownStyle);
+    styleSel = SHIP_STYLES[(i + dir + SHIP_STYLES.length) % SHIP_STYLES.length]!.id;
+  }
+  function applyStyle() {
+    if (shownStyle === currentStyle) return;
+    const res = session().submit('set_ship_style', { style: shownStyle });
+    if (!res.error) styleSel = null;
+  }
+  // model previews bake in the fit: heavy mounts and missile racks show on the hull
+  const previewHeavy = $derived(weapons.some((w) => w.mods.includes('hv')));
+  const previewMissiles = $derived(
+    weapons.reduce((n, w) => n + ((weaponById.get(w.weapon)?.classId ?? 0) === 1 ? w.count : 0), 0),
+  );
+  function cycleModel(dir: 1 | -1) {
+    const n = variantsFor(hull as ArtClass);
+    modelIdx = (wrapVariant(hull as ArtClass, modelIdx) + dir + n) % n;
+  }
 
   const maxComputer = $derived(empire ? bestComputer(empire) : 0);
   const maxShield = $derived(empire ? bestShield(empire) : 0);
@@ -84,7 +118,10 @@
     specials = specials.includes(sp) ? specials.filter((s) => s !== sp) : [...specials, sp];
   }
   function save() {
-    const res = session().submit('save_design', { name, hull, computer, shield, specials, weapons });
+    const res = session().submit('save_design', {
+      name, hull, computer, shield, specials, weapons,
+      modelIdx: wrapVariant(hull as ArtClass, modelIdx),
+    });
     if (!res.error) name = 'New Design';
   }
 
@@ -130,6 +167,7 @@
     shield = d.shield;
     specials = [...d.specials];
     weapons = d.weapons.map((w) => ({ weapon: w.weapon, count: w.count, mods: [...w.mods], arc: w.arc ?? 'F' }));
+    modelIdx = wrapVariant(d.hull as ArtClass, d.modelIdx ?? d.id);
   }
   function statsOf(d: EmpireDesign): DesignStats | string | null {
     if (!gs || !empire) return null;
@@ -138,6 +176,29 @@
 </script>
 
 {#if gs && empire}
+  <div class="appearance" data-testid="fleet-style-panel">
+    <div class="stylebar">
+      <h3>Fleet style</h3>
+      <button class="mini" data-testid="style-prev" onclick={() => cycleStyle(-1)} title="previous style">◀</button>
+      <b class="stylename">{shownStyleInfo.name}</b>
+      <button class="mini" data-testid="style-next" onclick={() => cycleStyle(1)} title="next style">▶</button>
+      <span class="dim">{shownStyleInfo.blurb}</span>
+      {#if shownStyle !== currentStyle}
+        <button data-testid="style-apply" onclick={applyStyle}>Adopt this style</button>
+      {:else}
+        <span class="current">✓ your fleet's style</span>
+      {/if}
+    </div>
+    <div class="stylestrip">
+      {#each PREVIEW_CLASSES as pc (pc)}
+        <span class="cell">
+          <ShipPreview style={shownStyle} cls={pc} variant={0} color={myColor} px={2} title={pc.replaceAll('_', ' ')} />
+          <small>{pc === 'star_base' ? 'base' : pc}</small>
+        </span>
+      {/each}
+    </div>
+    <p class="dim finePrint">Cosmetic only — this is how your warships appear to everyone in battle replays. Each design also picks a model of its class below.</p>
+  </div>
   <div class="wrap">
     <div class="form">
       <h3>New warship design</h3>
@@ -151,6 +212,22 @@
           {/each}
         </select>
       </label>
+      <div class="modelpick" data-testid="model-picker">
+        <span>Model</span>
+        <button class="mini" data-testid="model-prev" onclick={() => cycleModel(-1)} disabled={variantsFor(hull as ArtClass) < 2}>◀</button>
+        <ShipPreview
+          style={shownStyle}
+          cls={hull as ArtClass}
+          variant={modelIdx}
+          color={myColor}
+          specials={[...specials]}
+          heavyBeams={previewHeavy}
+          missileTubes={previewMissiles}
+          px={3}
+        />
+        <button class="mini" data-testid="model-next" onclick={() => cycleModel(1)} disabled={variantsFor(hull as ArtClass) < 2}>▶</button>
+        <span class="dim">{wrapVariant(hull as ArtClass, modelIdx) + 1}/{variantsFor(hull as ArtClass)}</span>
+      </div>
       <label>Computer (tier ≤ {maxComputer})
         <input type="number" min="0" max={maxComputer} bind:value={computer} />
       </label>
@@ -222,6 +299,14 @@
       <ul>
         {#each empire.designs as d (d.id)}
           <li class:obsolete={d.obsolete} data-testid="design-{d.id}">
+            <ShipPreview
+              style={currentStyle}
+              cls={d.hull as ArtClass}
+              variant={d.modelIdx ?? d.id}
+              color={myColor}
+              specials={[...d.specials]}
+              px={1}
+            />
             <button class="linklike" onclick={() => inspect(d)}>{inspecting === d.id ? '▾' : '▸'} <b>{d.name}</b></button>
             ({d.hull}) — {d.weapons.map((w) => `${w.count}×${w.weapon.replaceAll('_', ' ')}${w.arc && w.arc !== 'F' ? `⟨${w.arc}⟩` : ''}${w.mods.length ? ` [${w.mods.join(',')}]` : ''}`).join(', ') || 'unarmed'}
             {#if !d.obsolete}
@@ -254,6 +339,62 @@
 {/if}
 
 <style>
+  .appearance {
+    border: 1px solid #26304f;
+    border-radius: 10px;
+    padding: 0.5rem 0.9rem 0.2rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(180deg, rgba(15, 21, 48, 0.65), rgba(10, 14, 34, 0.65));
+  }
+  .stylebar {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+  .stylebar h3 {
+    margin: 0;
+  }
+  .stylename {
+    min-width: 5.5rem;
+    text-align: center;
+    color: var(--accent-soft);
+  }
+  .current {
+    color: var(--good, #5ee08a);
+    font-size: 0.85rem;
+  }
+  .stylestrip {
+    display: flex;
+    gap: 1.1rem;
+    align-items: center;
+    padding: 0.55rem 0.2rem 0.25rem;
+    flex-wrap: wrap;
+  }
+  .stylestrip .cell {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+  }
+  .stylestrip small {
+    color: var(--text-dim);
+    font-size: 0.68rem;
+  }
+  .finePrint {
+    margin: 0.1rem 0 0.4rem;
+    font-size: 0.78rem;
+  }
+  .modelpick {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.35rem 0;
+    min-height: 45px;
+  }
+  .mini {
+    padding: 0.1rem 0.45rem;
+  }
   .mod.locked {
     opacity: 0.45;
   }

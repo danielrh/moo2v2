@@ -18,6 +18,7 @@ import { canQueue, itemCost } from './items';
 import { inRange, shipStar, travelTurns } from './movement';
 import { availableFields, fieldGrantsAll } from './research';
 import { designStats } from './shipdesign';
+import { isShipStyle } from './shipstyles';
 import type { BattleOrders, Stance, TargetPriority } from './combat';
 import type { Colony, GameState, PopGroup, Ship, Star } from './types';
 
@@ -424,6 +425,18 @@ const applySetTax: Applier = (state, cmd) => {
   empireOf(state, cmd.playerId).taxRatePct = p.pct;
 };
 
+// ---------- set_ship_style (cosmetic: fleet appearance in battle replays) ----------
+
+const validateSetShipStyle: Validator = (_state, cmd) => {
+  const p = cmd.payload as { style: string };
+  return isShipStyle(p?.style) ? null : `unknown ship style ${String(p?.style)}`;
+};
+
+const applySetShipStyle: Applier = (state, cmd) => {
+  const p = cmd.payload as { style: string };
+  empireOf(state, cmd.playerId).shipStyle = p.style;
+};
+
 // ---------- sell_building ----------
 
 interface SellBuildingPayload {
@@ -460,12 +473,15 @@ interface SaveDesignPayload {
   shield: number;
   specials: string[];
   weapons: Array<{ weapon: string; count: number; mods: string[]; arc?: 'F' | 'FX' | 'R' | '360' }>;
+  /** cosmetic model variant within the hull class (optional; small index) */
+  modelIdx?: number;
 }
 
 const validateSaveDesign: Validator = (state, cmd) => {
   const p = cmd.payload as SaveDesignPayload;
   const empire = empireOf(state, cmd.playerId);
   if (typeof p?.name !== 'string' || !p.name.trim() || p.name.length > 30) return 'bad design name';
+  if (p.modelIdx !== undefined && (!Number.isSafeInteger(p.modelIdx) || p.modelIdx < 0 || p.modelIdx > 31)) return 'bad model variant';
   if (empire.designs.filter((d) => !d.obsolete).length >= 12) return 'design limit reached (obsolete one first)';
   const stats = designStats(state, empire, {
     name: p.name,
@@ -495,6 +511,7 @@ const applySaveDesign: Applier = (state, cmd) => {
       ...(w.arc && w.arc !== 'F' ? { arc: w.arc } : {}),
     })),
     obsolete: false,
+    ...(p.modelIdx !== undefined ? { modelIdx: p.modelIdx } : {}),
   });
 };
 
@@ -1242,6 +1259,7 @@ export const COMMANDS: Record<string, { validate: Validator; apply: Applier }> =
   scrap_ship: { validate: validateScrap, apply: applyScrap },
   sell_building: { validate: validateSellBuilding, apply: applySellBuilding },
   set_tax_rate: { validate: validateSetTax, apply: applySetTax },
+  set_ship_style: { validate: validateSetShipStyle, apply: applySetShipStyle },
   save_design: { validate: validateSaveDesign, apply: applySaveDesign },
   obsolete_design: { validate: validateObsoleteDesign, apply: applyObsoleteDesign },
   declare_war: { validate: validateDeclareWar, apply: applyDeclareWar },

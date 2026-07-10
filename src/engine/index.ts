@@ -4,7 +4,7 @@
 // - No imports from outside src/engine (zero runtime dependencies).
 // - No sources of nondeterminism; randomness comes only from the seeded PRNG.
 
-export const ENGINE_VERSION = '0.7.0'; // deadliest targeting + overkill spread, standoff strafe, ground-battle replays, bot personalities, big-empire start
+export const ENGINE_VERSION = '0.7.1'; // fleet ship styles + design model variants (cosmetic), richer battle replay frames (projectile ids, shield-soak markers, PD intercepts)
 
 export * from './types';
 export * from './canonical';
@@ -27,6 +27,7 @@ export * from './espionage';
 export * from './diplomacy';
 export * from './commands';
 export * from './shipdesign';
+export * from './shipstyles';
 export * from './combat';
 export * from './battles';
 export * from './pipeline';

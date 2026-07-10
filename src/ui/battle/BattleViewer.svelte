@@ -1,12 +1,24 @@
 <script lang="ts">
   // Battle playback: re-runs the deterministic sim to produce frames, then
-  // animates them with pixi. Sprites are procedural shapes (original art).
-  import { Application, Container, Graphics } from 'pixi.js';
+  // animates them with pixi. Ships are procedural pixel-art sprites in each
+  // empire's chosen fleet style (shipart.ts); weapons, shields, flames and
+  // deaths are layered VFX (effects.ts) split across a normal layer and an
+  // additive glow layer so energy weapons genuinely glow. All effects are
+  // deterministic in (tick, seed): scrubbing re-renders identical frames.
+  import { Application, Container, Graphics, Sprite } from 'pixi.js';
   import { onDestroy, onMount } from 'svelte';
-  import { FIELD_H, FIELD_W, FP, runBattle, type BattleInput, type BattleTickFrame } from '@engine/index';
+  import { FIELD_H, FIELD_W, FP, runBattle, shipStyleOf, type BattleInput, type BattleTickFrame, type CombatShipInit } from '@engine/index';
   import { rngFor } from '@engine/rng';
   import { ownerColor, ownerName } from '../colors';
   import { app, getActive, type ReplayEntry } from '../state.svelte';
+  import { artClassOf, getMonsterModel, getShipModel, glowPixels, MONSTER_KINDS, type Mount, type ShipModel } from './shipart';
+  import { cssToNum, flameColorFor, paletteFor, textureForModel } from './shiptex';
+  import {
+    beamStyleOf, drawBeam, drawDamageSmoke, drawDissipaterWake, drawExplosion, drawFighter, drawFlame,
+    drawImpact, drawLightningAura, drawMissile, drawMuzzle, drawPdPop, drawRepairDrones, drawShieldBubble,
+    drawShieldCollapse, drawShieldHit, drawSlug, drawTorpedo, drawTrail, drawWarpStreak, fxHash,
+    MISSILE_TINT, TORPEDO_TINT,
+  } from './effects';
 
   const { replay, onclose }: { replay: ReplayEntry; onclose: () => void } = $props();
 
@@ -42,10 +54,18 @@
   }
 
   const SCALE = 1.7;
+  const PAD = 26; // margin so edge brawls (and their sprites) stay on canvas
   const W = (FIELD_W / FP) * SCALE;
   const H = (FIELD_H / FP) * SCALE;
+  const CW = W + PAD * 2;
+  const CH = H + PAD * 2;
+  const PIX = 2; // art pixel -> screen px
 
-  let gfx: Graphics;
+  let bgG: Graphics; // static backdrop
+  let shipC: Container; // pixel-art sprites
+  let fxG: Graphics; // normal blend: smoke, debris, munition bodies
+  let glowG: Graphics; // additive blend: beams, flames, shields, fire
+  let uiG: Graphics; // bars, markers, bystanders
   let elapsed = 0;
 
   // deterministic decorative starfield for the battle backdrop
@@ -53,53 +73,135 @@
   {
     let s = 1234567;
     const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
-    for (let i = 0; i < 90; i++) {
-      stars.push({ x: rnd() * W, y: rnd() * H, r: rnd() * 1.4 + 0.3, a: rnd() * 0.5 + 0.15 });
+    for (let i = 0; i < 110; i++) {
+      stars.push({ x: rnd() * CW, y: rnd() * CH, r: rnd() * 1.4 + 0.3, a: rnd() * 0.5 + 0.15 });
     }
   }
 
+  function empireOfSide(side: 0 | 1): number {
+    return side === 0 ? input.attacker : input.defender;
+  }
   function colorOf(side: 0 | 1): number {
-    const owner = side === 0 ? input.attacker : input.defender;
-    return Number('0x' + ownerColor(owner).slice(1));
+    return cssToNum(ownerColor(empireOfSide(side)));
   }
 
-  function drawShip(x: number, y: number, size: number, angle: number, isBase: boolean, color: number, driveOut = false, hullIdx = 0): void {
-    if (hullIdx === 6 && !isBase) {
-      // doom star: a planet-sized sphere with a superlaser dish, not a dart
-      gfx.circle(x, y, size * 1.5).fill({ color }).stroke({ color: 0x05070f, width: 1.5 });
-      gfx.circle(x, y, size * 1.1).stroke({ color: 0x05070f, width: 0.8, alpha: 0.5 });
-      const dx = Math.cos(angle) * size * 0.85;
-      const dy = Math.sin(angle) * size * 0.85;
-      gfx.circle(x + dx, y + dy, size * 0.45).fill({ color: 0x05070f, alpha: 0.75 });
-      gfx.circle(x + dx, y + dy, size * 0.2).fill({ color: driveOut ? 0xff6b5e : 0xbfe6ff, alpha: 0.9 });
-      return;
-    }
-    if (isBase) {
-      // orbital platform: hex + core
-      const r = size * 1.2;
-      const pts: number[] = [];
-      for (let i = 0; i < 6; i++) {
-        const a = (Math.PI / 3) * i;
-        pts.push(x + Math.cos(a) * r, y + Math.sin(a) * r);
-      }
-      gfx.poly(pts).fill({ color, alpha: 0.9 }).stroke({ color: 0x05070f, width: 1.5 });
-      gfx.circle(x, y, r * 0.4).fill({ color: 0x05070f, alpha: 0.6 });
-      return;
-    }
-    // hull: sleek dart rotated to the sim heading (sprites turn with the helm)
+  // ---- per-ship render info (model + sprite + fx hooks) ----
+  interface ShipView {
+    init: CombatShipInit;
+    model: ShipModel;
+    sprite: Sprite;
+    color: number;
+    flame: number;
+    /** shield bubble / explosion radius in screen px */
+    radius: number;
+    flameLen: number;
+    flameW: number;
+    lights: Mount[];
+    specials: Set<string>;
+    seed: number;
+  }
+  const views = new Map<number, ShipView>();
+
+  function buildView(init: CombatShipInit): ShipView {
+    const empireId = empireOfSide(init.side);
+    const npc = empireId < 0;
+    const style = init.style ?? shipStyleOf({ id: Math.max(0, empireId) });
+    const colorHex = ownerColor(empireId);
+    const cls = artClassOf(init);
+    const monster = MONSTER_KINDS.includes(cls);
+    const heavyBeams = init.weapons.some((w) => w.classId === 0 && w.mods.includes('hv'));
+    const missileTubes = init.weapons.filter((w) => w.classId === 1).reduce((n, w) => n + w.count, 0);
+    const model = monster
+      ? getMonsterModel(cls)
+      : getShipModel({ style, cls: cls as never, variant: init.modelIdx ?? 0, specials: init.specials, heavyBeams, missileTubes });
+    const pal = paletteFor(style, colorHex, npc);
+    const specialsKey = (init.specials ?? []).slice().sort().join(',');
+    const tex = textureForModel(`${monster ? 'npc' : style}|${cls}|${init.modelIdx ?? 0}|${colorHex}|${specialsKey}|${heavyBeams ? 1 : 0}|${Math.min(9, missileTubes)}`, model, pal);
+    const sprite = new Sprite(tex);
+    sprite.anchor.set(0.5);
+    sprite.scale.set(PIX);
+    sprite.visible = false;
+    shipC.addChild(sprite);
+    const tier = Math.min(6, Math.max(0, init.modelKind === 'scout' ? 0 : init.hullIdx));
+    const allLights = glowPixels(model);
+    const lights = allLights.filter((_, i) => i % Math.max(1, Math.ceil(allLights.length / 5)) === 0);
+    return {
+      init,
+      model,
+      sprite,
+      color: cssToNum(colorHex),
+      flame: cssToNum(flameColorFor(style, npc || monster)),
+      radius: (model.radius + 1.5) * PIX,
+      flameLen: (3.2 + tier * 1.5) * PIX,
+      flameW: (0.9 + tier * 0.22) * PIX,
+      lights,
+      specials: new Set(init.specials ?? []),
+      seed: init.shipId,
+    };
+  }
+
+  /** rotate a model-local mount into world space */
+  function mountWorld(v: ShipView, x: number, y: number, angle: number, m: Mount): [number, number] {
+    const lx = (m.x + 0.5 - v.model.w / 2) * PIX;
+    const ly = (m.y + 0.5 - v.model.h / 2) * PIX;
     const ca = Math.cos(angle);
     const sa = Math.sin(angle);
-    const rot = (px: number, py: number): [number, number] => [x + px * ca - py * sa, y + px * sa + py * ca];
-    const pts = [
-      ...rot(size * 1.8, 0),
-      ...rot(-size * 0.9, -size * 0.85),
-      ...rot(-size * 0.45, 0),
-      ...rot(-size * 0.9, size * 0.85),
+    return [x + lx * ca - ly * sa, y + lx * sa + ly * ca];
+  }
+
+  const toScreen = (fx: number, fy: number): [number, number] => [(fx / FP) * SCALE + PAD, (fy / FP) * SCALE + PAD];
+  const angleOfHeading = (h: number): number => (h * Math.PI * 2) / 32;
+  function lerpAngle(a: number, b: number, t: number): number {
+    let d = b - a;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return a + d * t;
+  }
+
+  type FrameShip = BattleTickFrame['ships'][number];
+  /** interpolated screen position + rotation of a ship at (fi, frac) */
+  function shipPose(fi: number, frac: number, s: FrameShip): { x: number; y: number; angle: number } {
+    const nf = frames[fi + 1];
+    const s2 = nf?.ships.find((n) => n.id === s.id);
+    const useNext = frac > 0 && s2 && s2.alive && !s2.retreated && !s2.crossed;
+    const fx = useNext ? s.x + (s2.x - s.x) * frac : s.x;
+    const fy = useNext ? s.y + (s2.y - s.y) * frac : s.y;
+    const [x, y] = toScreen(fx, fy);
+    const a0 = angleOfHeading(typeof s.h === 'number' ? s.h : 0);
+    const a1 = useNext && typeof s2.h === 'number' ? angleOfHeading(s2.h) : a0;
+    return { x, y, angle: useNext ? lerpAngle(a0, a1, frac) : a0 };
+  }
+
+  function drawBackdrop(): void {
+    bgG.clear();
+    bgG.rect(0, 0, CW, CH).fill({ color: 0x04060e });
+    // nebula washes
+    const blobs: Array<[number, number, number, number, number]> = [
+      [CW * 0.22, CH * 0.3, 170, 0x1b2450, 0.16],
+      [CW * 0.7, CH * 0.72, 210, 0x2a1b47, 0.13],
+      [CW * 0.55, CH * 0.18, 130, 0x0f2b3d, 0.14],
+      [CW * 0.85, CH * 0.35, 100, 0x321c33, 0.1],
     ];
-    gfx.poly(pts).fill({ color }).stroke({ color: 0x05070f, width: 1 });
-    const [ex, ey] = rot(-size * 1.1, 0);
-    // engine glow dims to a red sputter when the drive is knocked out
-    gfx.circle(ex, ey, size * 0.28).fill({ color: driveOut ? 0xff6b5e : 0xffd18a, alpha: driveOut ? 0.5 : 0.85 });
+    for (const [bx, by, br, bc, ba] of blobs) {
+      for (let i = 3; i >= 1; i--) {
+        bgG.circle(bx, by, (br * i) / 3).fill({ color: bc, alpha: ba / i });
+      }
+    }
+    for (const st of stars) {
+      bgG.circle(st.x, st.y, st.r).fill({ color: 0xdde6ff, alpha: st.a });
+    }
+    // a few bright stars with cross flares
+    for (let i = 0; i < stars.length; i += 27) {
+      const st = stars[i]!;
+      bgG.moveTo(st.x - 3, st.y).lineTo(st.x + 3, st.y).stroke({ color: 0xdde6ff, width: 0.6, alpha: st.a * 0.7 });
+      bgG.moveTo(st.x, st.y - 3).lineTo(st.x, st.y + 3).stroke({ color: 0xdde6ff, width: 0.6, alpha: st.a * 0.7 });
+    }
+    // range band guides around the defender edge (dotted)
+    for (const [gx, ga] of [[PAD + W * 0.66, 0.5], [PAD + W * 0.33, 0.3]] as const) {
+      for (let y = 4; y < CH; y += 14) {
+        bgG.moveTo(gx, y).lineTo(gx, y + 6).stroke({ color: 0x1c2444, width: 1, alpha: ga });
+      }
+    }
   }
 
   function drawBystanders(fi: number): void {
@@ -127,18 +229,18 @@
     for (const b of bys) {
       const i = idx[b.side]++;
       const n = counts[b.side]!;
-      const x = b.side === 0 ? 12 : W - 12;
-      const y = (H * (i + 1)) / (n + 1);
+      const x = b.side === 0 ? 12 : CW - 12;
+      const y = (CH * (i + 1)) / (n + 1);
       const dir = b.side === 0 ? 1 : -1;
       const s = 7;
       // hollow arrow: civilians sit out the fight at the field edge
-      gfx
+      uiG
         .poly([x + dir * s * 1.7, y, x - dir * s * 0.8, y - s * 0.8, x - dir * s * 0.4, y, x - dir * s * 0.8, y + s * 0.8])
         .stroke({ color: colorOf(b.side), width: 1.5, alpha: 0.85 });
       if (sideLost(b.side)) {
         // escorts gone: these ships are lost with the field
-        gfx.moveTo(x - 6, y - 6).lineTo(x + 6, y + 6).stroke({ color: 0xff6b5e, width: 2 });
-        gfx.moveTo(x + 6, y - 6).lineTo(x - 6, y + 6).stroke({ color: 0xff6b5e, width: 2 });
+        uiG.moveTo(x - 6, y - 6).lineTo(x + 6, y + 6).stroke({ color: 0xff6b5e, width: 2 });
+        uiG.moveTo(x + 6, y - 6).lineTo(x - 6, y + 6).stroke({ color: 0xff6b5e, width: 2 });
       }
     }
   }
@@ -147,54 +249,170 @@
    * slugs fly as dots; a full src→dst line never appears */
   const BEAM_TRAVEL = 2;
   const SLUG_TRAVEL = 3;
+  const FIZZLE_TICKS = 4;
   function isSlug(weaponId: string): boolean {
     return weaponId.includes('driver') || weaponId.includes('gauss');
   }
 
   function drawShots(fi: number, frac: number): void {
-    const maxTravel = Math.max(BEAM_TRAVEL, SLUG_TRAVEL);
-    for (let back = 0; back <= maxTravel; back++) {
+    const lookback = Math.max(BEAM_TRAVEL, SLUG_TRAVEL) + FIZZLE_TICKS + 4;
+    for (let back = 0; back <= lookback; back++) {
       const sf = fi - back;
       const pf = frames[sf];
       if (!pf) continue;
-      for (const shot of pf.shots) {
+      for (let si = 0; si < pf.shots.length; si++) {
+        const shot = pf.shots[si]!;
         if (shot.classId !== 0) continue; // guided munitions render from frame.projectiles
+        const fromV = views.get(shot.from);
         const from = pf.ships.find((x) => x.id === shot.from);
+        // point defense intercept: tracer burst to the downed projectile
+        if (shot.to === -1) {
+          if (typeof shot.ix !== 'number' || typeof shot.iy !== 'number' || !from || !fromV) continue;
+          const age = back + frac;
+          if (age > 3) continue;
+          const [tx, ty] = toScreen(shot.ix, shot.iy);
+          if (age < 1.2) {
+            const pose = shipPose(sf, 0, from);
+            const gm = fromV.model.guns[si % fromV.model.guns.length]!;
+            const [mx, my] = mountWorld(fromV, pose.x, pose.y, pose.angle, gm);
+            const dx = tx - mx;
+            const dy = ty - my;
+            for (let k = 0; k < 3; k++) {
+              const t0 = 0.2 + k * 0.25;
+              glowG.moveTo(mx + dx * t0, my + dy * t0).lineTo(mx + dx * (t0 + 0.12), my + dy * (t0 + 0.12)).stroke({ color: 0xffe9b0, width: 1.1, alpha: 0.8 - age * 0.5 });
+            }
+          }
+          if (shot.hit) drawPdPop(glowG, tx, ty, age / 3);
+          continue;
+        }
+        const toV = views.get(shot.to);
         const to = shot.to >= 0 ? pf.ships.find((x) => x.id === shot.to) : null;
-        if (!from || !to) continue;
+        if (!from || !to || !fromV || !toV) continue;
         const travel = (isSlug(shot.weaponId) ? SLUG_TRAVEL : BEAM_TRAVEL) + (shot.kill ? 4 : 0);
         const p = (back + frac) / travel;
         const over = shot.hit ? 1 : 1.35; // misses streak past the target
-        if (p > over) continue;
-        const x0 = (from.x / FP) * SCALE;
-        const y0 = (from.y / FP) * SCALE;
-        const x1 = (to.x / FP) * SCALE;
-        const y1 = (to.y / FP) * SCALE;
+        const fizzAge = ((back + frac) - travel) / FIZZLE_TICKS; // >0 once landed
+        if (p > over && fizzAge > 1) continue;
+        const fromPose = shipPose(sf, 0, from);
+        const toPose = shipPose(sf, 0, to);
+        // muzzle: pick a hardpoint per shot so volleys spread across the hull
+        const gm = fromV.model.guns[Math.floor(fxHash(shot.tick, shot.from * 31 + si, 5) * fromV.model.guns.length) % fromV.model.guns.length]!;
+        const [x0, y0] = mountWorld(fromV, fromPose.x, fromPose.y, fromPose.angle, gm);
+        // impact point: stop at the target's hull edge, jittered per shot
+        const ddx = toPose.x - x0;
+        const ddy = toPose.y - y0;
+        const dl = Math.hypot(ddx, ddy) || 1;
+        const edge = Math.max(0, dl - toV.radius * 0.55);
+        const jit = (fxHash(shot.tick, si, 9) - 0.5) * toV.radius * 0.8;
+        const x1 = x0 + (ddx / dl) * edge - (ddy / dl) * jit * (shot.hit ? 1 : 2.2);
+        const y1 = y0 + (ddy / dl) * edge + (ddx / dl) * jit * (shot.hit ? 1 : 2.2);
         const lerp = (t: number) => [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t] as const;
-        if (isSlug(shot.weaponId)) {
-          const [px, py] = lerp(Math.min(p, over));
-          gfx.circle(px, py, 2.4).fill({ color: shot.hit ? 0xd8e2ff : 0x8b93b8, alpha: shot.hit ? 0.95 : 0.5 });
-        } else if (shot.weaponId === 'starlight_projector') {
-          // captured starlight: a blinding lance with a halo (it should be flashy)
-          const head = Math.min(p, over);
-          const tail = Math.max(0, head - 0.55);
-          const [hx, hy] = lerp(head);
-          const [tx, ty] = lerp(tail);
-          gfx.moveTo(tx, ty).lineTo(hx, hy).stroke({ color: 0xfff7d6, alpha: 0.35, width: 7 });
-          gfx.moveTo(tx, ty).lineTo(hx, hy).stroke({ color: 0xffffff, alpha: shot.hit ? 1 : 0.5, width: 2.6 });
-          if (shot.hit) gfx.circle(hx, hy, 5).fill({ color: 0xffffff, alpha: 0.5 });
-        } else {
-          const head = Math.min(p, over);
-          const tail = Math.max(0, head - 0.3);
-          const [hx, hy] = lerp(head);
-          const [tx, ty] = lerp(tail);
-          const kill = shot.kill === true;
-          const color = kill ? 0xff8d5e : shot.hit ? 0xffd75e : 0x59628c;
-          gfx.moveTo(tx, ty).lineTo(hx, hy).stroke({ color, alpha: shot.hit ? 0.95 : 0.35, width: kill ? 3 : shot.hit ? 1.8 : 1 });
+        const style = beamStyleOf(shot.weaponId);
+        if (p <= over) {
+          if (isSlug(shot.weaponId)) {
+            const [px, py] = lerp(Math.min(p, over));
+            drawSlug(glowG, px, py, (x1 - x0) / dl, (y1 - y0) / dl, shot.hit);
+          } else {
+            const head = Math.min(p, over);
+            const tail = Math.max(0, head - (style.kind === 'lance' ? 0.55 : 0.34));
+            const [hx, hy] = lerp(head);
+            const [tx2, ty2] = lerp(tail);
+            drawBeam(glowG, tx2, ty2, hx, hy, style, shot.hit ? 1 : 0.4, shot.kill === true, shot.tick + back, shot.from * 37 + si);
+            if (back === 0 && frac < 0.6) drawMuzzle(glowG, x0, y0, style.color, 1.6 + style.width * 0.4);
+          }
         }
-        if (shot.hit && p >= 0.92 && p <= 1.08 && shot.dmg > 0) {
-          gfx.circle(x1, y1, 3 + Math.min(6, shot.dmg / 6)).fill({ color: shot.kill ? 0xff7d4e : 0xffb066, alpha: shot.kill ? 0.85 : 0.55 });
+        // arrival: shield fizzle for soaked damage, hull sparks for the rest
+        if (shot.hit && fizzAge >= -0.1 && fizzAge <= 1) {
+          const age01 = Math.max(0, fizzAge);
+          const nowShip = frames[fi]!.ships.find((x) => x.id === shot.to);
+          const nowPose = nowShip && nowShip.alive ? shipPose(fi, frac, nowShip) : toPose;
+          const soaked = shot.sh ?? 0;
+          if (soaked > 0) {
+            const bearing = Math.atan2(y0 - nowPose.y, x0 - nowPose.x);
+            drawShieldHit(glowG, nowPose.x, nowPose.y, toV.radius, bearing, age01, Math.min(1, soaked / 22), 0x6fc0ff, shot.from * 41 + si, shot.tick);
+          }
+          if (shot.dmg > soaked && age01 < 0.6) {
+            drawImpact(glowG, x1, y1, style.color, 2 + Math.min(6, (shot.dmg - soaked) / 6), shot.kill === true, shot.tick, shot.to * 13 + si);
+          }
         }
+      }
+    }
+  }
+
+  function drawProjectiles(fi: number, frac: number): void {
+    const f = frames[fi]!;
+    const nf = frames[fi + 1];
+    for (const pr of f.projectiles ?? []) {
+      const nx = nf?.projectiles?.find((q) => q.id === pr.id);
+      const fx0 = nx && frac > 0 ? pr.x + (nx.x - pr.x) * frac : pr.x;
+      const fy0 = nx && frac > 0 ? pr.y + (nx.y - pr.y) * frac : pr.y;
+      const [x, y] = toScreen(fx0, fy0);
+      // course from motion (next frame, else previous frame, else owner side)
+      let angle: number;
+      const prev = frames[fi - 1]?.projectiles?.find((q) => q.id === pr.id);
+      if (nx) angle = Math.atan2(nx.y - pr.y, nx.x - pr.x);
+      else if (prev) angle = Math.atan2(pr.y - prev.y, pr.x - prev.x);
+      else {
+        const owner = input.ships.find((s) => s.shipId === pr.from);
+        angle = owner?.side === 1 ? Math.PI : 0;
+      }
+      const ownerSide = input.ships.find((s) => s.shipId === pr.from)?.side ?? 0;
+      const sideColor = colorOf(ownerSide as 0 | 1);
+      // trail from recent frames
+      const trail: Array<[number, number]> = [[x, y]];
+      for (let k = 1; k <= 5; k++) {
+        const old = frames[fi - k]?.projectiles?.find((q) => q.id === pr.id);
+        if (!old) break;
+        trail.push(toScreen(old.x, old.y));
+      }
+      trail.reverse();
+      const id = pr.id ?? 0;
+      if (pr.classId === 4) {
+        drawFighter(fxG, glowG, x, y, angle, sideColor, pr.w === 'assault_shuttle');
+        continue;
+      }
+      if (pr.classId === 1) {
+        const tint = MISSILE_TINT[pr.w] ?? 0xffb066;
+        drawTrail(glowG, trail, tint, 2);
+        drawMissile(fxG, glowG, x, y, angle, tint, sideColor, f.tick, id);
+      } else {
+        const tint = TORPEDO_TINT[pr.w] ?? 0xd07aff;
+        drawTrail(glowG, trail, tint, 3);
+        drawTorpedo(glowG, x, y, tint, f.tick, frac, id);
+      }
+    }
+  }
+
+  function drawDeaths(fi: number, frac: number): void {
+    for (let back = 0; back < 42; back++) {
+      const pf = frames[fi - back];
+      if (!pf) break;
+      for (const dead of pf.deaths) {
+        const s = pf.ships.find((x) => x.id === dead);
+        const v = views.get(dead);
+        if (!s || !v) continue;
+        const [x, y] = toScreen(s.x, s.y);
+        drawExplosion(fxG, glowG, x, y, v.radius * 0.85, back, frac, dead * 7 + 3);
+      }
+    }
+  }
+
+  function drawTransitions(fi: number, frac: number): void {
+    // retreat / cross-line: warp-out streaks at the exit point
+    for (let back = 0; back <= 5; back++) {
+      const pf = frames[fi - back];
+      const before = frames[fi - back - 1];
+      if (!pf || !before) break;
+      for (const s of pf.ships) {
+        const b = before.ships.find((x) => x.id === s.id);
+        if (!b || !s.alive) continue;
+        const gone = (s.retreated && !b.retreated) || (s.crossed && !b.crossed);
+        if (!gone) continue;
+        const v = views.get(s.id);
+        if (!v) continue;
+        const [x, y] = toScreen(b.x, b.y);
+        const angle = angleOfHeading(typeof b.h === 'number' ? b.h : 0);
+        drawWarpStreak(glowG, x, y, angle, (back + frac) / 5, v.color);
       }
     }
   }
@@ -202,84 +420,111 @@
   function drawFrame(fi: number, frac = 0): void {
     const f = frames[fi];
     if (!f) return;
-    gfx.clear();
-    gfx.rect(0, 0, W, H).fill({ color: 0x05070f });
-    for (const st of stars) {
-      gfx.circle(st.x, st.y, st.r).fill({ color: 0xdde6ff, alpha: st.a });
-    }
-    // range band guides around the defender edge
-    gfx.moveTo(W * 0.66, 0).lineTo(W * 0.66, H).stroke({ color: 0x1c2444, width: 1 });
-    gfx.moveTo(W * 0.33, 0).lineTo(W * 0.33, H).stroke({ color: 0x141a33, width: 1 });
+    fxG.clear();
+    glowG.clear();
+    uiG.clear();
 
-    for (const shipInit of input.ships) {
-      const s = f.ships.find((x) => x.id === shipInit.shipId);
-      if (!s || !s.alive || s.retreated || s.crossed) continue;
-      const x = (s.x / FP) * SCALE;
-      const y = (s.y / FP) * SCALE;
-      const size = 4 + shipInit.hullIdx * 2.1;
-      const color = colorOf(shipInit.side);
-      // sim heading (0..31) -> sprite rotation; older replays fall back to side
-      const angle = typeof s.h === 'number' ? (s.h * Math.PI * 2) / 32 : shipInit.side === 0 ? 0 : Math.PI;
+    // twinkle a sparse subset of stars
+    for (let i = 0; i < stars.length; i += 9) {
+      const st = stars[i]!;
+      const tw = 0.5 + 0.5 * Math.sin((f.tick + frac) * 0.35 + i);
+      glowG.circle(st.x, st.y, st.r * 0.9).fill({ color: 0xdde6ff, alpha: st.a * tw * 0.5 });
+    }
+
+    const pf = frames[fi - 1];
+    for (const initShip of input.ships) {
+      const v = views.get(initShip.shipId);
+      if (!v) continue;
+      const s = f.ships.find((x) => x.id === initShip.shipId);
+      if (!s || !s.alive || s.retreated || s.crossed) {
+        v.sprite.visible = false;
+        continue;
+      }
+      const pose = shipPose(fi, frac, s);
+      v.sprite.visible = true;
+      v.sprite.position.set(pose.x, pose.y);
+      v.sprite.rotation = pose.angle;
       const sys = s.sys ?? '';
-      drawShip(x, y, size, angle, shipInit.isBase, color, sys.includes('d'), shipInit.hullIdx);
-      // hp bar
-      gfx.rect(x - size, y + size + 4, size * 2, 2.5).fill({ color: 0x2a3352 });
-      const hpColor = s.structPct > 60 ? 0x5ee08a : s.structPct > 30 ? 0xffd75e : 0xff6b5e;
-      gfx.rect(x - size, y + size + 4, (size * 2 * s.structPct) / 100, 2.5).fill({ color: hpColor });
+
+      // engine flames scale with actual motion this tick
+      if (v.model.engines.length) {
+        const ps = pf?.ships.find((x) => x.id === s.id);
+        const moved = ps ? Math.hypot(s.x - ps.x, s.y - ps.y) / FP : 0;
+        const driveOut = sys.includes('d');
+        const throttle = Math.min(1.25, 0.3 + moved * 0.22);
+        for (let ei = 0; ei < v.model.engines.length; ei++) {
+          const [ex, ey] = mountWorld(v, pose.x, pose.y, pose.angle, v.model.engines[ei]!);
+          drawFlame(glowG, ex, ey, pose.angle, v.flameLen * throttle, v.flameW, v.flame, f.tick, frac, v.seed * 5 + ei, driveOut);
+        }
+      } else if (v.lights.length) {
+        // engineless hulls (stations, beasts): blinking running lights
+        for (let li = 0; li < v.lights.length; li++) {
+          if (fxHash(f.tick >> 2, v.seed, li) < 0.45) continue;
+          const [lx, ly] = mountWorld(v, pose.x, pose.y, pose.angle, v.lights[li]!);
+          glowG.circle(lx, ly, 1.3).fill({ color: 0xdfefff, alpha: 0.5 });
+        }
+      }
+
+      // shields: standing bubble + collapse flash when it fails
       if (s.shieldPct > 0 && !sys.includes('s')) {
-        gfx.circle(x, y, size + 4).stroke({ color: 0x4da3ff, alpha: 0.2 + s.shieldPct / 350, width: 1.5 });
+        drawShieldBubble(glowG, pose.x, pose.y, v.radius, s.shieldPct, f.tick, frac);
+      } else if (v.init.shieldPool > 0) {
+        for (let back = 0; back <= 3; back++) {
+          const a = frames[fi - back]?.ships.find((x) => x.id === s.id);
+          const b = frames[fi - back - 1]?.ships.find((x) => x.id === s.id);
+          if (a && b && (a.shieldPct === 0 || a.sys.includes('s')) && b.shieldPct > 0 && !b.sys.includes('s')) {
+            drawShieldCollapse(glowG, pose.x, pose.y, v.radius, (back + frac) / 4);
+            break;
+          }
+        }
+      }
+
+      // specials with a visible field presence
+      if (v.specials.has('lightning_field')) drawLightningAura(glowG, pose.x, pose.y, v.radius + 2, f.tick, v.seed);
+      if (v.specials.has('automated_repair_unit') && s.structPct < 100) drawRepairDrones(glowG, pose.x, pose.y, v.radius + 3, f.tick, frac, v.seed);
+      if (v.specials.has('warp_dissipater')) drawDissipaterWake(glowG, pose.x, pose.y, pose.angle, v.radius, f.tick, frac);
+
+      drawDamageSmoke(fxG, glowG, pose.x, pose.y, v.radius, s.structPct, f.tick, v.seed);
+
+      // status bars: hull + shield ribbon
+      const bw = Math.max(14, v.radius * 1.5);
+      const bx = pose.x - bw / 2;
+      const by = pose.y + v.radius + 4;
+      uiG.rect(bx, by, bw, 2.4).fill({ color: 0x232c49 });
+      const hpColor = s.structPct > 60 ? 0x5ee08a : s.structPct > 30 ? 0xffd75e : 0xff6b5e;
+      uiG.rect(bx, by, (bw * s.structPct) / 100, 2.4).fill({ color: hpColor });
+      if (v.init.shieldPool > 0) {
+        uiG.rect(bx, by - 2, (bw * s.shieldPct) / 100, 1.3).fill({ color: 0x4da3ff, alpha: sys.includes('s') ? 0.25 : 0.9 });
       }
       if (sys) {
         // knocked-out systems flag: d(rive) c(omputer) s(hields)
-        gfx.circle(x + size, y - size - 3, 2.2).fill({ color: 0xff6b5e, alpha: 0.9 });
+        uiG.circle(pose.x + v.radius * 0.8, pose.y - v.radius * 0.8, 2.2).fill({ color: 0xff6b5e, alpha: 0.9 });
       }
     }
 
-    // guided munitions in flight (from the sim itself); classId 4 = strike craft
-    for (const pr of f.projectiles ?? []) {
-      const x = (pr.x / FP) * SCALE;
-      const y = (pr.y / FP) * SCALE;
-      if (pr.classId === 4) {
-        // fighters / assault shuttles: tiny wedges
-        gfx.poly([x + 3, y, x - 2.2, y - 2, x - 2.2, y + 2]).fill({ color: 0x9fe8a8, alpha: 0.95 });
-        continue;
-      }
-      const color = pr.classId === 1 ? 0xff8a5e : 0xd07aff;
-      gfx.circle(x, y, pr.classId === 1 ? 2.2 : 3).fill({ color, alpha: 0.95 });
-      gfx.circle(x, y, pr.classId === 1 ? 4.5 : 6).fill({ color, alpha: 0.18 });
-    }
-
+    drawProjectiles(fi, frac);
     drawShots(fi, frac);
+    drawTransitions(fi, frac);
+    drawDeaths(fi, frac);
     drawBystanders(fi);
-
-    // deaths as expanding blast rings — big, bright and long-lived, so a kill
-    // is unmissable even when scrubbing the timeline
-    for (let back = 0; back < 14; back++) {
-      const pf = frames[fi - back];
-      if (!pf) break;
-      for (const dead of pf.deaths) {
-        const s = pf.ships.find((x) => x.id === dead);
-        if (!s) continue;
-        const x = (s.x / FP) * SCALE;
-        const y = (s.y / FP) * SCALE;
-        const age = back;
-        gfx.circle(x, y, 5 + age * 5).stroke({ color: 0xff6b5e, width: Math.max(1.2, 5 - age * 0.35), alpha: Math.max(0, 0.95 - age * 0.07) });
-        gfx.circle(x, y, 2 + age * 3).stroke({ color: 0xffd75e, width: Math.max(0.8, 3 - age * 0.3), alpha: Math.max(0, 0.8 - age * 0.08) });
-        if (age < 5) gfx.circle(x, y, 4 + age * 2).fill({ color: 0xffd18a, alpha: 0.8 - age * 0.15 });
-        if (age < 2) gfx.circle(x, y, 9).fill({ color: 0xffffff, alpha: 0.5 - age * 0.25 });
-      }
-    }
   }
 
   onMount(async () => {
     computeFrames();
     pixi = new Application();
-    await pixi.init({ width: W, height: H, background: 0x05070f, antialias: true });
+    await pixi.init({ width: CW, height: CH, background: 0x04060e, antialias: true });
     host.appendChild(pixi.canvas);
     const stage = new Container();
     pixi.stage.addChild(stage);
-    gfx = new Graphics();
-    stage.addChild(gfx);
+    bgG = new Graphics();
+    shipC = new Container();
+    fxG = new Graphics();
+    glowG = new Graphics();
+    glowG.blendMode = 'add';
+    uiG = new Graphics();
+    stage.addChild(bgG, shipC, fxG, glowG, uiG);
+    drawBackdrop();
+    for (const s of input.ships) views.set(s.shipId, buildView(s));
     ready = true;
     if (frames.length) drawFrame(0);
     pixi.ticker.add((t) => {
@@ -293,7 +538,7 @@
         }
         if (frameIdx >= frames.length - 1) playing = false;
       }
-      // sub-tick fraction keeps beam pulses and slugs gliding between ticks
+      // sub-tick fraction keeps motion, beams and plumes gliding between ticks
       const frac = playing ? Math.min(0.999, elapsed / msPerTick) : 0;
       drawFrame(Math.min(frameIdx, frames.length - 1), frac);
     });
@@ -302,6 +547,7 @@
   onDestroy(() => {
     pixi?.destroy(true, { children: true });
     pixi = null;
+    views.clear();
   });
 
   function skip() {

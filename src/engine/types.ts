@@ -115,6 +115,9 @@ export interface EmpireDesign {
   specials: string[];
   weapons: Array<{ weapon: string; count: number; mods: string[]; arc?: 'F' | 'FX' | 'R' | '360' }>;
   obsolete: boolean;
+  /** cosmetic: which model variant of the hull class this design uses within
+   * the empire's ship style (absent = derived from design id) */
+  modelIdx?: number;
 }
 
 /** A leader in an empire's employ (pool row in data/leaders.ts). */
@@ -159,6 +162,9 @@ export interface Empire {
   /** empire-wide tax: this % of each colony's queue production is converted to
    * BC at 2 prod -> 1 BC (0-50; absent in older saves = 0) */
   taxRatePct?: number;
+  /** cosmetic fleet style id (shipstyles.ts); absent = per-empire default.
+   * Purely visual: battle replays render this empire's ships in this style. */
+  shipStyle?: string;
   /** UI time-spent aggregates, seconds per screen (submitted with commits so
    * every player can see where the table's time goes; absent = none) */
   telemetry?: Record<string, number>;
