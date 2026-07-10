@@ -1,6 +1,7 @@
 <script lang="ts">
   import { leaderById, salaryOf, MAX_LEADERS_PER_KIND, countKind } from '@engine/leaders';
   import { selectors, HULLS_BUILDABLE } from '@engine/index';
+  import { PICK_ROWS, GOVERNMENTS, pickById } from '@engine/data/index';
   import type { ProposalKind } from '@engine/types';
   import { ownerName, playerColor } from '../colors';
   import { enemySeedsFromReplays, setLabSeed, type LabSeedGroup } from '../labSeed';
@@ -24,6 +25,36 @@
     note = '';
     const res = session().submit(kind, payload);
     if (res.error) note = res.error;
+  }
+
+  // ---------- trait reassignment: the one-time +4-pick respec ----------
+  const respecOpen = $derived(!!me && me.knownApps.includes('trait_reassignment') && !me.traitReassigned);
+  let respecAdd = $state<string[]>([]);
+  let respecRemove = $state<string[]>([]);
+  const respecAddable = $derived(
+    me
+      ? PICK_ROWS.filter(
+          (p) => p.cost > 0 && !(GOVERNMENTS as readonly string[]).includes(p.id) && !me.picks.includes(p.id),
+        ).sort((a, b) => a.cost - b.cost || a.id.localeCompare(b.id))
+      : [],
+  );
+  const respecRemovable = $derived(me ? me.picks.filter((id) => (pickById.get(id)?.cost ?? 0) < 0) : []);
+  const respecSpent = $derived(
+    respecAdd.reduce((s, id) => s + (pickById.get(id)?.cost ?? 0), 0) +
+      respecRemove.reduce((s, id) => s - (pickById.get(id)?.cost ?? 0), 0),
+  );
+  function toggleRespec(list: 'add' | 'remove', id: string) {
+    if (list === 'add') respecAdd = respecAdd.includes(id) ? respecAdd.filter((x) => x !== id) : [...respecAdd, id];
+    else respecRemove = respecRemove.includes(id) ? respecRemove.filter((x) => x !== id) : [...respecRemove, id];
+  }
+  function applyRespec() {
+    note = '';
+    const res = session().submit('trait_reassignment', { add: respecAdd, remove: respecRemove });
+    if (res.error) note = res.error;
+    else {
+      respecAdd = [];
+      respecRemove = [];
+    }
   }
 
   // ---------- battle lab hand-off: my designs + designs met in battle ----------
@@ -213,6 +244,37 @@
     <button data-testid="vote-abstain" onclick={() => submit('cast_vote', { candidate: -1 })}>Abstain</button>
   {/if}
 
+  {#if respecOpen}
+    <fieldset class="respec" data-testid="trait-reassignment">
+      <legend>🧬 Trait Reassignment — spend up to 4 pick points (once per game)</legend>
+      <div class="respec-cols">
+        <div class="respec-col">
+          <b>Add advantages</b>
+          {#each respecAddable as p (p.id)}
+            <label title={p.meaning}>
+              <input type="checkbox" data-testid="respec-add-{p.id}" checked={respecAdd.includes(p.id)} onchange={() => toggleRespec('add', p.id)} />
+              {p.id} (+{p.cost})
+            </label>
+          {/each}
+        </div>
+        <div class="respec-col">
+          <b>Remove disadvantages</b>
+          {#if respecRemovable.length === 0}<span class="dim">none — your race has no flaws to shed</span>{/if}
+          {#each respecRemovable as id (id)}
+            <label>
+              <input type="checkbox" data-testid="respec-remove-{id}" checked={respecRemove.includes(id)} onchange={() => toggleRespec('remove', id)} />
+              {id} ({pickById.get(id)?.cost})
+            </label>
+          {/each}
+        </div>
+      </div>
+      <p class:bad={respecSpent > 4}>
+        spending {respecSpent}/4 points
+        <button data-testid="respec-apply" disabled={respecSpent === 0 || respecSpent > 4} onclick={applyRespec}>Apply</button>
+      </p>
+    </fieldset>
+  {/if}
+
   <h3>Leaders ({countKind(me, 'colony')}/{MAX_LEADERS_PER_KIND} colony, {countKind(me, 'ship')}/{MAX_LEADERS_PER_KIND} ship)</h3>
   {#if myOffers.length}
     <ul data-testid="leader-offers">
@@ -350,6 +412,29 @@
     align-items: center;
     flex-wrap: wrap;
     margin-bottom: 0.5rem;
+  }
+  .respec {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin: 0.6rem 0;
+    max-width: 60rem;
+  }
+  .respec-cols {
+    display: flex;
+    gap: 2rem;
+  }
+  .respec-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    font-size: 0.82rem;
+    max-height: 14rem;
+    overflow-y: auto;
+    flex-wrap: wrap;
+    column-gap: 1.2rem;
+  }
+  .bad {
+    color: var(--bad);
   }
   .dim {
     opacity: 0.6;

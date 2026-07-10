@@ -59,7 +59,7 @@ export const EFFECTS: Record<string, EffectSpec> = {
   universal_wellness_protocol: { kind: 'empire_tech', modifiers: [emp('growth_pct', 50)], handler: 'economy' },
   adaptive_habitat_lattice: { kind: 'empire_tech', modifiers: [emp('farm_coeff', 1)] },
   gaia_transformation: { kind: 'project', handler: 'terraform' }, // terran->gaia project
-  trait_reassignment: { kind: 'system', stub: '+4 race picks rework (Phase 7 lobby)' },
+  trait_reassignment: { kind: 'system', handler: 'commands' }, // +4-pick respec via the trait_reassignment command (Empires tab)
 
   // ---------------- chemistry ----------------
   nuclear_missile: { kind: 'weapon', handler: 'combat' },

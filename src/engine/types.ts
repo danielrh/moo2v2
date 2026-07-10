@@ -145,6 +145,9 @@ export interface Empire {
   knownApps: string[]; // sorted application ids
   completedFields: number[]; // sorted field nums
   exploredStars: number[]; // sorted starIds
+  /** Trait Reassignment (ecology): the one-time +4-pick respec was spent.
+   * Optional-additive for save compatibility (absent = not used). */
+  traitReassigned?: boolean;
   designs: EmpireDesign[];
   spies: {
     count: number;

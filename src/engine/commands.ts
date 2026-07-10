@@ -3,7 +3,15 @@
 // resolution (pipeline.ts). Validation runs both client-side (optimistic UX)
 // and host-side (authoritative).
 
-import { applicationById, fieldById, fieldByNum, applicationsOfField } from './data/index';
+import {
+  applicationById,
+  fieldById,
+  fieldByNum,
+  applicationsOfField,
+  pickById,
+  GOVERNMENTS,
+  PICK_EXCLUSIVE_GROUPS,
+} from './data/index';
 import { areAtWar, relationKey, setRelation } from './battles';
 import { buyCost, colonyMaxPop, empireOf, traitsOf } from './economy';
 import { canQueue, itemCost } from './items';
@@ -899,6 +907,64 @@ const applyMoveColonists: Applier = (state, cmd) => {
   dst.workers += p.count; // arrivals pick up tools first; reassign as you like
 };
 
+// ---------- trait reassignment (ecology docs: +4 pick points on research) ----------
+
+interface TraitReassignPayload {
+  add: string[];
+  remove: string[];
+}
+
+/** "When trait reassignment is researched, you may choose 4 additional points
+ * of race development picks, to either remove disadvantages or increase
+ * advantages" (mechanics/tech/ecology.md). Once per game; governments are
+ * never touched; exclusive pick groups must stay consistent. */
+const validateTraitReassign: Validator = (state, cmd) => {
+  const p = cmd.payload as TraitReassignPayload;
+  const empire = empireOf(state, cmd.playerId);
+  if (!empire.knownApps.includes('trait_reassignment')) return 'Trait Reassignment is not researched';
+  if (empire.traitReassigned) return 'trait reassignment has already been used';
+  const add = Array.isArray(p?.add) ? p.add : null;
+  const remove = Array.isArray(p?.remove) ? p.remove : null;
+  if (!add || !remove) return 'bad payload';
+  if (add.length + remove.length === 0) return 'choose at least one change';
+  let spent = 0;
+  const picks = new Set(empire.picks);
+  for (const id of add) {
+    const row = pickById.get(id);
+    if (!row) return `unknown pick ${id}`;
+    if (row.cost <= 0) return `${id} is not an advantage`;
+    if ((GOVERNMENTS as readonly string[]).includes(id)) return 'governments cannot be reassigned';
+    if (picks.has(id)) return `${id} already picked`;
+    spent += row.cost;
+    picks.add(id);
+  }
+  for (const id of remove) {
+    const row = pickById.get(id);
+    if (!row) return `unknown pick ${id}`;
+    if (row.cost >= 0) return `${id} is not a disadvantage`;
+    if (!picks.has(id)) return `${id} is not among your picks`;
+    spent += -row.cost;
+    picks.delete(id);
+  }
+  if (spent > 4) return `that spends ${spent} points — Trait Reassignment grants 4`;
+  for (const [group, members] of Object.entries(PICK_EXCLUSIVE_GROUPS)) {
+    if (group === 'government') continue;
+    const chosen = members.filter((m) => picks.has(m));
+    if (chosen.length > 1) return `picks are mutually exclusive: ${chosen.join(', ')}`;
+  }
+  return null;
+};
+
+const applyTraitReassign: Applier = (state, cmd) => {
+  const p = cmd.payload as TraitReassignPayload;
+  const empire = empireOf(state, cmd.playerId);
+  const picks = new Set(empire.picks);
+  for (const id of p.add) picks.add(id);
+  for (const id of p.remove) picks.delete(id);
+  empire.picks = [...picks].sort();
+  empire.traitReassigned = true;
+};
+
 // ---------- renaming + tags ----------
 
 /** Fixed set of colony tags players can attach (UI filters on these). */
@@ -1127,6 +1193,7 @@ export const COMMANDS: Record<string, { validate: Validator; apply: Applier }> =
   resign: { validate: validateResign, apply: applyResign },
   cast_vote: { validate: validateVote, apply: applyVote },
   move_colonists: { validate: validateMoveColonists, apply: applyMoveColonists },
+  trait_reassignment: { validate: validateTraitReassign, apply: applyTraitReassign },
   rename_star: { validate: validateRenameStar, apply: applyRenameStar },
   rename_colony: { validate: validateRenameColony, apply: applyRenameColony },
   set_colony_tags: { validate: validateSetColonyTags, apply: applySetColonyTags },
