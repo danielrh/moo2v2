@@ -49,6 +49,7 @@
       out = out.filter(
         (r) =>
           r.name.toLowerCase().includes(f) ||
+          r.starName.toLowerCase().includes(f) ||
           r.planet.climate.includes(f) ||
           (r.activeItem ?? '').includes(f) ||
           r.tags.some((t) => t.includes(f)),
@@ -150,27 +151,7 @@
     });
   }
 
-  function adjustJob(row: selectors.ColonyRow, job: Job, delta: number) {
-    const jobs = { ...row.jobs };
-    if (delta > 0) {
-      // take a unit from the largest other pool
-      const donors = (['workers', 'scientists', 'farmers'] as const).filter((j) => j !== job && jobs[j] > 0);
-      if (!donors.length) return;
-      const donor = donors.sort((a, b) => jobs[b] - jobs[a])[0]!;
-      jobs[donor]--;
-      jobs[job]++;
-    } else {
-      if (jobs[job] <= 0) return;
-      jobs[job]--;
-      // give to workers by default, else farmers
-      const target = job === 'workers' ? 'farmers' : 'workers';
-      jobs[target]++;
-    }
-    session().submit('set_jobs', {
-      colonyId: row.id,
-      groups: [{ race: session().playerId, ...jobs }],
-    });
-  }
+  // (the old +/- buttons are gone: dragging citizens replaced them)
 
   // ---- drag colonists: between job columns, or onto a same-system colony ----
   // Clicking citizen i selects it AND everyone to its right in that cell; a
@@ -189,8 +170,8 @@
     const from = picked && picked.colonyId === row.id && picked.job === job && picked.from <= i ? picked.from : i;
     return row.jobs[job] - from;
   }
-  /** overlap icons so big populations stay narrow (more citizens → tighter) */
-  const overlapPx = (count: number): number => (count <= 4 ? 1 : count <= 8 ? 5 : count <= 14 ? 8 : 10);
+  /** icons always overlap a bit (negative kerning), tighter as counts grow */
+  const overlapPx = (count: number): number => (count <= 4 ? 3 : count <= 8 ? 6 : count <= 14 ? 8 : 10);
   let drag = $state<{ colonyId: number; job: Job; count: number } | null>(null);
   let dragOver = $state<{ colonyId: number; job: Job } | null>(null);
   let dragOverColony = $state<number | null>(null);
@@ -446,7 +427,6 @@
               onDrop(row, job);
             }}
           >
-            <button class="mini" onclick={() => adjustJob(row, job, -1)}>-</button>
             <span
               class="citizens"
               role="group"
@@ -471,7 +451,6 @@
                 >{JOB_ICONS[job]}</span>
               {/each}
             </span>
-            <button class="mini" onclick={() => adjustJob(row, job, +1)}>+</button>
           </td>
         {/each}
         <td class:neg={row.output.foodNet < 0} data-testid="foodnet-{row.id}" title={ex.farm}>{row.output.foodNet >= 0 ? '+' : ''}{row.output.foodNet}</td>
