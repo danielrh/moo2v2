@@ -513,6 +513,23 @@ export class HostCore<S> {
     this.accept({ turn: msg.turn, playerId: from, kind: msg.kind, payload: msg.payload }, msg.clientId, from);
   }
 
+  /** Seats currently committed for this turn (play-by-mail: persisted with
+   * the save so commits survive between mail sessions). */
+  getCommittedSeats(): number[] {
+    return [...this.committed].sort((a, b) => a - b);
+  }
+
+  /** Play-by-mail resume: mark seats committed (from the stored meta) so an
+   * earlier player's commit still counts. Advances if that completes the
+   * table. */
+  seedCommitted(seatIds: number[]): void {
+    for (const id of seatIds) {
+      if (this.seats.has(id)) this.committed.add(id);
+    }
+    this.broadcast({ t: 'commit_status', turn: this.currentTurn(), committed: this.getCommittedSeats() });
+    this.maybeAdvance();
+  }
+
   private onCommit(from: number, turn: number, committed: boolean): void {
     if (!this.started || turn !== this.currentTurn()) return;
     if (committed) this.committed.add(from);
