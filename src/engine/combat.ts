@@ -533,13 +533,16 @@ export function runBattle(
 
     // --- firing (deterministic ship order) ---
     // overkill spread: damage already dealt this tick plus warheads in flight;
-    // a weapon whose target is already dead-on-paper picks a fresh one
+    // a weapon whose target is already dead-on-paper picks a fresh one.
+    // (in-flight totals are folded ONCE per tick — this path is hot)
     const hurtThisTick = new Map<number, number>();
+    for (const p of projectiles) {
+      if (p.hp > 0) hurtThisTick.set(p.targetIdx, (hurtThisTick.get(p.targetIdx) ?? 0) + p.dmg);
+    }
     const overkilled = (idx: number): boolean => {
       const t2 = sims[idx];
       if (!t2) return true;
-      let incoming = hurtThisTick.get(idx) ?? 0;
-      for (const p of projectiles) if (p.hp > 0 && p.targetIdx === idx) incoming += p.dmg;
+      const incoming = hurtThisTick.get(idx) ?? 0;
       // switch once the volley is ~80% certain to finish the target: the
       // last few shots walk on instead of pulverizing a corpse, but focused
       // fire on a live target keeps its full value
@@ -656,18 +659,20 @@ export function runBattle(
           // point-defensed and each pays shield flat separately, like MOO2)
           const warheads = w.classId === 1 && w.mods.includes('mv') ? 4 : 1;
           for (let n = 0; n < volley * warheads; n++) {
+            const dmg = w.dmgMin + rng.int(w.dmgMax - w.dmgMin + 1);
             projectiles.push({
               from: s.init.shipId,
               targetIdx: s.targetIdx,
               x: s.x,
               y: s.y,
-              dmg: w.dmgMin + rng.int(w.dmgMax - w.dmgMin + 1),
+              dmg,
               speed: w.classId === 1 ? 12 : 8,
               classId: w.classId,
               weaponId: w.weaponId,
               hp: 1,
               mods: w.mods,
             });
+            hurtThisTick.set(s.targetIdx, (hurtThisTick.get(s.targetIdx) ?? 0) + dmg);
           }
           if (s.ammo[wi]! > 0) s.ammo[wi] = Math.max(0, s.ammo[wi]! - volley);
           s.cds[wi] = cooldownOf(w, crippled, s.specials);

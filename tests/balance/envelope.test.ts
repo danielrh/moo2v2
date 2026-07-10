@@ -142,7 +142,7 @@ describe.skipIf(!enabled)('combat balance envelope (opt-in)', () => {
     console.log(`AVERAGE fleet damage per pass: ${avg.toFixed(1)}%  (target 20-40)`);
     expect(avg).toBeGreaterThanOrEqual(20);
     expect(avg).toBeLessThanOrEqual(40);
-  });
+  }, 30_000); // hundreds of full battles: give the envelope real headroom
 
   it('a full tech tier of advantage wins decisively', () => {
     let wins = 0;
