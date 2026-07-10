@@ -1,5 +1,6 @@
 <script lang="ts">
   import { selectors, gameEngine } from '@engine/index';
+  import { FAST_MAX_AHEAD } from '@protocol/messages';
   import { app, getActive, leaveGame } from '../state.svelte';
   import { addBotForSeat, removeBotForSeat } from '../net';
   import { latchEdge, type EdgeLatch, type EdgeLevel } from '../commitEdge';
@@ -115,7 +116,7 @@
     const next = latchEdge(edgeLatch, gs?.turn ?? 0, gs?.phase ?? 'planning', commitEdge);
     if (next !== edgeLatch) edgeLatch = next;
   });
-  const edgeShown = $derived(iCommitted || (gs?.turn ?? 0) !== edgeLatch.turn ? '' : edgeLatch.level);
+  const edgeShown = $derived(fastActive || iCommitted || (gs?.turn ?? 0) !== edgeLatch.turn ? '' : edgeLatch.level);
   const memoryOnly = $derived.by(() => {
     void app.version;
     return getActive()?.memoryOnly ?? false;
@@ -144,9 +145,56 @@
     return gs.leaderOffers.filter((o) => o.empireId === me && o.expiresTurn > gs.turn).length;
   });
 
-  // ---- research breakthrough celebration ----
+  // ---- fast start (async turns until contact) ----
+  const fastActive = $derived.by(() => {
+    void app.version;
+    return session().fastPhaseActive();
+  });
+  const fastAhead = $derived.by(() => {
+    void app.version;
+    return session().fastAheadTurns();
+  });
+  const fastBlind = $derived.by(() => {
+    void app.version;
+    return session().fastBlind();
+  });
+  const syncedTurn = $derived.by(() => {
+    void app.version;
+    const auth = session().getState();
+    return auth ? gameEngine.turnOf(auth) : 0;
+  });
+  /** slowest player's committed-through turn (fast phase status line) */
+  const slowestInfo = $derived.by(() => {
+    void app.version;
+    if (!fastActive) return null;
+    const turns = session().getFastTurns();
+    const behind = roster
+      .filter((p) => p.id !== session().playerId)
+      .map((p) => ({ name: p.name, through: turns[String(p.id)] ?? syncedTurn - 1 }))
+      .sort((x, y) => x.through - y.through);
+    return behind[0] ?? null;
+  });
+  function endTurn() {
+    flushTelemetry();
+    session().endTurnFast();
+  }
+  /** colonies idling in a default mode (empty queue / housing / trade goods)
+   * instead of actively constructing — drives the Colonies tab badge */
+  const defaultBuildCount = $derived.by(() => {
+    if (!gs) return 0;
+    const me = session().playerId;
+    return gs.colonies.filter((c) => {
+      if (c.owner !== me || c.outpost) return false;
+      const head = c.queue[0]?.item ?? null;
+      return head === null || head === 'housing' || head === 'trade_goods';
+    }).length;
+  });
+
+  // ---- research breakthrough + colony-ship arrival celebrations ----
   let celebration = $state<{ field: string; granted: string[] } | null>(null);
   let celebrationTimer: ReturnType<typeof setTimeout> | null = null;
+  let arrival = $state<{ starId: number; planetId: number } | null>(null);
+  let arrivalTimer: ReturnType<typeof setTimeout> | null = null;
   let processedReports = 0;
   $effect(() => {
     const reports = app.reports;
@@ -160,11 +208,19 @@
         };
         if (celebrationTimer) clearTimeout(celebrationTimer);
         celebrationTimer = setTimeout(() => (celebration = null), 8000);
+      } else if (r.kind === 'colony_ship_arrived') {
+        arrival = {
+          starId: Number(r.payload['starId'] ?? 0),
+          planetId: Number(r.payload['planetId'] ?? 0),
+        };
+        if (arrivalTimer) clearTimeout(arrivalTimer);
+        arrivalTimer = setTimeout(() => (arrival = null), 12000);
       }
     }
     processedReports = reports.length;
   });
   const pretty = (id: string) => id.replaceAll('_', ' ');
+  const starName = (id: number) => gs?.stars.find((s) => s.id === id)?.name ?? `star ${id}`;
 
   // ---- UI telemetry: seconds per screen, flushed with each commit ----
   let dwellStart = Date.now();
@@ -241,7 +297,7 @@
   <header>
     <span class="title">MOO2<span class="v2">v2</span></span>
     <span class="stat" data-testid="my-seat" title="the empire you play (seat #{session().playerId}) — a resumed save matches players to their empire by name">👤 {mySeatName}</span>
-    <span class="stat" data-testid="turn"><span class="lbl">Turn</span> {gs.turn}</span>
+    <span class="stat" data-testid="turn"><span class="lbl">Turn</span> {gs.turn}{#if fastActive && fastAhead > 0}<span class="dim" title="fast start: your preview runs {fastAhead} turn{fastAhead > 1 ? 's' : ''} ahead of the synced (slowest-player) turn {syncedTurn}"> · synced {syncedTurn}</span>{/if}</span>
     <span class="stat" data-testid="bc" title="treasury (change per turn)">💰 {summary.bc} <span class="delta" class:neg={summary.bcDelta < 0}>({summary.bcDelta >= 0 ? '+' : ''}{summary.bcDelta})</span></span>
     <span class="stat" data-testid="food" title="empire food surplus" class:neg={summary.foodNet < 0}>🌾 {summary.foodNet >= 0 ? '+' : ''}{summary.foodNet}</span>
     <span
@@ -286,14 +342,31 @@
             : ''}
       {/if}
     </button>
-    <button
-      data-testid="commit"
-      class="commit"
-      class:committed={iCommitted}
-      class:warn={researchIdle && !iCommitted}
-      title={researchIdle && !iCommitted ? 'Warning: no research selected — RP will be banked unspent' : ''}
-      onclick={toggleCommit}
-    >{iCommitted ? 'Committed ✓' : researchIdle ? '⚠ Commit turn' : 'Commit turn'} ({committed.length}/{roster.length})</button>
+    {#if fastActive}
+      <button
+        data-testid="commit"
+        class="commit fast"
+        class:warn={researchIdle}
+        disabled={fastBlind || fastAhead >= FAST_MAX_AHEAD}
+        title={fastBlind
+          ? 'Recovering your fast-forwarded turns after the reload — planning resumes when the log catches up.'
+          : fastAhead >= FAST_MAX_AHEAD
+            ? `You are ${FAST_MAX_AHEAD} turns ahead of the slowest player — the cap. Play resumes as they catch up.`
+            : researchIdle
+              ? 'Warning: no research selected — RP will be banked unspent'
+              : 'Fast start: ends your turn immediately — nobody is waited on until CONTACT'}
+        onclick={endTurn}
+      >{researchIdle ? '⚠ ' : ''}End turn ⚡{fastAhead > 0 ? ` (+${fastAhead})` : ''}</button>
+    {:else}
+      <button
+        data-testid="commit"
+        class="commit"
+        class:committed={iCommitted}
+        class:warn={researchIdle && !iCommitted}
+        title={researchIdle && !iCommitted ? 'Warning: no research selected — RP will be banked unspent' : ''}
+        onclick={toggleCommit}
+      >{iCommitted ? 'Committed ✓' : researchIdle ? '⚠ Commit turn' : 'Commit turn'} ({committed.length}/{roster.length})</button>
+    {/if}
     {#if getActive()?.solo}
       <label class="aggro" title="aggressive: the bot declares war and throws half its fleet at your nearest systems">
         <input
@@ -368,12 +441,27 @@
   {:else if autoTurnSeconds > 0}
     <!-- timer not armed: nothing to show -->
   {/if}
+  {#if fastActive && fastBlind}
+    <div class="banner warn" data-testid="fast-blind-banner">
+      ⚡ Recovering your fast-forwarded turns (the reload dropped the local preview) — synced turn {syncedTurn}, your orders replay as the others catch up.
+    </div>
+  {:else if fastActive && fastAhead >= FAST_MAX_AHEAD}
+    <div class="banner warn" data-testid="fast-cap-banner">
+      ⚡ You are {FAST_MAX_AHEAD} turns ahead of the slowest player{slowestInfo ? ` (${slowestInfo.name} finished turn ${Math.max(0, slowestInfo.through)})` : ''} — the cap. On CONTACT the game rewinds everyone to the synced turn.
+    </div>
+  {:else if fastActive && fastAhead >= FAST_MAX_AHEAD - 2}
+    <div class="banner dim" data-testid="fast-ahead-banner">
+      ⚡ Fast start: you are {fastAhead} turns ahead of the slowest player{slowestInfo ? ` (${slowestInfo.name})` : ''}. When empires meet, CONTACT rewinds everyone to the synced turn — progress past it is replayed from your submitted orders.
+    </div>
+  {/if}
   {#if winner !== null}
     {@const winLabel = gs.winType === 'council' ? 'is elected supreme ruler of the council' : gs.winType === 'antaran' ? 'has conquered the Andromedan home' : 'wins by conquest'}
     <div class="banner" data-testid="victory">Victory: {roster.find((p) => p.id === winner)?.name ?? winner} {winLabel}!</div>
   {/if}
   <nav>
-    <button class:active={tab === 'colonies'} data-testid="tab-colonies" onclick={() => (tab = 'colonies')}>Colonies</button>
+    <button class:active={tab === 'colonies'} data-testid="tab-colonies" onclick={() => (tab = 'colonies')}>
+      Colonies{#if defaultBuildCount > 0}<span class="idlebadge" data-testid="default-build-badge" title="{defaultBuildCount} colon{defaultBuildCount > 1 ? 'ies are' : 'y is'} not actively constructing (empty queue, housing or trade goods)">{defaultBuildCount}</span>{/if}
+    </button>
     <button class:active={tab === 'map'} data-testid="tab-map" onclick={() => (tab = 'map')}>Map</button>
     <button class:active={tab === 'research'} class:pulse={researchIdle} data-testid="tab-research" onclick={() => (tab = 'research')}>Research</button>
     <button class:active={tab === 'fleets'} data-testid="tab-fleets" onclick={() => (tab = 'fleets')}>Fleets</button>
@@ -431,6 +519,37 @@
         {/if}
       </div>
       <button class="x" onclick={() => (celebration = null)}>✕</button>
+    </div>
+  {/if}
+  {#if arrival}
+    <div class="celebration arrival" data-testid="colony-ship-arrival" role="status">
+      <div class="burst">🚀</div>
+      <div>
+        <b>Colony ship at {starName(arrival.starId)}</b>
+        <div class="apps">a colonizable planet awaits — settle it from the map</div>
+        <button class="next" onclick={() => { app.focusStarId = arrival!.starId; tab = 'map'; arrival = null; }}>View on map →</button>
+      </div>
+      <button class="x" onclick={() => (arrival = null)}>✕</button>
+    </div>
+  {/if}
+  {#if app.contactFlash}
+    {@const names = app.contactFlash.pairs
+      .map(([x, y]) => `${gs.empires.find((e) => e.id === x)?.name ?? x} ⟷ ${gs.empires.find((e) => e.id === y)?.name ?? y}`)
+      .join(' · ')}
+    <div class="contact-overlay" data-testid="contact-flash" role="alertdialog">
+      <div class="contact-box">
+        <div class="contact-title">CONTACT</div>
+        <p>{names}</p>
+        <p class="contact-sub">
+          The empires have met at turn {app.contactFlash.turn}. Fast start is over: everyone now stands at the synced
+          turn (turns you previewed past it were rewound) and the game continues turn-by-turn. This is a good moment to
+          save.
+        </p>
+        <div class="contact-actions">
+          <button data-testid="contact-save" disabled={!getActive()?.store} onclick={saveGame}>💾 Save the contact turn</button>
+          <button data-testid="contact-continue" class="primary" onclick={() => (app.contactFlash = null)}>Continue ▶</button>
+        </div>
+      </div>
     </div>
   {/if}
   {#if myBattle}
@@ -764,5 +883,75 @@
   .loading {
     padding: 2rem;
     color: var(--text-dim);
+  }
+  .commit.fast {
+    background: linear-gradient(180deg, #2a6a8a, #1b4a66);
+    border-color: #4aa8d8;
+  }
+  .commit.fast:disabled {
+    opacity: 0.6;
+  }
+  .idlebadge {
+    display: inline-block;
+    margin-left: 0.3rem;
+    min-width: 1.1rem;
+    padding: 0 0.25rem;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #6a5424, #54431c);
+    border: 1px solid var(--gold);
+    color: #ffe9b0;
+    font-size: 0.72rem;
+    text-align: center;
+  }
+  .celebration.arrival {
+    border-color: var(--good);
+    box-shadow: 0 0 40px rgba(94, 224, 138, 0.35), 0 10px 40px rgba(0, 0, 0, 0.5);
+  }
+  .contact-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(6, 8, 20, 0.82);
+    animation: contact-flash 0.9s ease;
+  }
+  @keyframes contact-flash {
+    0% { background: rgba(255, 230, 160, 0.95); }
+    30% { background: rgba(160, 40, 40, 0.75); }
+    100% { background: rgba(6, 8, 20, 0.82); }
+  }
+  .contact-box {
+    max-width: 34rem;
+    background: linear-gradient(180deg, var(--panel-3), var(--panel));
+    border: 2px solid var(--gold);
+    border-radius: 14px;
+    padding: 1.2rem 1.6rem;
+    text-align: center;
+    box-shadow: 0 0 80px rgba(255, 212, 121, 0.35);
+  }
+  .contact-title {
+    font-size: 2.4rem;
+    font-weight: 900;
+    letter-spacing: 0.35em;
+    color: var(--gold);
+    text-shadow: 0 0 24px rgba(255, 212, 121, 0.8);
+    animation: pulse-warn 1.2s ease-in-out infinite;
+  }
+  .contact-sub {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+  .contact-actions {
+    display: flex;
+    gap: 0.6rem;
+    justify-content: center;
+    margin-top: 0.6rem;
+  }
+  .contact-actions .primary {
+    background: linear-gradient(180deg, #24418a, #1b2f66);
+    border-color: #4a6ab8;
+    font-weight: 700;
   }
 </style>

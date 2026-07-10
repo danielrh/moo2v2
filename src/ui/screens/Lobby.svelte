@@ -304,6 +304,15 @@
       />
       Big empires start
     </label>
+    <label title="End turns at your own pace — nobody waits for anybody until two empires meet. The host simulation advances with the slowest player; when CONTACT flashes, everyone is pulled back to the synced turn (you can save right there) and play continues turn-by-turn. Monster fights auto-resolve until then. You can never run more than 10 turns ahead of the slowest player.">
+      <input
+        type="checkbox"
+        data-testid="mode-faststart"
+        checked={settings.fastStart ?? false}
+        onchange={(e) => updateSetting('fastStart', (e.target as HTMLInputElement).checked)}
+      />
+      ⚡ Fast start (async turns until contact)
+    </label>
     {#each MODE_HELP as m (m.key)}
       <label title={m.help}>
         <input

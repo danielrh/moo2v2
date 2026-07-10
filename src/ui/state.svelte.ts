@@ -137,6 +137,46 @@ export function bindActive(active: ActiveGame): void {
   }
 }
 
+/** Fold one turn's events into the report/replay feeds. Fast games deliver a
+ * turn twice (preview first, authoritative later) — repeats are dropped by
+ * content, which also self-heals the rare preview/authoritative mismatch
+ * (the authoritative version appends and the discrepancy is visible). */
+function ingestTurnEvents(
+  active: ActiveGame,
+  events: ReadonlyArray<{ visibleTo: number; kind: string; payload: Record<string, unknown> }>,
+  turn: number,
+): void {
+  const me = active.session.playerId;
+  for (const e of events) {
+    if (e.kind === 'ground_battle') {
+      if (e.visibleTo !== me) continue; // participants only
+      const gp = e.payload as GroundBattleEntry['payload'];
+      if (!app.groundBattles.some((g) => g.turn === turn && g.payload.colonyId === gp.colonyId)) {
+        app.groundBattles.push({ turn, payload: gp });
+        if (app.groundBattles.length > 20) app.groundBattles.shift();
+      }
+      continue;
+    }
+    if (e.kind === 'battle_replay') {
+      if (e.visibleTo !== -1 && e.visibleTo !== me) continue; // participants only
+      const p = e.payload as { battleId: string; seed: string; input: unknown; summary: Record<string, unknown> };
+      if (!app.replays.some((r) => r.battleId === p.battleId)) {
+        app.replays.push({ ...p, turn, watched: false });
+        if (app.replays.length > 20) app.replays.shift();
+      }
+      continue;
+    }
+    if (e.visibleTo === -1 || e.visibleTo === me) {
+      const json = JSON.stringify(e.payload);
+      if (app.reports.some((r) => r.turn === turn && r.kind === e.kind && JSON.stringify(r.payload) === json)) {
+        continue;
+      }
+      app.reports.push({ turn, kind: e.kind, payload: e.payload as Record<string, unknown> });
+      if (app.reports.length > 300) app.reports.shift();
+    }
+  }
+}
+
 export function leaveGame(): void {
   const g = activeGame;
   activeGame = null;
@@ -150,6 +190,8 @@ export function leaveGame(): void {
   app.viewing = null;
   app.rejectedNote = '';
   app.hostConnected = true;
+  app.contactFlash = null;
+  app.focusStarId = null;
   app.version++;
   if (!g) return;
   g.solo?.close();

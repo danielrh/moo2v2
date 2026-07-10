@@ -40,3 +40,9 @@ export function allocWorldId(state: GameState): number {
   state.nextWorldId = n + 1;
   return ID_BLOCK + n;
 }
+
+/** Display form: the in-block ordinal (block ids read as "#3", not
+ * "#20000003"); init-time ids pass through unchanged. */
+export function shortEntityId(id: number): number {
+  return id >= ID_BLOCK ? id % ID_BLOCK : id;
+}

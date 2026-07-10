@@ -2,7 +2,7 @@
   // Galaxy map v3 (SVG): proper star glyphs with glow, explored/unexplored fog,
   // fuel-range shading, in-flight fleet markers with travel progress, monster
   // lairs vs Andromedan raids, blockade badges, move ordering with re-routing.
-  import { selectors, inRange, isBlockaded, fuelRangeCp, supportStars, areAtWar } from '@engine/index';
+  import { selectors, inRange, isBlockaded, fuelRangeCp, supportStars, areAtWar, shortEntityId } from '@engine/index';
   import { MAP_SIZE } from '@engine/galaxy';
   import { playerColor, STAR_COLORS } from '../colors';
   import { app, getActive } from '../state.svelte';
@@ -71,6 +71,13 @@
 
   let selectedStarId = $state<number | null>(null);
   let selectedShipIds = $state<number[]>([]);
+  // colony-ship arrival alert: "View on map" hands us the star to select
+  $effect(() => {
+    if (app.focusStarId !== null) {
+      selectedStarId = app.focusStarId;
+      app.focusStarId = null;
+    }
+  });
   // the fleets explainer shows until dismissed once (then never again)
   let showFleetTip = $state(localStorage.getItem('moo2.tip.fleets') !== '0');
   function dismissFleetTip() {
@@ -533,13 +540,29 @@
         {/each}
       </ul>
       {#if shipsHere.length}
-        <h4>Your ships here</h4>
+        <h4>
+          Your ships here
+          <label class="selall" title="select every ship at this system">
+            <input
+              type="checkbox"
+              data-testid="select-all-ships"
+              checked={shipsHere.every((f) => selectedShipIds.includes(f.ship.id))}
+              onchange={(e) => {
+                const ids = shipsHere.map((f) => f.ship.id);
+                selectedShipIds = (e.target as HTMLInputElement).checked
+                  ? [...new Set([...selectedShipIds, ...ids])]
+                  : selectedShipIds.filter((id) => !ids.includes(id));
+              }}
+            />
+            all
+          </label>
+        </h4>
         <ul class="ships">
           {#each shipsHere as f (f.ship.id)}
             <li>
               <label>
                 <input type="checkbox" checked={selectedShipIds.includes(f.ship.id)} onchange={() => toggleShip(f.ship.id)} />
-                {f.name} <span class="dim">#{f.ship.id}</span>
+                {f.name} <span class="dim">#{shortEntityId(f.ship.id)}</span>
               </label>
             </li>
           {/each}
