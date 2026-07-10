@@ -46,6 +46,10 @@
     return roster.find((p) => p.id === me)?.name ?? `#${me}`;
   });
   const botOnSeat = (seatId: number) => getActive()?.bots.find((b) => b.seatId === seatId) ?? null;
+  const pbmInfo = $derived.by(() => {
+    void app.version;
+    return getActive()?.pbm ?? null;
+  });
   /** host view: seats a bot could take over, or is holding */
   const seatIssues = $derived.by(() => {
     void app.version;
@@ -256,6 +260,11 @@
   {#if !app.hostConnected}
     <div class="banner warn" data-testid="host-offline">
       ⚠ Host offline — the game is paused. It resumes when the host returns (or load their save file to re-host).
+    </div>
+  {/if}
+  {#if pbmInfo}
+    <div class="banner dim" data-testid="pbm-banner">
+      📬 play-by-mail — {pbmInfo.note}
     </div>
   {/if}
   {#each seatIssues as { p, bot } (p.id)}

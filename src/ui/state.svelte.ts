@@ -88,13 +88,20 @@ export function bindActive(active: ActiveGame): void {
 }
 
 export function leaveGame(): void {
-  activeGame?.solo?.close();
-  for (const b of activeGame?.bots ?? []) b.close();
-  activeGame?.transport.close();
-  // release the room database (OPFS access handle) so another tab can take it
-  void activeGame?.store?.destroy().catch(() => undefined);
+  const g = activeGame;
   activeGame = null;
   app.screen = 'home';
   app.chat = [];
   app.version++;
+  if (!g) return;
+  g.solo?.close();
+  for (const b of g.bots) b.close();
+  void (async () => {
+    // play-by-mail: final upload + lock release must finish BEFORE the store
+    // (its data source) is torn down
+    await g.pbm?.stop().catch(() => undefined);
+    g.transport.close();
+    // release the room database (OPFS access handle) so another tab can take it
+    await g.store?.destroy().catch(() => undefined);
+  })();
 }

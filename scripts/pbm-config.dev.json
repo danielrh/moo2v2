@@ -1,0 +1,5 @@
+{
+  "password": "moo2",
+  "data_dir": "/tmp/moo2v2-pbm-dev",
+  "lock_ttl_seconds": 180
+}

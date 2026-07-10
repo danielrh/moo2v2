@@ -1,5 +1,6 @@
 <script lang="ts">
   import { DEFAULT_SERVER, enterRoom, enterSoloGame } from '../net';
+  import { enterPbmGame, pbmToken } from '../pbm';
   import { describeSaveError, importSaveIntoRoom, previewSave, type SavePreview } from '../saveload';
   import { app, bindActive } from '../state.svelte';
 
@@ -49,6 +50,41 @@
 
   let preview = $state<SavePreview | null>(null);
   let resumeTurn = $state<number | 'latest'>('latest');
+
+  // ---- play by mail ----
+  let pbmPassword = $state('');
+  let pbmSeatPassword = $state('');
+  const pbmLoggedIn = $derived(server ? pbmToken(server) !== null : false);
+
+  async function goPbm() {
+    if (!code || !name) {
+      app.error = 'name and room code are required';
+      return;
+    }
+    if (!pbmLoggedIn && !pbmPassword) {
+      app.error = 'enter the shared play-by-mail password once to log in';
+      return;
+    }
+    app.error = '';
+    app.connecting = true;
+    try {
+      const active = await enterPbmGame({
+        server,
+        code,
+        name,
+        ...(pbmPassword ? { password: pbmPassword } : {}),
+        ...(pbmSeatPassword ? { playerPassword: pbmSeatPassword } : {}),
+        createFrom: preview,
+      });
+      preview = null;
+      pbmPassword = '';
+      bindActive(active);
+    } catch (e) {
+      app.error = describeSaveError(e);
+    } finally {
+      app.connecting = false;
+    }
+  }
 
   async function onLoadFile(ev: Event) {
     const input = ev.target as HTMLInputElement;
@@ -159,6 +195,26 @@
       </p>
     </div>
   {/if}
+  <details class="pbmbox">
+    <summary>📬 Play by mail</summary>
+    <label>PBM password
+      <input type="password" data-testid="pbm-password" bind:value={pbmPassword}
+        placeholder={pbmLoggedIn ? 'remembered ✓' : 'shared password'} />
+    </label>
+    <label>Seat password
+      <input type="password" data-testid="pbm-seat-password" bind:value={pbmSeatPassword} placeholder="optional" />
+    </label>
+    <button data-testid="pbm-enter" onclick={goPbm} disabled={app.connecting}>
+      {app.connecting ? 'Connecting…' : '📬 Enter play-by-mail game'}
+    </button>
+    <p class="dim">
+      Uses your name and room code above. One player at a time holds the room; every commit uploads
+      your progress, so the game advances whenever the last player mails in their turn. To
+      <b>create</b> a play-by-mail game, load a save file above first — it becomes the room's game.
+      If someone is playing right now, you join their live game instead. Any downloaded 💾 save of a
+      PBM game also resumes normally, so a game can move between play-by-mail and live play freely.
+    </p>
+  </details>
   {#if loadNote}<p class="dim" data-testid="load-note">{loadNote}</p>{/if}
   {#if app.error}<p class="error" data-testid="error">{app.error}</p>{/if}
 </div>
@@ -225,6 +281,25 @@
     display: flex;
     gap: 0.5rem;
     align-items: center;
+  }
+  .pbmbox {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.4rem 0.8rem;
+  }
+  .pbmbox summary {
+    cursor: pointer;
+    color: var(--accent-soft);
+  }
+  .pbmbox label {
+    margin-top: 0.4rem;
+  }
+  .pbmbox button {
+    margin-top: 0.5rem;
+    width: 100%;
+  }
+  .pbmbox .dim {
+    font-size: 0.8rem;
   }
   .solorow button {
     flex: 1;

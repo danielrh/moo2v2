@@ -45,6 +45,13 @@ export interface ActiveGame {
   solo: SoloBot | null;
   /** bots subbed in for absent players (host only; name-matched to seats) */
   bots: SoloBot[];
+  /** play-by-mail session info (set by enterPbmGame); null in normal games */
+  pbm: {
+    role: 'host' | 'guest';
+    note: string;
+    /** final upload + lock release; called by leaveGame */
+    stop: () => Promise<void>;
+  } | null;
 }
 
 /** Host-side: let a bot take over an absent player's seat. The bot helloes
@@ -181,6 +188,7 @@ export async function enterRoom(params: RoomParams): Promise<ActiveGame> {
       startGame: () => hosted.host.startGame(generateSeed()),
       solo: null,
       bots: [],
+      pbm: null,
     };
   }
 
@@ -210,6 +218,7 @@ export async function enterRoom(params: RoomParams): Promise<ActiveGame> {
     },
     solo: null,
     bots: [],
+    pbm: null,
   };
 }
 
@@ -262,5 +271,6 @@ export async function enterSoloGame(name: string, botMode: BotMode = 'parity'): 
     startGame: () => hosted.host.startGame(generateSeed()),
     solo,
     bots: [],
+    pbm: null,
   };
 }
