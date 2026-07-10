@@ -439,9 +439,15 @@ export function resolveBattle(state: GameState, battle: PendingBattle, events: T
       }
     }
   }
-  // loser's unarmed ships at the star are lost if the winner holds the field
+  // loser's unarmed ships at the star are lost if the winner holds the field —
+  // UNLESS their escorts withdrew alive: a retreating fleet covers its
+  // noncombatants out (so "retreat" really is a way to decline a fight)
   if (result.winner !== null) {
     const loser = result.winner === 0 ? battle.defender : battle.attacker;
+    const loserSide = result.winner === 0 ? 1 : 0;
+    const escortsEscaped = result.outcomes.some(
+      (o) => o.side === loserSide && o.retreated && !o.destroyed,
+    );
     for (const ship of state.ships) {
       if (
         ship.owner === loser &&
@@ -449,7 +455,22 @@ export function resolveBattle(state: GameState, battle: PendingBattle, events: T
         ship.location.starId === battle.starId &&
         !isWarship(ship)
       ) {
-        destroyedIds.add(ship.id);
+        if (escortsEscaped) {
+          // fall back with the fleet toward the nearest own colony
+          const home = state.colonies.find((c) => c.owner === loser && !c.outpost);
+          const homePlanet = home ? state.planets.find((p) => p.id === home.planetId) : null;
+          if (homePlanet && homePlanet.starId !== battle.starId) {
+            ship.location = {
+              kind: 'transit',
+              from: battle.starId,
+              to: homePlanet.starId,
+              departedTurn: state.turn,
+              arrivalTurn: state.turn + 1,
+            };
+          }
+        } else {
+          destroyedIds.add(ship.id);
+        }
       }
     }
   }

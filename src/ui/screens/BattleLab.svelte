@@ -49,6 +49,8 @@
     hull: string;
     computer: number;
     shield: number;
+    /** armor tier 1..6 (titanium..xentronium); absent = best (xentronium) */
+    armor?: number;
     specials: string[];
     weapons: Array<{ weapon: string; count: number; mods: string[]; arc: 'F' | 'FX' | 'R' | '360' }>;
     count: number;
@@ -105,6 +107,13 @@
   function toCombat(side: 0 | 1, g: LabGroup, idx: number, n: number): CombatShipInit | string {
     const stats = groupStats(side, g);
     if (typeof stats === 'string') return stats;
+    // armor class override: the lab empire knows xentronium (x10); rescale
+    // hull points to the chosen tier so observed enemies match reality
+    const wantTier = g.armor ?? 6;
+    const bestMult = ARMOR_MULT[5]!;
+    const wantMult = ARMOR_MULT[Math.max(1, Math.min(6, wantTier)) - 1]!;
+    const armorHp = Math.max(1, Math.round((stats.armorHp * wantMult) / bestMult));
+    const structureHp = Math.max(1, Math.round((stats.structureHp * wantMult) / bestMult));
     return {
       shipId: (side + 1) * 1000 + idx * 100 + n,
       side,
@@ -114,8 +123,8 @@
       beamAttack: stats.beamAttack,
       beamDefense: stats.beamDefense,
       speed: stats.combatSpeed,
-      armorHp: stats.armorHp,
-      structureHp: stats.structureHp,
+      armorHp,
+      structureHp,
       shieldPool: stats.shieldPool,
       shieldFlat: stats.shieldFlat,
       weapons: stats.weapons.map((w) => ({
@@ -129,8 +138,8 @@
         count: w.count,
         arc: w.arc,
       })),
-      startingStructure: stats.structureHp,
-      startingArmor: stats.armorHp,
+      startingStructure: structureHp,
+      startingArmor: armorHp,
       specials: g.specials,
     };
   }

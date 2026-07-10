@@ -63,7 +63,17 @@
     return Number('0x' + ownerColor(owner).slice(1));
   }
 
-  function drawShip(x: number, y: number, size: number, angle: number, isBase: boolean, color: number, driveOut = false): void {
+  function drawShip(x: number, y: number, size: number, angle: number, isBase: boolean, color: number, driveOut = false, hullIdx = 0): void {
+    if (hullIdx === 6 && !isBase) {
+      // doom star: a planet-sized sphere with a superlaser dish, not a dart
+      gfx.circle(x, y, size * 1.5).fill({ color }).stroke({ color: 0x05070f, width: 1.5 });
+      gfx.circle(x, y, size * 1.1).stroke({ color: 0x05070f, width: 0.8, alpha: 0.5 });
+      const dx = Math.cos(angle) * size * 0.85;
+      const dy = Math.sin(angle) * size * 0.85;
+      gfx.circle(x + dx, y + dy, size * 0.45).fill({ color: 0x05070f, alpha: 0.75 });
+      gfx.circle(x + dx, y + dy, size * 0.2).fill({ color: driveOut ? 0xff6b5e : 0xbfe6ff, alpha: 0.9 });
+      return;
+    }
     if (isBase) {
       // orbital platform: hex + core
       const r = size * 1.2;
@@ -152,7 +162,7 @@
         const from = pf.ships.find((x) => x.id === shot.from);
         const to = shot.to >= 0 ? pf.ships.find((x) => x.id === shot.to) : null;
         if (!from || !to) continue;
-        const travel = isSlug(shot.weaponId) ? SLUG_TRAVEL : BEAM_TRAVEL;
+        const travel = (isSlug(shot.weaponId) ? SLUG_TRAVEL : BEAM_TRAVEL) + (shot.kill ? 4 : 0);
         const p = (back + frac) / travel;
         const over = shot.hit ? 1 : 1.35; // misses streak past the target
         if (p > over) continue;
@@ -164,16 +174,26 @@
         if (isSlug(shot.weaponId)) {
           const [px, py] = lerp(Math.min(p, over));
           gfx.circle(px, py, 2.4).fill({ color: shot.hit ? 0xd8e2ff : 0x8b93b8, alpha: shot.hit ? 0.95 : 0.5 });
+        } else if (shot.weaponId === 'starlight_projector') {
+          // captured starlight: a blinding lance with a halo (it should be flashy)
+          const head = Math.min(p, over);
+          const tail = Math.max(0, head - 0.55);
+          const [hx, hy] = lerp(head);
+          const [tx, ty] = lerp(tail);
+          gfx.moveTo(tx, ty).lineTo(hx, hy).stroke({ color: 0xfff7d6, alpha: 0.35, width: 7 });
+          gfx.moveTo(tx, ty).lineTo(hx, hy).stroke({ color: 0xffffff, alpha: shot.hit ? 1 : 0.5, width: 2.6 });
+          if (shot.hit) gfx.circle(hx, hy, 5).fill({ color: 0xffffff, alpha: 0.5 });
         } else {
           const head = Math.min(p, over);
           const tail = Math.max(0, head - 0.3);
           const [hx, hy] = lerp(head);
           const [tx, ty] = lerp(tail);
-          const color = shot.hit ? 0xffd75e : 0x59628c;
-          gfx.moveTo(tx, ty).lineTo(hx, hy).stroke({ color, alpha: shot.hit ? 0.95 : 0.35, width: shot.hit ? 1.8 : 1 });
+          const kill = shot.kill === true;
+          const color = kill ? 0xff8d5e : shot.hit ? 0xffd75e : 0x59628c;
+          gfx.moveTo(tx, ty).lineTo(hx, hy).stroke({ color, alpha: shot.hit ? 0.95 : 0.35, width: kill ? 3 : shot.hit ? 1.8 : 1 });
         }
         if (shot.hit && p >= 0.92 && p <= 1.08 && shot.dmg > 0) {
-          gfx.circle(x1, y1, 3 + Math.min(6, shot.dmg / 6)).fill({ color: 0xffb066, alpha: 0.55 });
+          gfx.circle(x1, y1, 3 + Math.min(6, shot.dmg / 6)).fill({ color: shot.kill ? 0xff7d4e : 0xffb066, alpha: shot.kill ? 0.85 : 0.55 });
         }
       }
     }
@@ -201,7 +221,7 @@
       // sim heading (0..31) -> sprite rotation; older replays fall back to side
       const angle = typeof s.h === 'number' ? (s.h * Math.PI * 2) / 32 : shipInit.side === 0 ? 0 : Math.PI;
       const sys = s.sys ?? '';
-      drawShip(x, y, size, angle, shipInit.isBase, color, sys.includes('d'));
+      drawShip(x, y, size, angle, shipInit.isBase, color, sys.includes('d'), shipInit.hullIdx);
       // hp bar
       gfx.rect(x - size, y + size + 4, size * 2, 2.5).fill({ color: 0x2a3352 });
       const hpColor = s.structPct > 60 ? 0x5ee08a : s.structPct > 30 ? 0xffd75e : 0xff6b5e;
@@ -215,10 +235,15 @@
       }
     }
 
-    // guided munitions in flight (from the sim itself)
+    // guided munitions in flight (from the sim itself); classId 4 = strike craft
     for (const pr of f.projectiles ?? []) {
       const x = (pr.x / FP) * SCALE;
       const y = (pr.y / FP) * SCALE;
+      if (pr.classId === 4) {
+        // fighters / assault shuttles: tiny wedges
+        gfx.poly([x + 3, y, x - 2.2, y - 2, x - 2.2, y + 2]).fill({ color: 0x9fe8a8, alpha: 0.95 });
+        continue;
+      }
       const color = pr.classId === 1 ? 0xff8a5e : 0xd07aff;
       gfx.circle(x, y, pr.classId === 1 ? 2.2 : 3).fill({ color, alpha: 0.95 });
       gfx.circle(x, y, pr.classId === 1 ? 4.5 : 6).fill({ color, alpha: 0.18 });
@@ -227,8 +252,9 @@
     drawShots(fi, frac);
     drawBystanders(fi);
 
-    // deaths as expanding blast rings (persist a few frames)
-    for (let back = 0; back < 9; back++) {
+    // deaths as expanding blast rings — big, bright and long-lived, so a kill
+    // is unmissable even when scrubbing the timeline
+    for (let back = 0; back < 14; back++) {
       const pf = frames[fi - back];
       if (!pf) break;
       for (const dead of pf.deaths) {
@@ -237,8 +263,10 @@
         const x = (s.x / FP) * SCALE;
         const y = (s.y / FP) * SCALE;
         const age = back;
-        gfx.circle(x, y, 4 + age * 4).stroke({ color: 0xff6b5e, width: Math.max(1, 4 - age * 0.4), alpha: Math.max(0, 0.95 - age * 0.11) });
-        if (age < 3) gfx.circle(x, y, 3 + age * 2).fill({ color: 0xffd18a, alpha: 0.7 - age * 0.2 });
+        gfx.circle(x, y, 5 + age * 5).stroke({ color: 0xff6b5e, width: Math.max(1.2, 5 - age * 0.35), alpha: Math.max(0, 0.95 - age * 0.07) });
+        gfx.circle(x, y, 2 + age * 3).stroke({ color: 0xffd75e, width: Math.max(0.8, 3 - age * 0.3), alpha: Math.max(0, 0.8 - age * 0.08) });
+        if (age < 5) gfx.circle(x, y, 4 + age * 2).fill({ color: 0xffd18a, alpha: 0.8 - age * 0.15 });
+        if (age < 2) gfx.circle(x, y, 9).fill({ color: 0xffffff, alpha: 0.5 - age * 0.25 });
       }
     }
   }

@@ -66,7 +66,8 @@ const COMPUTER_APPS = ['electronic_computer', 'optronic_computer', 'positronic_c
 const SHIELD_APPS = ['class_i_shield', 'class_iii_shield', 'class_v_shield', 'class_vii_shield', 'class_x_shield'];
 const ARMOR_APPS = ['titanium_armor', 'tritanium_armor', 'zortrium_armor', 'neutronium_armor', 'adamantium_armor', 'xentronium_armor'];
 const DRIVE_APPS = ['nuclear_drive', 'fusion_drive', 'ion_drive', 'anti_matter_drive', 'hyper_drive', 'interphased_drive'];
-const ARMOR_MULT = [1, 2, 5, 6, 8, 10];
+export const ARMOR_MULT = [1, 2, 5, 6, 8, 10];
+export const ARMOR_NAMES = ['titanium', 'tritanium', 'zortrium', 'neutronium', 'adamantium', 'xentronium'];
 
 /** Designable specials: id -> space% of hull. Effects: designStats (static
  * stats) or combat.ts (in-battle behavior, keyed off CombatShipInit.specials). */
