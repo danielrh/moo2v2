@@ -304,7 +304,8 @@ const applications = fxTable.rows.map(([subjectName, tierCell, itemCell, effect]
     subject: snake(subjectName),
     fieldId: field ? field.id : fieldId,
     techId: tech ? tech.techId : weapon && weapon.techId !== 0 ? weapon.techId : null,
-    effectSummaryLen: effect.length, // prose lives in mechanics docs; engine keeps structure only
+    effectSummary: effect, // what the tech does, straight from the docs (UI tooltips)
+    effectSummaryLen: effect.length,
   };
 });
 
@@ -368,6 +369,8 @@ export interface WeaponModRow {
 }
 export interface ApplicationRow {
   id: string; name: string; subject: string; fieldId: string; techId: number | null;
+  /** what the technology does, from mechanics/tech/technology_effects.md */
+  effectSummary: string;
   effectSummaryLen: number;
 }
 

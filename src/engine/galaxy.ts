@@ -51,12 +51,14 @@ const COLOR_WEIGHTS: Array<[StarColor, number]> = [
 
 /** planets per star by color: weights for 0..5 planets */
 const PLANET_COUNT_WEIGHTS: Record<StarColor, number[]> = {
-  blue: [10, 15, 20, 25, 20, 10],
-  white: [10, 15, 22, 25, 18, 10],
-  yellow: [5, 12, 22, 28, 22, 11],
-  orange: [10, 18, 25, 25, 15, 7],
-  red: [20, 25, 25, 18, 9, 3],
-  brown: [55, 30, 10, 5, 0, 0],
+  // empty systems are deliberately rare — a visited star should usually offer
+  // SOMETHING (bug: "stars with nothing are too common")
+  blue: [4, 14, 21, 27, 22, 12],
+  white: [4, 14, 23, 27, 20, 12],
+  yellow: [2, 11, 22, 30, 23, 12],
+  orange: [4, 17, 26, 27, 17, 9],
+  red: [8, 25, 28, 22, 12, 5],
+  brown: [30, 45, 15, 10, 0, 0],
   black_hole: [100, 0, 0, 0, 0, 0],
 };
 
@@ -66,7 +68,8 @@ const BODY_WEIGHTS: Array<[BodyType, number]> = [
   ['gas_giant', 20],
 ];
 
-const SIZE_WEIGHTS: number[] = [15, 25, 30, 20, 10]; // tiny..huge
+// no size-1 worlds (bug), and the average shifts up half a class
+const SIZE_WEIGHTS: number[] = [0, 22, 34, 28, 16]; // tiny(never)..huge
 
 /** climate weights vary with orbit distance band (inner/mid/outer) */
 const CLIMATE_WEIGHTS: Record<'inner' | 'mid' | 'outer', Array<[Climate, number]>> = {
@@ -397,16 +400,6 @@ export function generateGalaxy(
     });
   }
 
-  // --- wormhole pairs (up to galaxySize/4 like the classic cap, we use 2) ---
-  const wormholes = Math.min(2, Math.floor(stars.length / 12));
-  const candidates = stars.filter((s) => s.color !== 'black_hole');
-  for (let i = 0; i < wormholes && candidates.length >= 2; i++) {
-    const a = candidates.splice(rng.int(candidates.length), 1)[0]!;
-    const b = candidates.splice(rng.int(candidates.length), 1)[0]!;
-    a.wormholeTo = b.id;
-    b.wormholeTo = a.id;
-  }
-
   // --- planets ---
   const planets: Planet[] = [];
   for (const star of stars) {
@@ -437,6 +430,17 @@ export function generateGalaxy(
     bestSpread = nonHole.slice(0, empireTraits.length);
   }
   for (const s of bestSpread) homeStars.push(s);
+
+  // --- wormhole pairs (after home selection: home systems never get one) ---
+  const wormholes = Math.min(2, Math.floor(stars.length / 12));
+  const homeIds = new Set(homeStars.map((s) => s.id));
+  const candidates = stars.filter((s) => s.color !== 'black_hole' && !homeIds.has(s.id));
+  for (let i = 0; i < wormholes && candidates.length >= 2; i++) {
+    const a = candidates.splice(rng.int(candidates.length), 1)[0]!;
+    const b = candidates.splice(rng.int(candidates.length), 1)[0]!;
+    a.wormholeTo = b.id;
+    b.wormholeTo = a.id;
+  }
 
   // --- connectivity guarantee: bridge stars until all homes link at hop range ---
   ensureHomeConnectivity(

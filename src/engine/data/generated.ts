@@ -22,6 +22,8 @@ export interface WeaponModRow {
 }
 export interface ApplicationRow {
   id: string; name: string; subject: string; fieldId: string; techId: number | null;
+  /** what the technology does, from mechanics/tech/technology_effects.md */
+  effectSummary: string;
   effectSummaryLen: number;
 }
 
@@ -4136,6 +4138,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "astro_ecology",
     "techId": 86,
+    "effectSummary": "An automated, sealed environment in which food can be grown, even on lifeless worlds. It increases the food output of a world by +2 food.",
     "effectSummaryLen": 137
   },
   {
@@ -4144,6 +4147,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "astro_ecology",
     "techId": 27,
+    "effectSummary": "Enables a colony to better control environmental conditions, allowing use of less comfortable areas of the planet. Maximum planetary population is increased by +2 million.",
     "effectSummaryLen": 171
   },
   {
@@ -4152,6 +4156,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "advanced_ecology",
     "techId": 38,
+    "effectSummary": "Improves colony care and family-support logistics, increasing population growth by +100K each turn as long as the current population is below the planetary maximum.",
     "effectSummaryLen": 164
   },
   {
@@ -4160,6 +4165,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "advanced_ecology",
     "techId": 162,
+    "effectSummary": "Using nano-machines, planetary soil can be molecularly enriched and fertilized, increasing the food a farmer can harvest by +1. Soil enrichment will not work in barren, energized, and hostile planets.",
     "effectSummaryLen": 200
   },
   {
@@ -4168,6 +4174,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "advanced_ecology",
     "techId": 48,
+    "effectSummary": "A morale-disruption payload delivered from orbit. Each launch has a 10% chance to reduce active colony population by one million. Use of morale-disruption payloads incurs a major diplomatic penalty with all other races.",
     "effectSummaryLen": 219
   },
   {
@@ -4176,6 +4183,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "trait_adaptation",
     "techId": null,
+    "effectSummary": "Develops advanced civic-insight methods. Enables a more effective investigative force and adds +5% to all spy rolls.",
     "effectSummaryLen": 116
   },
   {
@@ -4184,6 +4192,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "trait_adaptation",
     "techId": null,
+    "effectSummary": "Colony wellness support systems. Increases the population growth rate of all planets by +25% and halves the percentage chance for tech detox pods and better living cascades to reduce active population.",
     "effectSummaryLen": 201
   },
   {
@@ -4192,6 +4201,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "trait_variations",
     "techId": 184,
+    "effectSummary": "Makes a planet more hospitable. Barren becomes desert or tundra, deserts become arid, tundras become swamp, oceans, swamps and arid become terran. Each use on a planet increases cost by 250 production.",
     "effectSummaryLen": 201
   },
   {
@@ -4200,6 +4210,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "macro_adaptation",
     "techId": null,
+    "effectSummary": "An underground cavern system of automated farms. Increases the food output of a planet by +4.",
     "effectSummaryLen": 93
   },
   {
@@ -4208,6 +4219,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "macro_adaptation",
     "techId": 199,
+    "effectSummary": "Modifies a planet's weather patterns to create a more stable farming environment. Food production is increased by +2 per farmer.",
     "effectSummaryLen": 128
   },
   {
@@ -4216,6 +4228,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "evolutionary_adaptation",
     "techId": null,
+    "effectSummary": "Enables a powerful civic-insight network. Spying bonuses are raised by +10. Morale on all planets is increased by 10% for dictatorships and imperium government.",
     "effectSummaryLen": 160
   },
   {
@@ -4224,6 +4237,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "evolutionary_adaptation",
     "techId": null,
+    "effectSummary": "Through advanced education and planning, the average research capability of the empire is substantially improved, increasing the research of all scientists by +1.",
     "effectSummaryLen": 162
   },
   {
@@ -4232,6 +4246,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "synthetic_ecosystems",
     "techId": 28,
+    "effectSummary": "An advanced morale-disruption cascade with a 20% chance to reduce active colony population by one million. Use of morale-disruption payloads incurs a major diplomatic penalty with all other races.",
     "effectSummaryLen": 196
   },
   {
@@ -4240,6 +4255,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "synthetic_ecosystems",
     "techId": null,
+    "effectSummary": "Increases the population growth rate of all colonies by +50% and quarters the chance for tech detox pods and better living cascades to reduce active population. Not cumulative with wellness systems.",
     "effectSummaryLen": 198
   },
   {
@@ -4248,6 +4264,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "trans_adaptation",
     "techId": 29,
+    "effectSummary": "Hardy food systems that operate anywhere, increasing the food output of all planets by +1 food per farmer, including worlds with 0 food output.",
     "effectSummaryLen": 143
   },
   {
@@ -4256,6 +4273,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "trans_adaptation",
     "techId": 211,
+    "effectSummary": "Creates a broad, stable habitat by introducing adaptive ecology systems into the world. Can only be applied to terran environments.",
     "effectSummaryLen": 131
   },
   {
@@ -4264,6 +4282,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "ecology",
     "fieldId": "trans_adaptation",
     "techId": null,
+    "effectSummary": "Allows you to reassign race traits, altering their abilities. When trait reassignment is researched, you may choose 4 additional points of race development picks, to either remove disadvantages or increase advantages.",
     "effectSummaryLen": 217
   },
   {
@@ -4272,6 +4291,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "chemistry",
     "techId": 121,
+    "effectSummary": "Carries a high-yield nuclear warhead that inflicts 8 points of damage. Modifications: MIRV, emissions guildance, fast, heavily armored and ECCM.",
     "effectSummaryLen": 144
   },
   {
@@ -4280,6 +4300,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "chemistry",
     "techId": null,
+    "effectSummary": "Supplies sufficient energy to propel a ship 4 parsecs before refueling.",
     "effectSummaryLen": 71
   },
   {
@@ -4288,6 +4309,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "chemistry",
     "techId": null,
+    "effectSummary": "Increases the overall range of a ship by +50%, but at the cost of considerable amount of space.",
     "effectSummaryLen": 95
   },
   {
@@ -4296,6 +4318,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "chemistry",
     "techId": null,
+    "effectSummary": "The standard armor of ships.",
     "effectSummaryLen": 28
   },
   {
@@ -4304,6 +4327,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "advanced_metallurgy",
     "techId": 49,
+    "effectSummary": "Supplies sufficient energy to propel a ship up to 6 parsecs before refueling.",
     "effectSummaryLen": 77
   },
   {
@@ -4312,6 +4336,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "advanced_metallurgy",
     "techId": 189,
+    "effectSummary": "Ships with this armor have twice the base structure and armor points. The hit points of fighters are multiplied by 1.5. Adds +10 to ground troop combat strengths.",
     "effectSummaryLen": 162
   },
   {
@@ -4320,6 +4345,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "advanced_chemistry",
     "techId": 106,
+    "effectSummary": "Carries a powerful chemically-based explosive warhead capable of delivering 14 points of damage. Modifications: MIRV, emissions guidance, fast, armored, and ECCM.",
     "effectSummaryLen": 162
   },
   {
@@ -4328,6 +4354,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "advanced_chemistry",
     "techId": 141,
+    "effectSummary": "Uses advanced chemicals to process factory waste. Only half of the actual production of the planet used to calculate pollution.",
     "effectSummaryLen": 127
   },
   {
@@ -4336,6 +4363,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "molecular_compression",
     "techId": 149,
+    "effectSummary": "Carries a powerful high-energy pulse capable of delivering 20 points of damage. Modifications: MIRV, emissions guidance, fast, armored, and ECCM.",
     "effectSummaryLen": 145
   },
   {
@@ -4344,6 +4372,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "molecular_compression",
     "techId": 21,
+    "effectSummary": "Eliminates many dangerous particles from the atmosphere of a planet. The amount of production is quartered before calculating pollution. Effects are cumulative with a pollution processor.",
     "effectSummaryLen": 187
   },
   {
@@ -4352,6 +4381,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "molecular_compression",
     "techId": 93,
+    "effectSummary": "Supplies sufficient energy to propel a ship 9 parsecs before refueling.",
     "effectSummaryLen": 71
   },
   {
@@ -4360,6 +4390,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "nano_technology",
     "techId": 116,
+    "effectSummary": "Microscopic nano-machines capable of breaking down environmental contaminants. Doubles the number of production units a planet can produce before any pollution is created.",
     "effectSummaryLen": 171
   },
   {
@@ -4368,6 +4399,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "nano_technology",
     "techId": 108,
+    "effectSummary": "Using microscopic nano-machines to construct buildings and ships with less metal, but with the same strength and durability. Increases productivity of all workers by +1 production.",
     "effectSummaryLen": 180
   },
   {
@@ -4376,6 +4408,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "nano_technology",
     "techId": null,
+    "effectSummary": "Ships with this armor have 5 times the base structure and armor points. The hit points of fighters are multiplied by 2. Adds +15 to ground troop combat strengths.",
     "effectSummaryLen": 162
   },
   {
@@ -4384,6 +4417,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "molecular_manipulation",
     "techId": 202,
+    "effectSummary": "Carries a powerful explosive warhead capable of delivering 30 points of damage. Modifications: MIRV, emissions guidance, fast traveling, armored and ECCM.",
     "effectSummaryLen": 154
   },
   {
@@ -4392,6 +4426,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "molecular_manipulation",
     "techId": 60,
+    "effectSummary": "Ships with this armor have 6 times the base structure and armor points. The hit points of fighters are multiplied by 5. Adds +20 to ground troop combat strengths.",
     "effectSummaryLen": 162
   },
   {
@@ -4400,6 +4435,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "molecular_manipulation",
     "techId": 193,
+    "effectSummary": "Supply sufficent energy to propel a ship 12 parsecs before refueling.",
     "effectSummaryLen": 69
   },
   {
@@ -4408,6 +4444,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "molecular_control",
     "techId": 185,
+    "effectSummary": "Advanced fuel system that self-regenerates, providing all ships with an unlimited fuel supply and range.",
     "effectSummaryLen": 104
   },
   {
@@ -4416,6 +4453,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "chemistry",
     "fieldId": "molecular_control",
     "techId": null,
+    "effectSummary": "Ships with this armor have 8 times the base structure and armor points. The hit points of fighters are multiplied by 4. Adds +25 to ground troop combat strengths.",
     "effectSummaryLen": 162
   },
   {
@@ -4424,6 +4462,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "electronics",
     "techId": 56,
+    "effectSummary": "Directs starship weapons' fire and is automatically equipped on all ships, increasing chance to hit by +25%. This bonus is lost if the computer is damaged or destroyed.",
     "effectSummaryLen": 168
   },
   {
@@ -4432,6 +4471,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "optronics",
     "techId": 152,
+    "effectSummary": "Houses state-of-the-art computer equipment, creating a superior research environment. Generates 5 research points and increases the research each scientist produces by +1.",
     "effectSummaryLen": 171
   },
   {
@@ -4440,6 +4480,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "optronics",
     "techId": null,
+    "effectSummary": "Directs all starship weapons fire, adding +50 to the chance to hit. Bonus is lost if computer is destroyed.",
     "effectSummaryLen": 107
   },
   {
@@ -4448,6 +4489,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "optronics",
     "techId": null,
+    "effectSummary": "Provides friend-or-foe recognition guidance to missiles and torpedoes. They will retarget the nearest enemy ship if their target is destroyed.",
     "effectSummaryLen": 142
   },
   {
@@ -4456,6 +4498,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "artificial_intelligence",
     "techId": null,
+    "effectSummary": "With improved data processing methods, the pathways of the brain can be mapped and analyzed. Provides a near perfect lie detector used by spies to elicit information, adding +10 to all spy rolls.",
     "effectSummaryLen": 195
   },
   {
@@ -4464,6 +4507,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "artificial_intelligence",
     "techId": 156,
+    "effectSummary": "A computer assisted laboratory that generates an amount of research dependent on the ship size: 1, 2, 4, 8, 16, or 32. Also adds +10 per size class to the attack roll of all ships in a fleet fighting space monsters or Antarans.",
     "effectSummaryLen": 227
   },
   {
@@ -4472,6 +4516,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "artificial_intelligence",
     "techId": null,
+    "effectSummary": "Automatically controls and monitors vital sections of ship, attacking intruders with computer-controlled weapons. Adds +20 to the combat rolls of marines when defending against enemy boarders.",
     "effectSummaryLen": 192
   },
   {
@@ -4480,6 +4525,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "positronics",
     "techId": 142,
+    "effectSummary": "Directs all ship beam weapons fire, adding +75% chance to hit. If the computer is damaged or destroyed, the ship loses the attack bonus.",
     "effectSummaryLen": 136
   },
   {
@@ -4488,6 +4534,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "positronics",
     "techId": 178,
+    "effectSummary": "Supplies researchers with a vast amount of information. Generates 10 research points and increases the research each scientist produces by +2.",
     "effectSummaryLen": 142
   },
   {
@@ -4496,6 +4543,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "positronics",
     "techId": 84,
+    "effectSummary": "Capable of creating realistic 3-D images from holographic projections. Increases a planet's morale by +20%.",
     "effectSummaryLen": 107
   },
   {
@@ -4504,6 +4552,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "artificial_consciousness",
     "techId": 57,
+    "effectSummary": "Tracks the warp signatures of a vehicle. If the missile penetrates the shields, all damage is applied to the ship's drive, bypassing any armor. Requires 4 times the space and cost 4 times more than regular missiles.",
     "effectSummaryLen": 215
   },
   {
@@ -4512,6 +4561,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "artificial_consciousness",
     "techId": null,
+    "effectSummary": "Corrects for long-range targeting inaccuracies, the actual range is divided by three for purposes of to-hit bonuses only.",
     "effectSummaryLen": 121
   },
   {
@@ -4520,6 +4570,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "artificial_consciousness",
     "techId": 43,
+    "effectSummary": "Provides a direct mental link to computers, allowing spies to circumvent many automated security systems. Adds +10 to all spy rolls.",
     "effectSummaryLen": 132
   },
   {
@@ -4528,6 +4579,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "cybertronics",
     "techId": 44,
+    "effectSummary": "Learns and adapts using a neural net similar to the adaptive processor. Equipped on all ships, it adds +100% chance to hit with beam weapons. Attack bonuses are eliminated if the computer is damaged or destroyed.",
     "effectSummaryLen": 212
   },
   {
@@ -4536,6 +4588,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "cybertronics",
     "techId": 19,
+    "effectSummary": "A completely automated research facility. Generates 30 research points.",
     "effectSummaryLen": 71
   },
   {
@@ -4544,6 +4597,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "cybertronics",
     "techId": 181,
+    "effectSummary": "Links to ship's weapons array to more accurately choose target's weak armor points. All damage that penetrates the target's shields is doubled.",
     "effectSummaryLen": 143
   },
   {
@@ -4552,6 +4606,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "cybertechnics",
     "techId": 9,
+    "effectSummary": "Mechanical workers with a +3 food production bonus. Require 1 production unit per turn instead of food. They are unaffected by morale, receive no racial bonuses, and generate no income.",
     "effectSummaryLen": 185
   },
   {
@@ -4560,6 +4615,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "cybertechnics",
     "techId": 11,
+    "effectSummary": "Mechanical workers with a +3 production bonus. Require 1 production unit per turn instead of food. They are unaffected by morale, receive no racial bonuses, and generate no income.",
     "effectSummaryLen": 180
   },
   {
@@ -4568,6 +4624,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "cybertechnics",
     "techId": 10,
+    "effectSummary": "Mechanical workers that generate 3 research points per turn. Require 1 production unit per turn instead of food. They are unaffected by morale, receive no racial bonuses, and generate no income.",
     "effectSummaryLen": 194
   },
   {
@@ -4576,6 +4633,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "galactic_networking",
     "techId": 196,
+    "effectSummary": "Creates a galaxy wide cyberspace connection which individuals can tap into to experience alternate realities. Increases morale +20% throughout your entire empire.",
     "effectSummaryLen": 162
   },
   {
@@ -4584,6 +4642,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "galactic_networking",
     "techId": null,
+    "effectSummary": "Nearly instantaneous galaxy-wide communications, allowing quick exchange of information and ideas. The cybernet generates 15 research points and each scientist generates +3 research each.",
     "effectSummaryLen": 187
   },
   {
@@ -4592,6 +4651,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "moleculartronics",
     "techId": null,
+    "effectSummary": "The ultimate in virtual holographic entertainment, creating completely immersive entertainment environments. It increases morale by +30% and is cumulative with holo simulator.",
     "effectSummaryLen": 175
   },
   {
@@ -4600,6 +4660,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "moleculartronics",
     "techId": null,
+    "effectSummary": "Directs all starship weapon fire, adding +125% to the chance to hit. If the computer is destroyed, the ship loses the bonus.",
     "effectSummaryLen": 124
   },
   {
@@ -4608,6 +4669,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "computers",
     "fieldId": "moleculartronics",
     "techId": 15,
+    "effectSummary": "Triples the chance of striking an enemy's weapon and shield systems and completely bypasses the target's armor.",
     "effectSummaryLen": 111
   },
   {
@@ -4616,6 +4678,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "engineering",
     "techId": 39,
+    "effectSummary": "Creates a colony on another planet inside the sme star system as the building colony.",
     "effectSummaryLen": 85
   },
   {
@@ -4624,6 +4687,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "engineering",
     "techId": 167,
+    "effectSummary": "Armed orbital platforms used to service military ships. They are equipped with extensive weaponry, the best available scanner with a =2 scanning range bonus and a star dock capable of building ships larger than destroyers.",
     "effectSummaryLen": 222
   },
   {
@@ -4632,6 +4696,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "engineering",
     "techId": 107,
+    "effectSummary": "Lets the colony train troops for ground invasion protection. Begins with 4 marine units, then trains 1 unit every 5 turns, up to the planet's maximum population. Eliminates morale penalties for dictatorships and feudal governments.",
     "effectSummaryLen": 231
   },
   {
@@ -4640,6 +4705,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "advanced_engineering",
     "techId": 13,
+    "effectSummary": "Can only target missiles. They have a maximum range of 15 squares and will fire defensively against approaching missiles if not yet fired in that turn. The chance to score a hit is 85% minus 5% per square distance.",
     "effectSummaryLen": 214
   },
   {
@@ -4648,6 +4714,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "advanced_engineering",
     "techId": 59,
+    "effectSummary": "Allows a ship to carry a group of 4 short-range fighters. They carry one beam weapon of the best type that can have the point defense modification, and can fire it 4 times before returning to the launching ship.",
     "effectSummaryLen": 211
   },
   {
@@ -4656,6 +4723,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "advanced_engineering",
     "techId": 151,
+    "effectSummary": "Triples the structural integrity of a ship and provides more protection for the ship's drive system, tripling the amount of damage required to destroy it.",
     "effectSummaryLen": 154
   },
   {
@@ -4664,6 +4732,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "advanced_construction",
     "techId": 20,
+    "effectSummary": "Aid industry workers in their building of finished products. Generates 5 production and increases the production each worker generates by +1.",
     "effectSummaryLen": 141
   },
   {
@@ -4672,6 +4741,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "advanced_construction",
     "techId": 109,
+    "effectSummary": "Contains 300 space units of your best missiles, with unlimited ammo.",
     "effectSummaryLen": 68
   },
   {
@@ -4680,6 +4750,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "advanced_construction",
     "techId": null,
+    "effectSummary": "Heavy armor negates armor piercing effects and reinforces the armor of a ship, tripling the amount of damage the armor can absorb.",
     "effectSummaryLen": 130
   },
   {
@@ -4688,6 +4759,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "capsule_construction",
     "techId": 22,
+    "effectSummary": "Battle Pods increase the available space on a ship by 50%.",
     "effectSummaryLen": 58
   },
   {
@@ -4696,6 +4768,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "capsule_construction",
     "techId": null,
+    "effectSummary": "Troop pods house additional detachments of space marines, doubling the number of marines on board a ship. The additional marines can defend the ship or board enemy ships.",
     "effectSummaryLen": 170
   },
   {
@@ -4704,6 +4777,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "capsule_construction",
     "techId": null,
+    "effectSummary": "Provides suspended animation facilities for legendary officers if their ship is destroyed. At least one friendly ship must survive the combat to rescue any surviving officers.",
     "effectSummaryLen": 175
   },
   {
@@ -4712,6 +4786,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "astro_engineering",
     "techId": 163,
+    "effectSummary": "Site for commercial transactions, increasing the money generation of a colony by +50%.",
     "effectSummaryLen": 86
   },
   {
@@ -4720,6 +4795,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "astro_engineering",
     "techId": null,
+    "effectSummary": "Creates tank battalions. It has 2 units when built, and adds 1 unit every 10 turns, up to half the planet's population. Eliminates the morale penalty for dictatorships and feudal governments.",
     "effectSummaryLen": 191
   },
   {
@@ -4728,6 +4804,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "astro_engineering",
     "techId": 61,
+    "effectSummary": "Planetary base that houses 10-interceptors. Fighter Garrisons are equipped with 6-bomber, or 4-heavy fighter squadrons when the appropriate technology becomes available. New fighters become available every 10 combat turns.",
     "effectSummaryLen": 222
   },
   {
@@ -4736,6 +4813,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "robotics",
     "techId": 155,
+    "effectSummary": "Automate many difficult tasks, increasing the productivity of industrial workers. Generates 10 production and increases the production each worker produces by +2.",
     "effectSummaryLen": 162
   },
   {
@@ -4744,6 +4822,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "robotics",
     "techId": 23,
+    "effectSummary": "Heavily armed star base, with +4 parsec scanning range bonus. Adds +10% to the offense of ships in combat around it. Replaces a star base.",
     "effectSummaryLen": 138
   },
   {
@@ -4752,6 +4831,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "robotics",
     "techId": null,
+    "effectSummary": "Provides troops with superior power and mobility by mechanically magnifying their natural strength. Powered armor equipped troops have a +10 bonus to their combat rating and take +1 additional hit to disable.",
     "effectSummaryLen": 208
   },
   {
@@ -4760,6 +4840,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "servo_mechanics",
     "techId": 58,
+    "effectSummary": "Allows a ship to fire two volleys of missiles in one turn. Will only fire one per turn, after that unless the ship takes one full turn without firing missiles to reload.",
     "effectSummaryLen": 169
   },
   {
@@ -4768,6 +4849,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "servo_mechanics",
     "techId": null,
+    "effectSummary": "Completely repairs ships between battles. Automatically included in all ships once the technology is researched.",
     "effectSummaryLen": 112
   },
   {
@@ -4776,6 +4858,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "servo_mechanics",
     "techId": 17,
+    "effectSummary": "Squadron of 4 shuttles used to move 1 unit of marines each from the launching ship onto enemy ships. They take 3 hits to destroy, modified by your best armor, and move at a speed of 6.",
     "effectSummaryLen": 184
   },
   {
@@ -4784,6 +4867,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "astro_construction",
     "techId": 186,
+    "effectSummary": "The titan class of starship is gigantic in proportion to other ships, and requires advanced engineering techniques to both construct and integrate ship systems.",
     "effectSummaryLen": 160
   },
   {
@@ -4792,6 +4876,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "astro_construction",
     "techId": 81,
+    "effectSummary": "Ground installation that contains 300 space units of heawy mount and point defense versions of the best available beam weapons.",
     "effectSummaryLen": 127
   },
   {
@@ -4800,6 +4885,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "astro_construction",
     "techId": 224,
+    "effectSummary": "Giant robot fighting vehicles superior in power and mobility to conventional tanks. They have a +10 bonus to their combat rating and take 3 hits to destroy.",
     "effectSummaryLen": 156
   },
   {
@@ -4808,6 +4894,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "advanced_manufacturing",
     "techId": null,
+    "effectSummary": "Allows scrap material reuse, reducing construction costs. Every unit of population generates +1 production. This increase does not count toward planetary pollution level.",
     "effectSummaryLen": 170
   },
   {
@@ -4816,6 +4903,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "advanced_manufacturing",
     "techId": null,
+    "effectSummary": "Repairs a ship during combat, restoring 20% of the armor or structure and 10% of the ship's internal systems each turn during combat. After combat, the ship is completely repaired.",
     "effectSummaryLen": 180
   },
   {
@@ -4824,6 +4912,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "advanced_manufacturing",
     "techId": 16,
+    "effectSummary": "A colony that has an asteroid field or gas giant within its star system can create a complete artificial planet capable of supporting life.",
     "effectSummaryLen": 139
   },
   {
@@ -4832,6 +4921,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "advanced_robotics",
     "techId": null,
+    "effectSummary": "Builds mechanical workers that add production dependent on a colony's mineral resources 5, 8, 10, 15 or 20.",
     "effectSummaryLen": 107
   },
   {
@@ -4840,6 +4930,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "advanced_robotics",
     "techId": 31,
+    "effectSummary": "Short range ships carrying a bomb that can be dropped on a planet or detonated on a ship. They carry one bomb each of the best type available. They move in groups of 4 at a speed of 10",
     "effectSummaryLen": 184
   },
   {
@@ -4848,6 +4939,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "tectonic_engineering",
     "techId": 45,
+    "effectSummary": "Allows miners to build stable tunnels into a planet. Generates 15 production annd increases the productivity of each worker by +3 production each.",
     "effectSummaryLen": 146
   },
   {
@@ -4856,6 +4948,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "tectonic_engineering",
     "techId": null,
+    "effectSummary": "Take man-made industrial byproducts and store them deep within the surface of a planet, far below water supplies. Planetary pollution is completely eliminated.",
     "effectSummaryLen": 159
   },
   {
@@ -4864,6 +4957,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "superscalar_construction",
     "techId": 169,
+    "effectSummary": "A large military orbital platform. Has a +6 parsec scan range bonus and adds +20% to both the offense and defense of all ships in combat around it. Replaces battlestations and star bases.",
     "effectSummaryLen": 187
   },
   {
@@ -4872,6 +4966,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "superscalar_construction",
     "techId": null,
+    "effectSummary": "Pre-planned, organized colony design techniques in organization increase the maximum population that can live on all planets owned by the empire by +5 million.",
     "effectSummaryLen": 159
   },
   {
@@ -4880,6 +4975,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "superscalar_construction",
     "techId": 83,
+    "effectSummary": "Allow ships to carry heavy fighters equipped with 2 of the best point defense beam weapon and 2 of the best bomb available. They have 5 hits, modified by yours best armor, and move at speed 12.",
     "effectSummaryLen": 193
   },
   {
@@ -4888,6 +4984,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "planetoid_construction",
     "techId": 50,
+    "effectSummary": "Mobile planetoid bases. They are the largest ships that can be built.",
     "effectSummaryLen": 69
   },
   {
@@ -4896,6 +4993,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "construction",
     "fieldId": "planetoid_construction",
     "techId": null,
+    "effectSummary": "Network of mines. Ships have a chance of damage based on size: frigate-20%, destroyer-30%, cruiser-40%, battleship-50%, titan-80%, doomstar-100%. Damage is 100-500 points less shields.",
     "effectSummaryLen": 184
   },
   {
@@ -4904,6 +5002,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "advanced_magnetism",
     "techId": 25,
+    "effectSummary": "Protects ships from physical and energy attacks. Absorbs up to 5 times the ship's size in damage before failing, with each attack reduced by 1 points of damage. Regenerates 30% per combat turn.",
     "effectSummaryLen": 193
   },
   {
@@ -4912,6 +5011,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "advanced_magnetism",
     "techId": 104,
+    "effectSummary": "A rail gun firing a hyper-velocity projectile. Inflicts 6 points of damage. Damage is not reduced by range. Modifications: autofire, armor piercing, heavy mount, point defense.",
     "effectSummaryLen": 176
   },
   {
@@ -4920,6 +5020,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "advanced_magnetism",
     "techId": null,
+    "effectSummary": "Creates a magnetic pulse jamming both weapon tracking systems and missile guidance units, adding +70% to the ship's missile evasion.",
     "effectSummaryLen": 132
   },
   {
@@ -4928,6 +5029,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "gravitic_fields",
     "techId": 14,
+    "effectSummary": "Allows ground troops and armor to fly, increasing their mobility and defense. Adds +10 to their ground combat rating.",
     "effectSummaryLen": 117
   },
   {
@@ -4936,6 +5038,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "gravitic_fields",
     "techId": 90,
+    "effectSummary": "Creates a partial warp field that can operate in normal space. It vastly improves the ship's mobility and makes it considerably harder to target, adding +50 to ship's beam defense and halving movement cost for turning.",
     "effectSummaryLen": 218
   },
   {
@@ -4944,6 +5047,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "gravitic_fields",
     "techId": 80,
+    "effectSummary": "Creates a sudden rift in a ship's subspace field. Weakens the inertial controls of the ship, spinning it in random directions, inflicting 1-4 points of structural damage times the ship's size class. Range is 15 squares.",
     "effectSummaryLen": 219
   },
   {
@@ -4952,6 +5056,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "magneto_gravitics",
     "techId": 26,
+    "effectSummary": "Protects ships from physical and energy attacks. Absorbs up to 15 times the ship's size in damage before failing, with each attack reduced by 3 points of damage. Regenerates 30% per combat turn.",
     "effectSummaryLen": 194
   },
   {
@@ -4960,6 +5065,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "magneto_gravitics",
     "techId": 150,
+    "effectSummary": "Reduces solar and cosmic environmental stress so colonies can operate comfortably on the surface. Energized climates become Barren. Reduces damage against a planet by 5 points.",
     "effectSummaryLen": 176
   },
   {
@@ -4968,6 +5074,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "magneto_gravitics",
     "techId": 197,
+    "effectSummary": "Creates a large radius field about a ship that prevents any ship from enter into hyperspace. Enemy ships cannon retreat while the dissipator is functioning.",
     "effectSummaryLen": 156
   },
   {
@@ -4976,6 +5083,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "electromagnetic_refraction",
     "techId": 170,
+    "effectSummary": "Reduces the gravitic emissions from FTL drives. Ships equipped with stealth fields can not be detected at any range on the main screen.",
     "effectSummaryLen": 135
   },
   {
@@ -4984,6 +5092,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "electromagnetic_refraction",
     "techId": 126,
+    "effectSummary": "Deflects physical and energy attacks, increasing the combat rating of militia, troops and armor by +20.",
     "effectSummaryLen": 103
   },
   {
@@ -4992,6 +5101,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "electromagnetic_refraction",
     "techId": null,
+    "effectSummary": "Renders a person virtually invisible, blending the wearer into the background. Adds +10 to all spy rolls.",
     "effectSummaryLen": 105
   },
   {
@@ -5000,6 +5110,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "warp_fields",
     "techId": 148,
+    "effectSummary": "When fired, causes violent vibrations in ships, missiles and fighters adjacent to the equipped ships. Inflicts 2-24 points of damage per size class of the ship damaged.",
     "effectSummaryLen": 168
   },
   {
@@ -5008,6 +5119,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "warp_fields",
     "techId": 198,
+    "effectSummary": "Creates a warp destabilizing field around the star system in which it is built. Generates a field 2 parsecs in radius about the system that slows all enemy movement to 1 parsec per turn.",
     "effectSummaryLen": 186
   },
   {
@@ -5016,6 +5128,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "warp_fields",
     "techId": 102,
+    "effectSummary": "Surrounds a ship in a powerful energized field capable of overloading the targeting system of any missile, torpedo or fighter. Has a 50% chance of destroying these weapons before they damage the ship.",
     "effectSummaryLen": 200
   },
   {
@@ -5024,6 +5137,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "subspace_fields",
     "techId": 35,
+    "effectSummary": "Protects ships from physical and energy attacks. Absorbs up to 25 times the ship's size in damage before failing, with each attack reduced by 5 points of damage. Regenerates 30% per combat turn.",
     "effectSummaryLen": 194
   },
   {
@@ -5032,6 +5146,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "subspace_fields",
     "techId": 111,
+    "effectSummary": "Jamming frequencies across the entire spectrum this device adds +100 to the ships missile evasion rating.",
     "effectSummaryLen": 105
   },
   {
@@ -5040,6 +5155,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "subspace_fields",
     "techId": 78,
+    "effectSummary": "An extremely powerful linear accelerator which inflicts 18 points of damage regardless of range. Modifications: autofire, armor piercing, heavy mount.",
     "effectSummaryLen": 150
   },
   {
@@ -5048,6 +5164,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "distortion_fields",
     "techId": null,
+    "effectSummary": "Completely hides a ship from long range scans. In combat, it adds +80 to the ship's beam defense and missiles have a 50% chance to miss as long as the ship does not attack. Must wait one turn without firing to recloak.",
     "effectSummaryLen": 218
   },
   {
@@ -5056,6 +5173,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "distortion_fields",
     "techId": 171,
+    "effectSummary": "Places target in suspended animation. It cannot fire, recharge weapons, cloak or be attacked. Field has a 3-square range and will hold the target ship until the stasis field is turned off or destroyed.",
     "effectSummaryLen": 201
   },
   {
@@ -5064,6 +5182,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "distortion_fields",
     "techId": 82,
+    "effectSummary": "Reduces the damage of any attack by an additional 3 points. Allows operation of all shields in a nebula and prevents the use of enemy tranporters even after shields have been dropped. Immune to shield-piercing weapons.",
     "effectSummaryLen": 218
   },
   {
@@ -5072,6 +5191,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "quantum_fields",
     "techId": 36,
+    "effectSummary": "Protects ships from physical and energy attacks. Absorbs up to 35 times the ship's size in damage before failing, with each attack reduced by 7 points of damage. Regenerates 30% per combat turn.",
     "effectSummaryLen": 194
   },
   {
@@ -5080,6 +5200,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "quantum_fields",
     "techId": 130,
+    "effectSummary": "Seals planet in an energy field. Converts Energized climates into Barren. Reduces damage against the planet 10 points. It replaces any stellar safety shield already built.",
     "effectSummaryLen": 171
   },
   {
@@ -5088,6 +5209,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "quantum_fields",
     "techId": 200,
+    "effectSummary": "Adds +130 to a ship's missile evasion rating, adds +70 to the missile evasion of other ships in the fleet. The fleet's bonus is not cumulative with any missile evasion bonus given by other jammers. Only the best bonus will apply.",
     "effectSummaryLen": 229
   },
   {
@@ -5096,6 +5218,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "transwarp_fields",
     "techId": 55,
+    "effectSummary": "All weapons targeted against an equipped ship have a 30% chance of missing completely, regardless of any other considerations.",
     "effectSummaryLen": 126
   },
   {
@@ -5104,6 +5227,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "transwarp_fields",
     "techId": 182,
+    "effectSummary": "Allows a ship to execute a hyperspace jump of up to 20 squares. The jump does not change the ship's direction; it must rotate noramlly to change facing.",
     "effectSummaryLen": 152
   },
   {
@@ -5112,6 +5236,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "transwarp_fields",
     "techId": 89,
+    "effectSummary": "Creates a warp field that can operate in normal space. Increases ship mobility and makes it harder to target. Adds +100 to the ship's beam defense, and allows it to change direction without movement cost.",
     "effectSummaryLen": 204
   },
   {
@@ -5120,6 +5245,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "temporal_fields",
     "techId": 37,
+    "effectSummary": "Protects ships from physical and energy attacks. Absorbs up to 50 times the ship's size in damage before failing, with each attack reduced by 10 points of damage. Regenerates 30% per combat turn.",
     "effectSummaryLen": 195
   },
   {
@@ -5128,6 +5254,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "temporal_fields",
     "techId": 129,
+    "effectSummary": "Seals a planet in an energy field. Converts Energized climates to Barren climates. Reduces damage against a planet by 20 points. Ground troops and morale-disruption payloads cannot pass.",
     "effectSummaryLen": 186
   },
   {
@@ -5136,6 +5263,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "force_fields",
     "fieldId": "temporal_fields",
     "techId": 128,
+    "effectSummary": "Allows a ship to temporarily enter another dimension instead of just visually disappearing. While cloaked, the ship cannot be detected or attacked. Can only function for 10 turns, after which it will act like an ordinary cloaking device.",
     "effectSummaryLen": 237
   },
   {
@@ -5144,6 +5272,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "physics",
     "techId": 100,
+    "effectSummary": "Highly focused, coherent beams of light which deliver 1-4 points of damage. Modifications: autofire, armor piercing, heavy mount, continuous, point defense, no range dissipation.",
     "effectSummaryLen": 178
   },
   {
@@ -5152,6 +5281,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "physics",
     "techId": 101,
+    "effectSummary": "A hand-held weapon that increases the combat rating of militia, troops, and armor by +5. The bonus is not cumulative with other rifles.",
     "effectSummaryLen": 135
   },
   {
@@ -5160,6 +5290,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "physics",
     "techId": 95,
+    "effectSummary": "Detects enemy ships. Base detection range is 1 parsec. Ships in transit can be detected 1 parsec further per size class of ship.",
     "effectSummaryLen": 128
   },
   {
@@ -5168,6 +5299,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "fusion_physics",
     "techId": 70,
+    "effectSummary": "Projects a tetrium stream of charged particles, inflicting 2-6 points of damage Modifications: heavy mount, continuous, point defense, enveloping.",
     "effectSummaryLen": 146
   },
   {
@@ -5176,6 +5308,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "fusion_physics",
     "techId": null,
+    "effectSummary": "A powerful hand-held rifle that increases the combat rating of militia, troops, and armor by +10. The bonus is not cumulative with other rifles.",
     "effectSummaryLen": 144
   },
   {
@@ -5184,6 +5317,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "tachyon_physics",
     "techId": null,
+    "effectSummary": "Integrated into star bases, battlestations and star fortresses. Emits signals which penetrate hyperspace. Ships within 3 parsecs can recieve your orders. Increases the command points of these bases by +1.",
     "effectSummaryLen": 204
   },
   {
@@ -5192,6 +5326,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "tachyon_physics",
     "techId": 99,
+    "effectSummary": "Detects enemy ships. Has a base detection range of 3 parsecs. Ships in transit can be detected 1 parsec further per size class of ship. Tachyon scanners reduce enemy ship's missile evasion by -20.",
     "effectSummaryLen": 196
   },
   {
@@ -5200,6 +5335,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "tachyon_physics",
     "techId": 24,
+    "effectSummary": "Increases a ship's chance to hit with beam weapons by +50%. Adds +2 parsecs to galactic scanning range.",
     "effectSummaryLen": 103
   },
   {
@@ -5208,6 +5344,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "neutrino_physics",
     "techId": 115,
+    "effectSummary": "Fires an intense high-energy beam. Inflicts 3-12 points of damage to shields. Any damage that penetrates the shields disables 1 marine unit for every 5 points of internal damage. Modifications: heavy mount, continuous.",
     "effectSummaryLen": 218
   },
   {
@@ -5216,6 +5353,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "neutrino_physics",
     "techId": 96,
+    "effectSummary": "Detects enemy ships. Has a base detection range of 5 parsecs. Ships in transit can be detected at 1 parsec per size class of ship greater range. Neutron scanners reduce enemy ship's missile evasion by -40.",
     "effectSummaryLen": 205
   },
   {
@@ -5224,6 +5362,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "artificial_gravity",
     "techId": 188,
+    "effectSummary": "It requires 1 tractor beam per size class of target ship to completely stop the target. Ships not held completely lose a portion of movement. Motionless ships can be boarded and are easy targets to hit.",
     "effectSummaryLen": 202
   },
   {
@@ -5232,6 +5371,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "artificial_gravity",
     "techId": 79,
+    "effectSummary": "Gravitic waves that tear a target apart. Inflicts 3-15 points of damage. Any damage penetrating the ship's shields inflicts extra structural damage. Modifications: heavy mount, continuous.",
     "effectSummaryLen": 188
   },
   {
@@ -5240,6 +5380,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "artificial_gravity",
     "techId": 131,
+    "effectSummary": "Creates artificial gravity to normalize a planet to standard gravity limits. Gravity generators eliminate the negative effects of low and high gravity fields.",
     "effectSummaryLen": 158
   },
   {
@@ -5248,6 +5389,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "subspace_physics",
     "techId": null,
+    "effectSummary": "Allows you to issue orders to any ship within 6 squares of a star system with a starbase, battlestation, or star fortress. Increases the command points given by a base by +2 points.",
     "effectSummaryLen": 181
   },
   {
@@ -5256,6 +5398,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "subspace_physics",
     "techId": 94,
+    "effectSummary": "Forms a controlled wormhole between two points, increasing the speed of ships moving through it by 3 parsecs a turn. Once discovered, all colonies will automatically be equipped with one.",
     "effectSummaryLen": 187
   },
   {
@@ -5264,6 +5407,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "multi_phased_physics",
     "techId": 127,
+    "effectSummary": "Fires a trans-warp beam of phased energy that actually exists in several dimensions simultaneously, inflicting 5-20 points of damage. Modifications: autofire, continuous, heavy mount, point defense, shield piercing.",
     "effectSummaryLen": 215
   },
   {
@@ -5272,6 +5416,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "multi_phased_physics",
     "techId": null,
+    "effectSummary": "A hand-held rifle that can overload an opponent's defenses with one blast, increasing the combat rating of militia, troops and armor by +20. The bonus is not cumulative with other rifles.",
     "effectSummaryLen": 187
   },
   {
@@ -5280,6 +5425,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "multi_phased_physics",
     "techId": 110,
+    "effectSummary": "Allow ships to rapidly change the frequency of their shields, increasing the maximum strength by +50%.",
     "effectSummaryLen": 102
   },
   {
@@ -5288,6 +5434,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "plasma_physics",
     "techId": 137,
+    "effectSummary": "Fires a blast of plasma energy inflicting 6-30 poitns of damage to all 4 shields of the target. Only focuses well over a short range, doubling all range penalties. Modifications: heavy mount, and continuous fire.",
     "effectSummaryLen": 212
   },
   {
@@ -5296,6 +5443,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "plasma_physics",
     "techId": 138,
+    "effectSummary": "The most powerful held weapon, increasing the combat rating of militia, troops, and armor by +30. The bonus is not cumulative with other rifle bonuses.",
     "effectSummaryLen": 151
   },
   {
@@ -5304,6 +5452,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "plasma_physics",
     "techId": 140,
+    "effectSummary": "An energy web that envelopes a target within a 15 square range. Inflicts 5-25 points of damage per turn. Thsi damage persists, dissipating at a rate of 5 points per turn.",
     "effectSummaryLen": 170
   },
   {
@@ -5312,6 +5461,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "multi_dimensional_physics",
     "techId": 54,
+    "effectSummary": "Fires intense bolts of energy that inflicts 40 points of damage. Damage from disrupter bolts is not reduced by range. Modifications: autofire, heavy mount.",
     "effectSummaryLen": 155
   },
   {
@@ -5320,6 +5470,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "multi_dimensional_physics",
     "techId": 53,
+    "effectSummary": "Allows ships to cross into the dimension of the Antaran home world. To use it, select a fleet in the same system as the portal and press the 'Attack Antarans' button on the fleet pop-up.",
     "effectSummaryLen": 186
   },
   {
@@ -5328,6 +5479,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "hyper_dimensional_physics",
     "techId": null,
+    "effectSummary": "Allows you to communicate with any ship already in hyperspace so you can change its destination. Increases the command points of star bases, battle stations and star fortresses by +3 points.",
     "effectSummaryLen": 190
   },
   {
@@ -5336,6 +5488,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "hyper_dimensional_physics",
     "techId": null,
+    "effectSummary": "Detects enemy ships. Has a base detection range of 8 parsecs. Ships in transit can be detected 1 parsec further per size class of ship. Sensors reduce enemy ship's missile evasion by -70.",
     "effectSummaryLen": 187
   },
   {
@@ -5344,6 +5497,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "hyper_dimensional_physics",
     "techId": 105,
+    "effectSummary": "Fires a bolt of pure energy that always hits. Inflicts 100 points of damage, but with double the range penalties for dissipation. Modifications: heavy mount.",
     "effectSummaryLen": 157
   },
   {
@@ -5352,6 +5506,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "temporal_physics",
     "techId": null,
+    "effectSummary": "Allows a ship to shift in and out of the time-space continuum, enabling it to take an additional turn at the end of every combat turn.",
     "effectSummaryLen": 134
   },
   {
@@ -5360,6 +5515,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "temporal_physics",
     "techId": 47,
+    "effectSummary": "A plasma cannon that can be mounted on a ship or planet. Automatically inflicts 400 hits to all shields of any ship, regardless of range and defense. Completely destroys a planet when used for orbital bombardment.",
     "effectSummaryLen": 213
   },
   {
@@ -5368,6 +5524,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "physics",
     "fieldId": "temporal_physics",
     "techId": null,
+    "effectSummary": "Allows instantaneous movement between any of your colonies. All colonies are automatically equipped with one once the technology is researched.",
     "effectSummaryLen": 143
   },
   {
@@ -5376,6 +5533,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "nuclear_fission",
     "techId": 120,
+    "effectSummary": "Capable of moving ship 2 parsecs per turn. This is the first ship drive that makes interstellar travel possible.",
     "effectSummaryLen": 112
   },
   {
@@ -5384,6 +5542,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "nuclear_fission",
     "techId": 119,
+    "effectSummary": "A high-yield orbital bombardment device engineered to destroy ground forces and colony installations, inflicting 3-12 points of damage.",
     "effectSummaryLen": 135
   },
   {
@@ -5392,6 +5551,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "cold_fusion",
     "techId": 40,
+    "effectSummary": "Capable of creating a colony in a distant star system. Will not engage in combat and will be destroyed when attacked if not escorted by a military ship.",
     "effectSummaryLen": 152
   },
   {
@@ -5400,6 +5560,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "cold_fusion",
     "techId": 69,
+    "effectSummary": "A group of ships to transport food or colonists as needed between worlds. Each fleet contains 5 freighters. The fleet can transport 5 food units or one population unit per turn.",
     "effectSummaryLen": 177
   },
   {
@@ -5408,6 +5569,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "cold_fusion",
     "techId": 122,
+    "effectSummary": "Capable of creating an outpost on any uninhabited planet. Outposts functions like a colony, except no population units may be moved there. Outpost ships are unarmed and will be destroyed if not escorted by military ships.",
     "effectSummaryLen": 221
   },
   {
@@ -5416,6 +5578,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "cold_fusion",
     "techId": 191,
+    "effectSummary": "Troop carrier for landing marine units on a planet. They do not engage in combat and will be destroyed if not escorted by military ships. Once used, they are dismantled. Can only be build on planets with marine barracks.",
     "effectSummaryLen": 220
   },
   {
@@ -5424,6 +5587,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "advanced_fusion",
     "techId": 72,
+    "effectSummary": "Capable of faster than light travel, moving a ship 3 parsecs a turn. All ship drives are automatically upgraded when this technology is discovered.",
     "effectSummaryLen": 147
   },
   {
@@ -5432,6 +5596,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "advanced_fusion",
     "techId": 71,
+    "effectSummary": "A high-yield orbital bombardment device engineered to destroy ground forces and colony installations, inflicting 4-24 points of damage.",
     "effectSummaryLen": 135
   },
   {
@@ -5440,6 +5605,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "advanced_fusion",
     "techId": null,
+    "effectSummary": "Increases ship's combat speed by +5.",
     "effectSummaryLen": 36
   },
   {
@@ -5448,6 +5614,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "ion_fission",
     "techId": 92,
+    "effectSummary": "Capable of moving a ship 4 parsecs a turn. All ship drives are automatically upgraded when this technology is discovered.",
     "effectSummaryLen": 121
   },
   {
@@ -5456,6 +5623,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "ion_fission",
     "techId": 97,
+    "effectSummary": "fires a particle wave that overloads ships' systems and inflicts 2-10 pints of damage, bypassing all armor and structure. Completely ineffective against monsters and Antaran ships. Modifications: autofire, and continuous.",
     "effectSummaryLen": 221
   },
   {
@@ -5464,6 +5632,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "ion_fission",
     "techId": 158,
+    "effectSummary": "Increases the recharge rate of ship shields by +70% of their maximum strength.",
     "effectSummaryLen": 78
   },
   {
@@ -5472,6 +5641,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "anti_matter_fission",
     "techId": null,
+    "effectSummary": "Capable of moving a ship 5 parsecs a turn. All ship drives are automatically upgraded when this technology is discovered.",
     "effectSummaryLen": 121
   },
   {
@@ -5480,6 +5650,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "anti_matter_fission",
     "techId": 12,
+    "effectSummary": "These torpedoes are balls of antimatter that explode on contact. They travel at a speed of 20 and inflict 25 points of damage and fire every other turn. Modifications: overloaded, enveloping and ECCM.",
     "effectSummaryLen": 200
   },
   {
@@ -5488,6 +5659,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "anti_matter_fission",
     "techId": 225,
+    "effectSummary": "A high-yield orbital bombardment device engineered to destroy ground forces and colony installations, inflicting 5-40 points of damage per bomb.",
     "effectSummaryLen": 144
   },
   {
@@ -5496,6 +5668,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "matter_energy_conversion",
     "techId": 180,
+    "effectSummary": "Allow a ship to move marines to an enemy ship at a range of 12 squares, as long as the shield facing the ship is down. Can also be used to drop bombs on planets up to 12 squares away.",
     "effectSummaryLen": 183
   },
   {
@@ -5504,6 +5677,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "matter_energy_conversion",
     "techId": 64,
+    "effectSummary": "Converts inert raw material into edible food. Having a facility in a colony allows you to convert 2 units of production (energy) into 1 unit of food, as needed by the colony.",
     "effectSummaryLen": 174
   },
   {
@@ -5512,6 +5686,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "high_energy_distribution",
     "techId": null,
+    "effectSummary": "Allows a ship to channel the fire of its energy weapons more efficiently, increasing damage by +50% over base regardless of range. It does not improve the chances of hitting distant targets.",
     "effectSummaryLen": 190
   },
   {
@@ -5520,6 +5695,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "high_energy_distribution",
     "techId": null,
+    "effectSummary": "One quarter of all damage inflicted on a ship is instead stored in the energy absorber. The ship must fire this stored energy at an enemy ship in the next turn or it is lost.",
     "effectSummaryLen": 174
   },
   {
@@ -5528,6 +5704,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "high_energy_distribution",
     "techId": null,
+    "effectSummary": "Conduct and magnify energy transmission in less space, giving a ship more space for equipment. Increases the amount of equipment it can carry by +25%. Megafluxers are used automatically on all ships once acquired.",
     "effectSummaryLen": 213
   },
   {
@@ -5536,6 +5713,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "hyper_dimensional_fission",
     "techId": 146,
+    "effectSummary": "Energy projectiles traveling at trans-warp speed, striking their target the turn they are fired. They inflict 40 points of damage. Can be fired every other turn, with a max range of 24 squares. Modifications: overloaded, enveloping, ECCM.",
     "effectSummaryLen": 238
   },
   {
@@ -5544,6 +5722,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "hyper_dimensional_fission",
     "techId": 87,
+    "effectSummary": "Capable of moving a ship 6 parsecs a turn. All ship drives are automatically upgraded when this technology is discovered.",
     "effectSummaryLen": 121
   },
   {
@@ -5552,6 +5731,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "hyper_dimensional_fission",
     "techId": 88,
+    "effectSummary": "Allows ship beam weapons to fire twice in a turn. After firing twice, one turn must be spent without firing beam weapons; otherwise the weapon can only fire once per turn.",
     "effectSummaryLen": 171
   },
   {
@@ -5560,6 +5740,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "interphased_fission",
     "techId": null,
+    "effectSummary": "Capable of moving a ship 7 parsecs a turn. All ship drives are automatically upgraded when this technology is discovered.",
     "effectSummaryLen": 121
   },
   {
@@ -5568,6 +5749,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "interphased_fission",
     "techId": 139,
+    "effectSummary": "Plasma warhead capable of 120 points of damage. Travels with a combat speed of 24, losing 5 points of strength for each square traveled and firing every other turn. Modifications: overloaded, enveloping, ECCM, no range dissipation.",
     "effectSummaryLen": 231
   },
   {
@@ -5576,6 +5758,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "power",
     "fieldId": "interphased_fission",
     "techId": 118,
+    "effectSummary": "A high-yield orbital bombardment device engineered to destroy ground forces and colony installations, inflicting 10-60 points of damage.",
     "effectSummaryLen": 136
   },
   {
@@ -5584,6 +5767,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "sociology",
     "fieldId": "military_tactics",
     "techId": 164,
+    "effectSummary": "Trains ship crews, adding 1 to their starting level. Ships stationed in the system gain 2 experience each turn.",
     "effectSummaryLen": 111
   },
   {
@@ -5592,6 +5776,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "sociology",
     "fieldId": "xeno_relations",
     "techId": null,
+    "effectSummary": "Focuses on the motivation of other races in an attempt to form deals that are more appealing. The effect is to permanently add +30 diplomatic points to every deal offered to your opponents.",
     "effectSummaryLen": 189
   },
   {
@@ -5600,6 +5785,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "sociology",
     "fieldId": "xeno_relations",
     "techId": 8,
+    "effectSummary": "Provides better control of occupied alien populations: aliens work harder, assimilate into your empire twice as fast, and are half as likely to revolt.",
     "effectSummaryLen": 151
   },
   {
@@ -5608,6 +5794,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "sociology",
     "fieldId": "macro_economics",
     "techId": 173,
+    "effectSummary": "Increases the revenues earned on a planet by +100%.",
     "effectSummaryLen": 51
   },
   {
@@ -5616,6 +5803,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "sociology",
     "fieldId": "teaching_methods",
     "techId": 18,
+    "effectSummary": "Using the most advanced teaching methods available, the efficiency of farmers, workers, and scientists is increased. Each receives a +1 bonus.",
     "effectSummaryLen": 142
   },
   {
@@ -5624,6 +5812,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "sociology",
     "fieldId": "advanced_governments",
     "techId": null,
+    "effectSummary": "",
     "effectSummaryLen": 0
   },
   {
@@ -5632,6 +5821,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "sociology",
     "fieldId": "advanced_governments",
     "techId": null,
+    "effectSummary": "Advanced form of dictatorship. Total command points generated are increased by +50% and all defensive spy rolls are at +20.",
     "effectSummaryLen": 123
   },
   {
@@ -5640,6 +5830,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "sociology",
     "fieldId": "advanced_governments",
     "techId": null,
+    "effectSummary": "",
     "effectSummaryLen": 0
   },
   {
@@ -5648,6 +5839,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "sociology",
     "fieldId": "advanced_governments",
     "techId": null,
+    "effectSummary": "",
     "effectSummaryLen": 0
   },
   {
@@ -5656,6 +5848,7 @@ export const APPLICATION_ROWS: readonly ApplicationRow[] = [
     "subject": "sociology",
     "fieldId": "galactic_economics",
     "techId": 73,
+    "effectSummary": "Eliminates the need for hard currency, replacing it with instantaneous electronic exchanges. Increases the money generated by all colonies by +50%.",
     "effectSummaryLen": 147
   }
 ] as const;

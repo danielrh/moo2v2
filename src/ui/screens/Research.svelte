@@ -1,6 +1,6 @@
 <script lang="ts">
   import { selectors, traitsOf } from '@engine/index';
-  import { applicationsOfField, fieldByNum, fieldById } from '@engine/data/index';
+  import { applicationsOfField, applicationById, fieldByNum, fieldById } from '@engine/data/index';
   import { app, getActive } from '../state.svelte';
 
   const session = () => getActive()!.session;
@@ -128,12 +128,12 @@
               <p class="all" title="Basic fields deliver every application at once">✦ researches all applications</p>
               <ul class="applist">
                 {#each choice.apps as appRow (appRow.id)}
-                  <li class:known={appRow.known}>{appRow.name}{appRow.known ? ' ✓' : ''}</li>
+                  <li class:known={appRow.known} title={applicationById.get(appRow.id)?.effectSummary ?? ''}>{appRow.name}{appRow.known ? ' ✓' : ''}</li>
                 {/each}
               </ul>
             {:else}
               {#each choice.apps as appRow (appRow.id)}
-                <label class:known={appRow.known}>
+                <label class:known={appRow.known} title={applicationById.get(appRow.id)?.effectSummary ?? ''}>
                   <input
                     type="radio"
                     name="target-{choice.field.num}"

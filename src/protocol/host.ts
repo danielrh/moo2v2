@@ -404,6 +404,7 @@ export class HostCore<S> {
     const { seed, contested, commits, reveals } = this.auction;
     const result = resolveAuction({
       contested,
+      pickPoints: this.settings.pickPoints ?? 10,
       players: this.roster().map((p) => ({ id: p.id, raceJson: p.raceJson })),
       reveals,
       commits,

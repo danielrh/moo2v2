@@ -50,15 +50,17 @@ export function findContested(players: Array<{ id: number; raceJson: string | nu
   return contested;
 }
 
-/** Max premium a player can pay over base costs given the 10-point budget. */
-export function budgetSlack(raceJson: string | null): number {
+/** Max premium a player can pay over base costs given the pick budget. */
+export function budgetSlack(raceJson: string | null, budget: number = MAX_POSITIVE_PICKS): number {
   const { picks } = resolvedPicks(raceJson);
-  const v = validatePicks(picks);
+  const v = validatePicks(picks, budget);
   return Math.max(0, budget - v.cost);
 }
 
 export interface ResolveInput {
   contested: Record<string, number[]>;
+  /** pick budget for this game (classic 10) */
+  pickPoints?: number;
   players: Array<{ id: number; raceJson: string | null }>;
   reveals: Map<number, { bids: Record<string, number>; nonce: string }>;
   commits: Map<number, string>;
@@ -87,7 +89,7 @@ export function resolveAuction(input: ResolveInput): ResolveResult {
       if (bidHash(reveal.bids, reveal.nonce) !== commit) continue; // tampered
       const bid = reveal.bids[pickId];
       if (!Number.isSafeInteger(bid) || bid! < base) continue; // below reserve
-      const slack = budgetSlack(input.players.find((p) => p.id === id)?.raceJson ?? null);
+      const slack = budgetSlack(input.players.find((p) => p.id === id)?.raceJson ?? null, input.pickPoints ?? MAX_POSITIVE_PICKS);
       const premium = bid! - base + (premiumSpent.get(id) ?? 0);
       if (premium > slack) continue; // cannot afford the premium
       if (bid! > best || (bid === best && (winner === null || id < winner))) {
