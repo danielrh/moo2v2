@@ -14,16 +14,22 @@
 // human's nearest systems.
 
 import { selectors, starDistance } from '@engine/index';
+import { itemCost, SHIP_BUILDABLES, PROJECT_BUILDABLES } from '@engine/items';
 import type { GameState } from '@engine/types';
 import type { GameSession } from '@protocol/session';
 
 export type BotMode = 'parity' | 'fair';
+/** fair-bot strategy generation: v1 = the original random-build brain (kept
+ * as the self-play benchmark), v2 = the tuned brain that beats it */
+export type BotBrain = 'v1' | 'v2';
 
 export interface SoloBotOptions {
   session: GameSession<GameState>;
   raceJson?: string;
   /** 'parity' (default) uses logged debug grants; 'fair' never cheats */
   mode?: BotMode;
+  /** strategy version (fair mode); default v2 */
+  brain?: BotBrain;
 }
 
 /** deterministic-enough tiny PRNG for bot whims (commands are logged anyway) */
@@ -38,6 +44,7 @@ function whim(seedA: number, seedB: number): () => number {
 export class SoloBot {
   private readonly session: GameSession<GameState>;
   readonly mode: BotMode;
+  readonly brain: BotBrain;
   private aggressive = false;
   private lastPlayedTurn = 0;
   private orderedBattles = new Set<string>();
@@ -46,6 +53,7 @@ export class SoloBot {
   constructor(opts: SoloBotOptions) {
     this.session = opts.session;
     this.mode = opts.mode ?? 'parity';
+    this.brain = opts.brain ?? 'v2';
     const raceJson = opts.raceJson ?? JSON.stringify({ presetId: 'hivex' });
     this.session.setRaceConfig(raceJson, true);
     this.unsub = this.session.subscribe((ev) => {
@@ -126,7 +134,11 @@ export class SoloBot {
       const choices = selectors.researchChoices(planned, me);
       const open = choices.filter((c) => c.apps.some((a) => !a.known));
       if (open.length) {
-        const pick = open[Math.floor(rand() * open.length)]!;
+        // v2: cheapest field first — quick breakthroughs compound; v1: random
+        const pick =
+          this.mode === 'fair' && this.brain === 'v2'
+            ? open.sort((a, b) => a.cost - b.cost || a.field.num - b.field.num)[0]!
+            : open[Math.floor(rand() * open.length)]!;
         const target = pick.grantsAll ? null : (pick.apps.find((a) => !a.known)?.id ?? null);
         this.submit('set_research', { fieldNum: pick.field.num, targetApp: target });
       }
@@ -156,26 +168,51 @@ export class SoloBot {
       }
     }
 
-    // ---- per-colony: jobs (fed + 1 scientist + industry), builds, buys ----
+    // ---- per-colony: jobs, builds, buys ----
     const planned = this.session.getPlanned() ?? state;
+    const v2 = this.mode === 'fair' && this.brain === 'v2';
+    const myWarships = planned.ships.filter((s) => s.owner === me && s.shipKind === 'design').length;
+    const myColonies = planned.colonies.filter((c) => c.owner === me && !c.outpost).length;
     for (const colony of planned.colonies) {
       if (colony.owner !== me || colony.outpost) continue;
-      const jobs = selectors.presetJobs(planned, colony.id, 'industry');
+      // developed worlds shift toward research; young ones industrialize
+      const preset = v2 && colony.buildings.length >= 4 ? 'blend' : 'industry';
+      const jobs = selectors.presetJobs(planned, colony.id, preset);
       if (jobs) {
-        // one researcher per planet "so it has a chance to research more"
-        const g = jobs.find((x) => x.workers > 0);
-        if (g) {
-          g.workers--;
-          g.scientists++;
+        if (!v2 || preset === 'industry') {
+          // one researcher per planet "so it has a chance to research more"
+          const g = jobs.find((x) => x.workers > 0);
+          if (g) {
+            g.workers--;
+            g.scientists++;
+          }
         }
         this.submit('set_jobs', { colonyId: colony.id, groups: jobs });
       }
       if (colony.queue.length === 0) {
         const row = selectors.colonyRow(planned, colony);
         const options = row.buildable.filter((b) => b !== 'housing' && b !== 'trade_goods' && b !== 'spy');
-        if (options.length) {
+        if (!options.length) continue;
+        if (v2) {
+          // 1. cheapest unbuilt BUILDING (economy compounds), 2. a warship
+          //    when the fleet is thin, 3. whatever else is on offer
+          const buildings = options
+            .filter((b) => !SHIP_BUILDABLES.has(b) && !PROJECT_BUILDABLES.has(b) && !b.startsWith('design:') && !b.startsWith('refit:'))
+            .sort((a, b) => (itemCost(planned, me, a, colony) ?? 9999) - (itemCost(planned, me, b, colony) ?? 9999));
+          const designs = options.filter((b) => b.startsWith('design:'));
+          let item: string | undefined = buildings[0];
+          if (!item && myWarships < myColonies && designs.length) item = designs[0];
+          if (!item) item = designs[0] ?? options[Math.floor(rand() * options.length)];
+          if (item) this.submit('set_build_queue', { colonyId: colony.id, items: [item] });
+        } else {
           const item = options[Math.floor(rand() * options.length)]!;
           this.submit('set_build_queue', { colonyId: colony.id, items: [item] });
+        }
+      } else if (v2) {
+        // buy when it is cheap relative to the treasury (keep a reserve)
+        const row = selectors.colonyRow(planned, colony);
+        if (row.canBuy && row.buyPrice !== null && row.buyPrice * 3 <= bot.bc) {
+          this.submit('buy_production', { colonyId: colony.id });
         }
       } else if (bot.bc > 150 && rand() < 0.3) {
         // surplus money gets spent on whatever is on the slipway
