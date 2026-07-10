@@ -420,9 +420,12 @@ function s4_research(state: GameState, outputs: TurnOutputs, events: TurnEvent[]
 // ---------- S6 movement ----------
 
 function s6_movement(state: GameState, events: TurnEvent[]): void {
+  // this advance produces turn (state.turn + 1): anything due then is placed
+  // at its star now, so a "1 turn" ETA really is one turn boundary away
+  const arrivingBy = state.turn + 1;
   for (const ship of state.ships) {
     if (ship.location.kind !== 'transit') continue;
-    if (ship.location.arrivalTurn > state.turn) continue;
+    if (ship.location.arrivalTurn > arrivingBy) continue;
     const starId = ship.location.to;
     ship.location = { kind: 'star', starId };
     const empire = state.empires.find((e) => e.id === ship.owner)!;
@@ -436,6 +439,52 @@ function s6_movement(state: GameState, events: TurnEvent[]): void {
       kind: 'ship_arrived',
       payload: { shipId: ship.id, starId },
     });
+  }
+
+  // colonists riding freighters land the same way (their 5-per-unit
+  // freighter allocation frees up on arrival or loss)
+  if (state.popTransits?.length) {
+    const remaining: typeof state.popTransits = [];
+    for (const t of state.popTransits) {
+      if (t.arrivalTurn > arrivingBy) {
+        remaining.push(t);
+        continue;
+      }
+      const colony = state.colonies.find((c) => c.id === t.toColonyId);
+      if (!colony || colony.owner !== t.empireId || colony.outpost) {
+        events.push({
+          visibleTo: t.empireId,
+          kind: 'colonists_lost',
+          payload: { toColonyId: t.toColonyId, units: t.units },
+        });
+        continue;
+      }
+      const room = Math.max(0, colonyMaxPop(state, colony) - colonyPopUnits(colony));
+      const landed = Math.min(t.units, room);
+      if (landed > 0) {
+        let dst = colony.groups.find((g) => g.race === t.race);
+        if (!dst) {
+          dst = { race: t.race, popK: 0, farmers: 0, workers: 0, scientists: 0, unrest: false };
+          colony.groups.push(dst);
+          colony.groups.sort((a, b) => a.race - b.race);
+        }
+        dst.popK += landed * 1000;
+        dst.workers += landed;
+        events.push({
+          visibleTo: t.empireId,
+          kind: 'colonists_arrived',
+          payload: { colonyId: colony.id, units: landed },
+        });
+      }
+      if (landed < t.units) {
+        events.push({
+          visibleTo: t.empireId,
+          kind: 'colonists_lost',
+          payload: { toColonyId: t.toColonyId, units: t.units - landed },
+        });
+      }
+    }
+    state.popTransits = remaining;
   }
 }
 
