@@ -461,6 +461,9 @@ export function groupGrowthK(
   group: PopGroup,
   maxPop: number,
   totalUnits: number,
+  /** projection mode (UI estimates): use THIS turn's planned food/prod/housing
+   * results instead of the stored previous-turn values the pipeline applies */
+  projected?: { foodLack: number; prodLack: number; housingPP: number },
 ): number {
   const owner = empireOf(state, colony.owner);
   const ownerTraits = traitsOf(owner);
@@ -471,21 +474,25 @@ export function groupGrowthK(
   if (c <= 0) return group.popK > 0 && free > 0 ? 20 : 0; // fractional seed group still grows slowly
   const basic = maxPop > 0 ? isqrt(floorDiv(2000 * c * free, maxPop)) : 0;
 
+  const housingPP = projected?.housingPP ?? colony.housingPPPrev;
+  const foodLack = projected?.foodLack ?? colony.foodLackPrev;
+  const prodLack = projected?.prodLack ?? colony.prodLackPrev;
+
   let bonusPct = gTraits.growthPct + acc.growthPct;
   // housing: % = floor(housingPP * 40 / colonists-of-this-race)
-  if (colony.housingPPPrev > 0 && c > 0) {
-    bonusPct += floorDiv(colony.housingPPPrev * 40, c);
+  if (housingPP > 0 && c > 0) {
+    bonusPct += floorDiv(housingPP * 40, c);
   }
 
   let inc = floorDiv(basic * (100 + Math.max(-90, bonusPct)), 100);
   inc += acc.growthFlatK;
 
   // food shortage penalty (colony-wide lack attributed to this group's share)
-  if (colony.foodLackPrev > 0 || colony.prodLackPrev > 0) {
+  if (foodLack > 0 || prodLack > 0) {
     if (gTraits.cybernetic) {
-      inc -= 25 * colony.foodLackPrev + 25 * colony.prodLackPrev;
+      inc -= 25 * foodLack + 25 * prodLack;
     } else {
-      inc -= 50 * colony.foodLackPrev;
+      inc -= 50 * foodLack;
     }
   }
   return inc;

@@ -44,16 +44,54 @@ export interface ColonyRow {
   tags: string[];
 }
 
+/** Project this turn's food distribution (mirrors the pipeline: surpluses
+ * cover deficits within freighter capacity, then chartered haulers within the
+ * treasury; blockaded colonies get nothing) → uncovered lack per colony.
+ * Pure read: powers the LIVE growth estimate so reassigning farmers moves the
+ * projection immediately instead of one turn late. */
+export function projectedFoodShortages(state: GameState, empireId: number): Map<number, number> {
+  const empire = state.empires.find((e) => e.id === empireId)!;
+  const mine = state.colonies.filter((c) => c.owner === empireId && !c.outpost);
+  const out = new Map<number, number>();
+  let surplus = 0;
+  let bcIncome = 0;
+  const deficits: Array<{ colony: Colony; lack: number }> = [];
+  for (const c of mine) {
+    const o = colonyOutput(state, c);
+    bcIncome += o.bcIncome;
+    if (o.foodNet >= 0) surplus += o.foodNet;
+    else deficits.push({ colony: c, lack: -o.foodNet });
+    out.set(c.id, 0);
+  }
+  let capacity = empire.freighters * 5;
+  let charterBudget = Math.max(0, empire.bc + bcIncome);
+  deficits.sort((a, b) => a.colony.id - b.colony.id);
+  for (const d of deficits) {
+    const blockaded = isBlockaded(state, d.colony);
+    const moved = blockaded ? 0 : Math.min(d.lack, surplus, capacity);
+    surplus -= moved;
+    capacity -= moved;
+    d.lack -= moved;
+    const chartered = blockaded ? 0 : Math.min(d.lack, surplus, charterBudget);
+    surplus -= chartered;
+    charterBudget -= chartered;
+    d.lack -= chartered;
+    out.set(d.colony.id, d.lack);
+  }
+  return out;
+}
+
 export function colonyRows(state: GameState, empireId: number): ColonyRow[] {
+  const shortages = projectedFoodShortages(state, empireId);
   const rows: ColonyRow[] = [];
   for (const colony of state.colonies) {
     if (colony.owner !== empireId) continue;
-    rows.push(colonyRow(state, colony));
+    rows.push(colonyRow(state, colony, shortages.get(colony.id) ?? 0));
   }
   return rows;
 }
 
-export function colonyRow(state: GameState, colony: Colony): ColonyRow {
+export function colonyRow(state: GameState, colony: Colony, projectedFoodLack?: number): ColonyRow {
   const planet = state.planets.find((p) => p.id === colony.planetId)!;
   const star = state.stars.find((s) => s.id === planet.starId)!;
   const empire = state.empires.find((e) => e.id === colony.owner)!;

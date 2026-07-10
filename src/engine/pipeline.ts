@@ -155,6 +155,9 @@ function s1_population(state: GameState, events: TurnEvent[]): void {
       normalizeJobsForGroup(g);
     }
     colony.groups = colony.groups.filter((g) => g.popK > 0);
+    // a colony can never linger at 0 whole units: when starvation leaves only
+    // fractions of a colonist, the settlement is gone too
+    if (colonyPopUnits(colony) === 0) colony.groups = [];
     if (colony.groups.length === 0) {
       events.push({ visibleTo: colony.owner, kind: 'colony_died', payload: { colonyId: colony.id } });
     }

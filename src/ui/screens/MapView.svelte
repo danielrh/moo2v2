@@ -73,10 +73,12 @@
 
   const selected = $derived(view.find((v) => v.star.id === selectedStarId) ?? null);
   const shipsHere = $derived(fleets.filter((f) => f.atStarId === selectedStarId));
-  /** wormhole partner of the selected star: always a valid move target */
+  /** wormhole partner of the selected star: always a valid move target —
+   * but only shown once the wormhole itself is known (visited/scanned) */
   const wormholeTarget = $derived.by(() => {
     if (!gs || selectedStarId === null) return null;
-    return gs.stars.find((s) => s.id === selectedStarId)?.wormholeTo ?? null;
+    const sv = view.find((v) => v.star.id === selectedStarId);
+    return sv?.wormholeVisible ? sv.star.wormholeTo : null;
   });
   const mapDims = $derived(gs ? MAP_SIZE[gs.settings.galaxySize] : { w: 2000, h: 1500 });
 
@@ -182,12 +184,14 @@
     renamingStar = false;
   }
 
-  /** wormhole pairs (drawn once each) */
+  /** wormhole pairs (drawn once each) — only after an endpoint was visited
+   * or lies in the scanner envelope; the fog must not leak the shortcuts */
   const wormholeLinks = $derived.by(() => {
     if (!gs) return [];
     const out: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
-    for (const s of gs.stars) {
-      if (s.wormholeTo !== null && s.wormholeTo > s.id) {
+    for (const sv of view) {
+      const s = sv.star;
+      if (s.wormholeTo !== null && s.wormholeTo > s.id && sv.wormholeVisible) {
         const t = gs.stars.find((x) => x.id === s.wormholeTo);
         if (t) out.push({ x1: s.x, y1: s.y, x2: t.x, y2: t.y });
       }
