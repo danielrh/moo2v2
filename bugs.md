@@ -86,6 +86,8 @@ different weapons with overkill should target different ships
 
 starlight projector should be flashy
 
+we saw a weird thing where the ship died with no visual cause shown in bugs/battleneg.png then bugs/battle0.png then bugs.battle1.png as we slid through
+
 we need assault shuttles and fighter bays for the battle simulator
 
 When ships retreat in the battle simulator they stay in the corner. They should retreat for the battle sim I imagine so we can see what survives. Ensure that real battles actually do retreat
