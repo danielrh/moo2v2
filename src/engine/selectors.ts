@@ -5,6 +5,7 @@
 import { fieldByNum, applicationsOfField, FIELD_SUBJECTS, type FieldRow } from './data/index';
 import { buyCost, colonyMaxPop, colonyOutput, colonyPopUnits, groupGrowthK, type ColonyOutput } from './economy';
 import { buildableItems, itemCost } from './items';
+import { empireAccum } from './effects';
 import { commandPoints, driveSpeed, fuelRangeCp, inRange, supportStars } from './movement';
 import { availableFields, fieldCost, fieldGrantsAll } from './research';
 import { starDistance } from './galaxy';
@@ -305,15 +306,50 @@ function subjectLabel(field: FieldRow): string {
 export interface StarView {
   star: Star;
   explored: boolean;
+  /** inside the empire's scanner envelope (reveals activity + wormholes) */
+  scanned: boolean;
+  /** the wormhole from this star may be drawn (an endpoint is known) */
+  wormholeVisible: boolean;
   planets: Planet[];
   colonies: Array<{ id: number; owner: number; name: string; outpost: boolean }>;
   ships: Array<{ id: number; owner: number; kind: string }>;
   inRange: boolean;
 }
 
+/** base scanner envelope in centiparsecs; scanner techs add +1 parsec per
+ * scan point (Space Scanner +2 … Tachyon Scanner +7) */
+const BASE_SCAN_CP = 200;
+
+/** Stars inside the empire's scanner envelope: around every colony and every
+ * own ship parked at a star. Scanners reveal ship activity and wormholes —
+ * you still have to visit a system to survey its planets. */
+export function scannedStars(state: GameState, empireId: number): Set<number> {
+  const empire = state.empires.find((e) => e.id === empireId)!;
+  const range = BASE_SCAN_CP + empireAccum(state, empire).scan * 100;
+  const sources: Star[] = [];
+  for (const c of state.colonies) {
+    if (c.owner !== empireId) continue;
+    const p = state.planets.find((x) => x.id === c.planetId)!;
+    const star = state.stars.find((s) => s.id === p.starId);
+    if (star) sources.push(star);
+  }
+  for (const ship of state.ships) {
+    if (ship.owner !== empireId || ship.location.kind !== 'star') continue;
+    const star = state.stars.find((s) => s.id === (ship.location as { starId: number }).starId);
+    if (star) sources.push(star);
+  }
+  const out = new Set<number>();
+  for (const star of state.stars) {
+    if (sources.some((src) => starDistance(src, star) <= range)) out.add(star.id);
+  }
+  return out;
+}
+
 export function galaxyView(state: GameState, empireId: number): StarView[] {
   const empire = state.empires.find((e) => e.id === empireId)!;
   const explored = new Set(empire.exploredStars);
+  const scanned = scannedStars(state, empireId);
+  const known = (id: number) => explored.has(id) || scanned.has(id);
   return state.stars.map((star) => {
     const planets = state.planets.filter((p) => p.starId === star.id);
     const colonies = state.colonies
@@ -321,11 +357,14 @@ export function galaxyView(state: GameState, empireId: number): StarView[] {
       .map((c) => ({ id: c.id, owner: c.owner, name: c.name, outpost: c.outpost }));
     const ships = state.ships
       .filter((s) => s.location.kind === 'star' && s.location.starId === star.id)
-      .filter((s) => s.owner === empireId || explored.has(star.id))
+      .filter((s) => s.owner === empireId || known(star.id))
       .map((s) => ({ id: s.id, owner: s.owner, kind: s.shipKind }));
     return {
       star,
       explored: explored.has(star.id),
+      scanned: scanned.has(star.id),
+      // a wormhole stays hidden until you visit or scan one of its ends
+      wormholeVisible: star.wormholeTo !== null && (known(star.id) || known(star.wormholeTo)),
       planets: explored.has(star.id) ? planets : [],
       colonies: colonies.filter((c) => c.owner === empireId || explored.has(star.id)),
       ships,
