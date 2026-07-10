@@ -17,6 +17,7 @@
 import {
   applicationById,
   fieldById,
+  FIELD_ROWS,
   FIELD_SUBJECTS,
   hullById,
   weaponById,
@@ -170,12 +171,39 @@ const MOD_SPACE_PCT: Record<string, number> = {
   ovr: 50,
 };
 
+/** Advanced mods need research beyond the weapon itself: MIRV and ECCM come
+ * two field levels deeper in the weapon's subject, point defense one level
+ * (bug: "weapons shouldn't have mirv or eccm until 2 layers deeper"). */
+const MOD_FIELD_DEPTH: Record<string, number> = { mv: 2, eccm: 2, pd: 1 };
+
+export function modUnlocked(empire: Empire, weaponId: string, mod: string): boolean {
+  const need = MOD_FIELD_DEPTH[mod] ?? 0;
+  if (need === 0) return true;
+  const app = applicationById.get(weaponId) ?? applicationById.get(weaponId + 's');
+  if (!app) return true; // table-less starter weapons carry no gate
+  const field = fieldById.get(app.fieldId);
+  if (!field) return true;
+  const subject = FIELD_SUBJECTS[field.id];
+  const ladder = FIELD_ROWS.filter((f) => FIELD_SUBJECTS[f.id] === subject && !f.id.startsWith('advf_')).sort(
+    (a, b) => a.cost - b.cost || a.num - b.num,
+  );
+  const idx = ladder.findIndex((f) => f.num === field.num);
+  if (idx < 0) return true;
+  const deeper = ladder.slice(idx + need);
+  // top-of-tree weapons: mastering the final field of the subject qualifies
+  if (deeper.length === 0) return empire.completedFields.includes(ladder[ladder.length - 1]!.num);
+  return deeper.some((f) => empire.completedFields.includes(f.num));
+}
+
 export function fitWeapon(empire: Empire, dw: DesignWeapon): FittedWeapon | string {
   const row = weaponById.get(dw.weapon);
   if (!row) return `unknown weapon ${dw.weapon}`;
   for (const m of dw.mods) {
     if (!(m in MOD_SPACE_PCT)) return `unknown mod ${m}`;
     if (!row.availableMods.includes(m)) return `${dw.weapon} cannot take ${m}`;
+    if (!modUnlocked(empire, dw.weapon, m)) {
+      return `${m} on ${dw.weapon} needs deeper research in its field (${m === 'pd' ? 'one' : 'two'} level${m === 'pd' ? '' : 's'} beyond the weapon)`;
+    }
   }
   if (!Number.isSafeInteger(dw.count) || dw.count < 1 || dw.count > 200) return 'bad weapon count';
   const arc = dw.arc ?? 'F';

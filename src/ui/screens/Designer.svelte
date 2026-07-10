@@ -5,6 +5,7 @@
     bestShield,
     designDps,
     designStats,
+    modUnlocked,
     knownWeapons,
     HULLS_BUILDABLE,
     SPECIALS,
@@ -183,8 +184,9 @@
               {/each}
             </select>
             {#each weaponChoices.find((wc) => wc.id === w.weapon)?.availableMods ?? [] as mod (mod)}
-              <label class="mod">
-                <input type="checkbox" checked={w.mods.includes(mod)} onchange={() => toggleMod(i, mod)} />{mod}
+              {@const locked = empire ? !modUnlocked(empire, w.weapon, mod) : false}
+              <label class="mod" class:locked title={locked ? `${mod}: requires research ${mod === 'pd' ? 'one level' : 'two levels'} deeper in this weapon's field` : ''}>
+                <input type="checkbox" disabled={locked} checked={w.mods.includes(mod)} onchange={() => toggleMod(i, mod)} />{mod}{locked ? '🔒' : ''}
               </label>
             {/each}
             <button onclick={() => removeWeapon(i)}>✕</button>
@@ -252,6 +254,9 @@
 {/if}
 
 <style>
+  .mod.locked {
+    opacity: 0.45;
+  }
   .wrap {
     display: flex;
     gap: 1.5rem;
