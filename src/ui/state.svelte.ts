@@ -13,6 +13,22 @@ export interface ReplayEntry {
   watched: boolean;
 }
 
+export interface GroundBattleEntry {
+  turn: number;
+  payload: {
+    colonyId: number;
+    colonyName: string;
+    starId: number;
+    attacker: number;
+    defender: number;
+    captured: boolean;
+    civilianLosses: number;
+    startTroops: number;
+    startMilitia: number;
+    rounds: Array<{ t: number; m: number }>;
+  };
+}
+
 export interface ReportEntry {
   turn: number;
   kind: string;
@@ -26,6 +42,7 @@ export const app = $state({
   version: 0,
   chat: [] as Array<{ id: number; from: number; to: number; text: string }>,
   replays: [] as ReplayEntry[],
+  groundBattles: [] as GroundBattleEntry[],
   /** replay currently open in the battle viewer */
   viewing: null as ReplayEntry | null,
   /** turn-event feed visible to this player (newest last) */
@@ -84,6 +101,15 @@ export function bindActive(active: ActiveGame): void {
     } else if (ev.type === 'turn-advanced') {
       const me = active.session.playerId;
       for (const e of active.session.lastTurnEvents) {
+        if (e.kind === 'ground_battle') {
+          if (e.visibleTo !== me) continue; // participants only
+          const gp = e.payload as GroundBattleEntry['payload'];
+          if (!app.groundBattles.some((g) => g.turn === ev.turn - 1 && g.payload.colonyId === gp.colonyId)) {
+            app.groundBattles.push({ turn: ev.turn - 1, payload: gp });
+            if (app.groundBattles.length > 20) app.groundBattles.shift();
+          }
+          continue;
+        }
         if (e.kind === 'battle_replay') {
           if (e.visibleTo !== -1 && e.visibleTo !== me) continue; // participants only
           const p = e.payload as { battleId: string; seed: string; input: unknown; summary: Record<string, unknown> };

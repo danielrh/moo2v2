@@ -5,6 +5,8 @@
   import type { ProposalKind } from '@engine/types';
   import { ownerName, playerColor } from '../colors';
   import { enemySeedsFromReplays, setLabSeed, type LabSeedGroup } from '../labSeed';
+  import GroundBattleDialog from '../battle/GroundBattleDialog.svelte';
+  import type { GroundBattleEntry } from '../state.svelte';
   import { app, getActive } from '../state.svelte';
 
   const session = () => getActive()!.session;
@@ -21,6 +23,7 @@
   const unmetCount = $derived(gs ? gs.empires.filter((e) => e.id !== selfId && !met.has(e.id)).length : 0);
 
   let note = $state('');
+  let viewingGround = $state<GroundBattleEntry | null>(null);
   function submit(kind: string, payload: unknown) {
     note = '';
     const res = session().submit(kind, payload);
@@ -367,6 +370,22 @@
     </button>
     <span class="dim">your designs vs the enemy types you have encountered — sandbox only, the real game is untouched</span>
   </p>
+
+  {#if app.groundBattles.length}
+    <h3>Ground assaults</h3>
+    <ul>
+      {#each app.groundBattles as gb, gi (gi)}
+        <li>
+          Turn {gb.turn} — {gb.payload.captured ? '🏳' : '🛡'} {gb.payload.colonyName}:
+          {gb.payload.startTroops} troops vs {gb.payload.startMilitia} militia
+          <button data-testid="ground-watch-{gi}" onclick={() => (viewingGround = gb)}>▶ watch</button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+  {#if viewingGround}
+    <GroundBattleDialog battle={viewingGround} onclose={() => (viewingGround = null)} />
+  {/if}
 
   {#if app.replays.length}
     <h3>Battle replays</h3>
