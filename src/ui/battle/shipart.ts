@@ -37,6 +37,10 @@ export interface ShipModel {
   guns: Mount[];
   /** half-diagonal in art px — the shield bubble radius */
   radius: number;
+  /** render scale relative to the shared class footprint (imported hi-res art
+   * draws on a larger canvas; the viewer multiplies its pixel size by this so
+   * every style's cruiser occupies the same field footprint). Default 1. */
+  pxScale?: number;
 }
 
 // ---- deterministic tiny RNG (UI-side; never touches the sim) ----
@@ -782,55 +786,290 @@ const planManta: Plan = (g, cls, k, r, variant) => {
 };
 
 /** bulwark: brutalist armored slabs */
+// ---- bulwark: hand-drawn source art (bugs/bullwark.png), stamped verbatim ----
+// The six warship hulls are imported pixel-for-pixel from the reference sheet
+// (nose right, engines left); variants 1..3 are generated refits layered onto
+// the same silhouette. Grids are larger than the shared CLASS_SPECS canvas, so
+// these models carry a pxScale that keeps their on-field footprint standard.
+interface ImportedSprite {
+  /** row index of the bright spine band (the ship's optical axis) */
+  spine: number;
+  /** '.'=empty h=hull s=shade l=light a=accent g=glow t=trim n=nozzle */
+  rows: string[];
+}
+
+const IMPORT_ROLES: Record<string, number> = {
+  '.': R_EMPTY, h: R_HULL, s: R_SHADE, l: R_LIGHT, a: R_ACCENT, g: R_GLOW, t: R_TRIM, n: R_NOZZLE,
+};
+
+const BULWARK_SPRITES: Partial<Record<ArtClass, ImportedSprite>> = {
+  scout: {
+    spine: 4,
+    rows: [
+      '.......llllllllllllln.',
+      '.......hhhhhhhhhhhhhh.',
+      '.......hhhhhhhhh..hh..',
+      'lllllllhhhhhhhhhhhhhh.',
+      'aggggggggggggggggggghl',
+      'ahhhhhhhhhhhhhhhhhhhhs',
+      'sssssshhhhhhhhhhhhhhh.',
+      '......shhhhhhhhh..hh..',
+      '.......hhhhhhhhhhhhhh.',
+      '.......sssssssssssssn.',
+    ],
+  },
+  frigate: {
+    spine: 6,
+    rows: [
+      'lllllllll........................',
+      'nhhhhhhhh........................',
+      'hhhhhhhhhll......................',
+      '.....hhhhhhlll...................',
+      '.......hhhhhhhlllllll.......lll..',
+      '.......hhhhhhhhhhhhhh......lhhhl.',
+      '.......ggggggggggggggggggggggghhl',
+      '.......hhhhhhhhhhhhhhhhhhhhhhhhhs',
+      '.......hhhhhhhhhhhhhhssssssshhhs.',
+      '.......hhhhhhhsssssss.......sss..',
+      '.....hhhhhhsss...................',
+      'hhhhhhhhhss......................',
+      'nhhhhhhhh........................',
+      'sssssssss........................',
+    ],
+  },
+  destroyer: {
+    spine: 8,
+    rows: [
+      '...........lllllllll.....................',
+      '...........hhhhhhhna.....................',
+      '........lllhhhhhhhhh.....................',
+      '.....lllhhhhhhhhh........................',
+      '..lllhhhhhhhhhhh.........................',
+      'llhhhhhhhhhhhhhh...................llll..',
+      'hhhhhhhhhhhhhhhhhhh...............lhhhhl.',
+      'hhhhhhhhhhhhhhhhhhh..............lhhhhhhl',
+      'ggggggggggggggggggggggggggggggggggggghhhh',
+      'hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+      'hhhhhhhhhhhhhhhhhhhhsssssssssssssshhhhhhs',
+      'hhhhhhhhhhhhhhhhhhh...............shhhhs.',
+      'sshhhhhhhhhhhhhh...................ssss..',
+      '..ssshhhhhhhhhhh.........................',
+      '.....ssshhhhhhhhh........................',
+      '........ssshhhhhhhhh.....................',
+      '...........hhhhhhhna.....................',
+      '...........sssssssss.....................',
+    ],
+  },
+  cruiser: {
+    spine: 10,
+    rows: [
+      'nallllllll......................................',
+      'hhhhhhhhhh......................................',
+      'hhhhhhhhhh......................................',
+      '...hhhhhhhl......l..............................',
+      '....hhhhhhhllllllhll............................',
+      '....hhhhhhhhhhhhhhhhlll.........................',
+      '.....hhhhhhhhhhhhhhhhhhll................llll...',
+      '.....hhhhhhhhhhhhhhhhhhhhl............lllhhhhllh',
+      '.....hhhhhhhhhhhhhhhhhhhhhhll.......llhhhhhhhhhh',
+      '.....hhhhhhhhhhhhhhhhhhhhhhhhlllllllhhhhhhhhhhhh',
+      '.....gggggggggggggggggggggghhhhhhhhhhh..........',
+      '.....hhhhhhhhhhhhhhhhhhhhhhhhssssssshhhhhhhhhhhh',
+      '.....hhhhhhhhhhhhhhhhhhhhhhss.......ssshhhhhhhhh',
+      '.....hhhhhhhhhhhhhhhhhhhhh.............sshhhhsss',
+      '.....hhhhhhhhhhhhhhhhhhhhs...............ssss...',
+      '.....hhhhhhhhhhhhhhhhhhss.......................',
+      '....hhhhhhhhhhhhhhhhsss.........................',
+      '....hhhhhhhsssssshss............................',
+      '...hhhhhhhs......s..............................',
+      'hhhhhhhhhh......................................',
+      'hhhhhhhhhh......................................',
+      'nassssssss......................................',
+    ],
+  },
+  battleship: {
+    spine: 14,
+    rows: [
+      'nllllaalllll.......................................',
+      'hhhhhhhaahhh.......................................',
+      'hhhhhhhhhaah.......................................',
+      '..hhhhhhhhhaaa.....................................',
+      '..hnallllllllla....................................',
+      '...hhhhhhhhhhhh....................................',
+      '...hhhhhhhhhhhhhhhhhhhhllll........................',
+      '..hhhhhhhhhhhlhhhhhhlaahhhhl.......................',
+      '..hhhhhhhhhhhhllllllhllaahhh.......................',
+      '..hhhhhhhhhhhhhhhhhhhhhllllh.......................',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhll...l............llll...',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhll.hllllllllllllhhhhllh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhllhhhhhhhllhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhlllllllhhhhhhhhhhhh',
+      '..gggggggggggggggggggggggggggghhhhhhhhhhh..........',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhssssssshhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhssshhhhhhssshhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhss.ssssssssssshhhhsss',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhsh..............ssss...',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhss.......................',
+      '..hhhhhhhhhhhhhhhhhhhhhssshh.......................',
+      '..hhhhhhhhhhhhsssssshsshhhhs.......................',
+      '..hhhhhhhhhhhshhhhhashhhhss........................',
+      '...hhhhhhhhhhhhhhaahhhh............................',
+      '...hhhhhhhhhhhhahhh................................',
+      '..hnassssssssaassss................................',
+      '..hhhhhhhhhaa......................................',
+      'hhhhhhhhhaah.......................................',
+      'hhhhhhhaahhh.......................................',
+      'nssssaasssss.......................................',
+    ],
+  },
+  titan: {
+    spine: 18,
+    rows: [
+      'nlnlllllaallllll.............................................',
+      'hhhhhhhhhhaahhhh.............................................',
+      'hhhhhhhhhhhhaahh.............................................',
+      '...hhhhhhhhhhhaa......l.l....................................',
+      '...hhhhhhhhhhhhhaa.lllllhlll.................................',
+      '...hhhhhhhhhhhhhhlaalhhhhhhhll...............................',
+      '...hhhhhhhhhhhhhhhhhaahhhhhhhhlll...............llllllllll...',
+      '....hhhhhhhhhhhhhhhhhhaahhhhhhhhhlll............hhhhhhhhhhl..',
+      '....hhhhhhhhhhhhhhhhhhhhaahhhhhhhhhhll..........hhhhhhhhhhhl.',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhaahhhhhhhhhhlll.......hhhhhhhhhhhal',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhaahhhhhhhhhhhlll....hhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhaahhhhhhhhhhhhllllhhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhllhhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+      '..ggggggggggggggggggggggggggggggggggggggggggggggghhhhhghhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhsshhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhhhaahhhhhhhhhhhhsssshhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhhhaahhhhhhhhhhhsss....hhhhhhhhhhhhh',
+      '..hhhhhhhhhhhhhhhhhhhhhhhhaahhhhhhhhhhsss.......hhhhhhhhhhhas',
+      '....hhhhhhhhhhhhhhhhhhhhaahhhhhhhhhhss..........hhhhhhhhhhhs.',
+      '....hhhhhhhhhhhhhhhhhhaahhhhhhhhhsss............hhhhhhhhhhs..',
+      '...hhhhhhhhhhhhhhhhhaahhhhhhhhsss...............ssssssssss...',
+      '...hhhhhhhhhhhhhhsaashhhhhhhss...............................',
+      '...hhhhhhhhhhhhhaa.ssssshsss.................................',
+      '...hhhhhhhhhhhaa......s.s....................................',
+      'hhhhhhhhhhhhaahh.............................................',
+      'hhhhhhhhhhaahhhh.............................................',
+      'nsnsssssaassssss.............................................',
+    ],
+  },
+};
+
+/** paint an imported sprite into g (canvas must match the grid dims) and
+ * derive engine mounts (contiguous hull runs on the stern column) + the
+ * spine-row gun muzzle */
+function stampImported(g: G, spr: ImportedSprite): void {
+  for (let y = 0; y < spr.rows.length; y++) {
+    const row = spr.rows[y]!;
+    for (let x = 0; x < row.length; x++) {
+      const v = IMPORT_ROLES[row[x]!] ?? R_EMPTY;
+      if (v !== R_EMPTY) g.set(x, y, v);
+    }
+  }
+  // engines: center of each contiguous painted run in column 0
+  let runStart = -1;
+  for (let y = 0; y <= spr.rows.length; y++) {
+    const filled = y < spr.rows.length && (IMPORT_ROLES[spr.rows[y]![0]!] ?? R_EMPTY) !== R_EMPTY;
+    if (filled && runStart < 0) runStart = y;
+    if (!filled && runStart >= 0) {
+      g.engines.push({ x: 0, y: (runStart + y - 1) >> 1 });
+      runStart = -1;
+    }
+  }
+  // gun muzzle: the nose tip on the spine band
+  const spineRow = spr.rows[spr.spine]!;
+  for (let x = spineRow.length - 1; x >= 0; x--) {
+    if ((IMPORT_ROLES[spineRow[x]!] ?? R_EMPTY) !== R_EMPTY) {
+      g.guns.push({ x, y: spr.spine });
+      break;
+    }
+  }
+}
+
 const planBulwark: Plan = (g, cls, k, r, variant) => {
-  const L = k.w;
-  const HH = (k.h - 1) >> 1;
-  if (k.base) {
-    const c = (L - 1) / 2;
-    const s = HH - 1;
-    g.box(c - s, c + s, 0, s - 1, R_HULL); // the keep
-    g.box(c - s + 2, c + s - 2, 0, s, R_HULL); // parapet overhang
-    g.bevel();
-    g.box(c - s + 1, c + s - 1, s - 3, s - 3, R_TRIM);
-    g.box(c - 2, c + 2, 0, 1, R_LIGHT);
-    g.sym(c, 0, R_GLOW);
-    g.box(c - s, c - s, 0, s - 1, R_ACCENT);
-    g.box(c + s, c + s, 0, s - 1, R_ACCENT);
-    // corner gun bastions
-    g.discPair(c - s + 1, s - 1, 1, R_SHADE);
-    g.discPair(c + s - 1, s - 1, 1, R_SHADE);
-    g.gun(c + s - 1, s - 1);
-    g.gun(c - s + 1, s - 1);
+  const spr = BULWARK_SPRITES[cls];
+  if (spr) {
+    stampImported(g, spr);
+    const spine = spr.spine;
+    const topAt = (x: number): number => {
+      for (let y = 0; y < g.h; y++) if (g.get(x, y) !== R_EMPTY) return y;
+      return spine;
+    };
+    const botAt = (x: number): number => {
+      for (let y = g.h - 1; y >= 0; y--) if (g.get(x, y) !== R_EMPTY) return y;
+      return spine;
+    };
+    if (variant === 1) {
+      // chevron refit: extra red war-stripes across the stern block
+      for (const dx of [3, 4, 7, 8]) {
+        for (let dy = -3; dy <= 3; dy++) {
+          if (dy === 0) continue; // keep the spine band clean
+          const x = dx + Math.abs(dy); // slanted like the source chevrons
+          if (g.get(x, spine + dy) === R_HULL) g.set(x, spine + dy, R_ACCENT);
+        }
+      }
+    } else if (variant === 2) {
+      // warpaint prow: the nose pod's lit edges go player-red + a hot core
+      for (let x = Math.round(g.w * 0.7); x < g.w; x++) {
+        for (let y = 0; y < g.h; y++) {
+          if (g.get(x, y) === R_LIGHT) g.set(x, y, R_ACCENT);
+        }
+      }
+      const gx = g.guns[0]?.x ?? g.w - 1;
+      if (g.get(gx - 1, spine) !== R_EMPTY) g.set(gx - 1, spine, R_GLOW);
+    } else if (variant === 3) {
+      // bastion refit: turret studs along the dorsal/ventral armor line
+      for (const fx of [0.3, 0.45, 0.6]) {
+        const x = Math.round(g.w * fx);
+        const ty = topAt(x);
+        const by = botAt(x);
+        if (g.get(x, ty) !== R_EMPTY) {
+          g.set(x, ty, R_TRIM);
+          g.set(x + 1, ty, R_LIGHT);
+        }
+        if (g.get(x, by) !== R_EMPTY) {
+          g.set(x, by, R_TRIM);
+          g.set(x + 1, by, R_SHADE);
+        }
+      }
+      // porthole glows on the lower deck
+      for (let x = Math.round(g.w * 0.2); x < Math.round(g.w * 0.55); x += 3) {
+        if (g.get(x, spine + 2) === R_HULL) g.set(x, spine + 2, R_GLOW);
+      }
+    }
     return;
   }
-  const bh = HH - 1;
-  // slab with a blunt chamfered prow
-  g.box(1, Math.round(L * 0.82), 0, bh, R_HULL);
-  g.wedge(Math.round(L * 0.82), L - 1, bh, Math.max(1, Math.round(bh * 0.4)), R_HULL);
-  // deck steps
-  if (variant % 2 === 0) g.box(Math.round(L * 0.25), Math.round(L * 0.6), bh, Math.min(HH, bh + 1), R_HULL);
+  // stations keep the brutalist citadel keep, restyled with the sheet's cues:
+  // olive slab + pale window band + red bastion edges
+  const L = k.w;
+  const HH = (k.h - 1) >> 1;
+  const c = (L - 1) / 2;
+  const s = HH - 1;
+  g.box(c - s, c + s, 0, s - 1, R_HULL); // the keep
+  g.box(c - s + 2, c + s - 2, 0, s, R_HULL); // parapet overhang
   g.bevel();
-  // armor plate seams + rivets
-  for (let x = 3; x < L - 3; x += 4) g.band(x, 0, bh - 1, R_SHADE);
-  for (let x = 5; x < L - 4; x += 4) g.sym(x, Math.max(1, bh - 1), R_TRIM);
-  // citadel tower
-  const cit = Math.round(L * (variant === 3 ? 0.55 : 0.4));
-  g.box(cit - 1, cit + 1, 0, 1, R_LIGHT);
-  g.sym(cit, 0, R_GLOW);
-  g.sym(cit + 1, 1, R_GLOW);
-  // hazard stripe at the prow + bastion turrets
-  g.band(Math.round(L * 0.8), 0, Math.max(1, Math.round(bh * 0.6)), R_ACCENT);
-  if (k.tier >= 2) {
-    g.discPair(Math.round(L * 0.68), bh, 1, R_SHADE);
-    g.gun(Math.round(L * 0.7), bh);
-  }
-  if (k.tier >= 4) {
-    g.discPair(Math.round(L * 0.3), bh, 1, R_SHADE);
-    g.gun(Math.round(L * 0.32), bh);
-  }
-  g.eng(0, Math.max(1, Math.round(bh * 0.5)));
-  if (k.tier >= 3) g.eng(0, 0);
-  g.gun(L - 1, 0);
+  g.box(c - s + 1, c + s - 1, s - 3, s - 3, R_TRIM);
+  g.box(c - 3, c + 3, 0, 0, R_GLOW); // lit command band (matches the hull spine stripe)
+  g.box(c - 2, c + 2, 1, 1, R_LIGHT);
+  g.box(c - s, c - s, 0, s - 1, R_ACCENT);
+  g.box(c + s, c + s, 0, s - 1, R_ACCENT);
+  // corner gun bastions
+  g.discPair(c - s + 1, s - 1, 1, R_SHADE);
+  g.discPair(c + s - 1, s - 1, 1, R_SHADE);
+  g.gun(c + s - 1, s - 1);
+  g.gun(c - s + 1, s - 1);
 };
 
 /** halo: annular ring ships */
@@ -1202,13 +1441,16 @@ export function getShipModel(req: ModelRequest): ShipModel {
   const hit = modelCache.get(key);
   if (hit) return hit;
   const spec = CLASS_SPECS[req.cls];
-  const g = new G(spec.w, spec.h);
+  // imported hi-res art (bulwark) draws at its native grid size
+  const imported = req.style === 'bulwark' ? BULWARK_SPRITES[req.cls] : undefined;
+  const g = imported ? new G(imported.rows[0]!.length, imported.rows.length) : new G(spec.w, spec.h);
   const r = new Rnd(`${req.style}/${req.cls}/${variant}`);
   const plan = PLANS[req.style] ?? planRaptor;
   if (req.cls === 'doomstar') planDoomstar(g, req.style, r);
   else plan(g, req.cls, spec, r, variant);
   if (!spec.base && req.cls !== 'doomstar') bakeAttachments(g, specials, req.heavyBeams ?? false, req.missileTubes ?? 0);
   const model = g.toModel();
+  if (g.w !== spec.w) model.pxScale = spec.w / g.w;
   modelCache.set(key, model);
   return model;
 }

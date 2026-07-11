@@ -449,6 +449,24 @@ const applyScrap: Applier = (state, cmd) => {
   state.ships = state.ships.filter((s) => s.id !== p.shipId);
 };
 
+// ---------- scrap_outpost ----------
+
+const validateScrapOutpost: Validator = (state, cmd) => {
+  const p = cmd.payload as { colonyId: number };
+  const colony = state.colonies.find((c) => c.id === p?.colonyId);
+  if (!colony) return `no colony ${p?.colonyId}`;
+  if (colony.owner !== cmd.playerId) return 'not your outpost';
+  if (!colony.outpost) return 'only outposts can be scrapped (colonies must be abandoned by their people)';
+  return null;
+};
+
+const applyScrapOutpost: Applier = (state, cmd) => {
+  const p = cmd.payload as { colonyId: number };
+  // same salvage rule as ships: a quarter of the outpost ship's cost back
+  empireOf(state, cmd.playerId).bc += 25;
+  state.colonies = state.colonies.filter((c) => c.id !== p.colonyId);
+};
+
 // ---------- set_tax_rate ----------
 
 const validateSetTax: Validator = (state, cmd) => {
@@ -638,17 +656,23 @@ const validateBattleOrders: Validator = (state, cmd) => {
     return 'bad retreat threshold';
   }
   if (typeof o.bombard !== 'boolean') return 'bad bombard flag';
+  if (o.spareNoncombatants !== undefined && typeof o.spareNoncombatants !== 'boolean') return 'bad spare flag';
   return null;
 };
 
 const applyBattleOrders: Applier = (state, cmd) => {
   const p = cmd.payload as { battleId: string; orders: BattleOrders };
-  const battle = state.pendingBattles.find((b) => b.id === p.battleId)!;
+  const battle = state.pendingBattles.find((b) => b.id === p.battleId);
+  // raw fold paths (log replay after an engine fix, resumed rooms) can carry
+  // orders for a battle that no longer forms — a stale order must be inert,
+  // never a crash that bricks the whole load
+  if (!battle) return;
   const orders: BattleOrders = {
     stance: p.orders.stance,
     priority: p.orders.priority,
     retreatThresholdPct: p.orders.retreatThresholdPct,
     bombard: cmd.playerId === battle.attacker ? p.orders.bombard : false,
+    spareNoncombatants: p.orders.spareNoncombatants === true,
   };
   if (cmd.playerId === battle.attacker) battle.ordersA = orders;
   else battle.ordersD = orders;
@@ -1359,6 +1383,7 @@ export const COMMANDS: Record<string, { validate: Validator; apply: Applier }> =
     apply: applyOutpost,
   },
   scrap_ship: { validate: validateScrap, apply: applyScrap },
+  scrap_outpost: { validate: validateScrapOutpost, apply: applyScrapOutpost },
   sell_building: { validate: validateSellBuilding, apply: applySellBuilding },
   set_tax_rate: { validate: validateSetTax, apply: applySetTax },
   set_ship_style: { validate: validateSetShipStyle, apply: applySetShipStyle },

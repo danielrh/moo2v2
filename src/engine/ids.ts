@@ -23,6 +23,15 @@ import type { GameState } from './types';
 
 export const ID_BLOCK = 10_000_000;
 
+/** Synthetic combat-unit ids (battle sim only; never persisted as entities).
+ * They must sit ABOVE every real entity id: empire blocks are
+ * ID_BLOCK * (empireId + 2), so even a 16-player game tops out well under
+ * 1e9. (These used to be 1e6/2e6 and collided with the empire blocks above —
+ * every real ship outcome was misrouted to the monster branch, so battle
+ * losses were never applied.) */
+export const BASE_COMBAT_ID = 1_000_000_000;
+export const MONSTER_COMBAT_ID = 2_000_000_000;
+
 /** Next dynamic id for an empire-owned entity (ship, colony, design,
  * proposal, pop transit, ...). owner < 0 falls through to the world block. */
 export function allocId(state: GameState, owner: number): number {

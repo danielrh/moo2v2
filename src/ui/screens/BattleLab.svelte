@@ -70,7 +70,10 @@
     style: string;
   }
 
-  const weaponChoices = WEAPON_ROWS.filter((w) => w.techId !== 0 && w.classId <= 2);
+  // every mountable weapon, bombs and strike craft included — filtering to
+  // classId <= 2 left e.g. a design's nuclear-bomb slot BLANK when a real
+  // battle was loaded into the lab (bugs.md)
+  const weaponChoices = WEAPON_ROWS.filter((w) => w.techId !== 0);
   const newGroup = (): LabGroup => ({
     hull: 'cruiser',
     computer: 3,
@@ -101,11 +104,19 @@
       : null;
 
   let sides = $state<[LabSide, LabSide]>([
-    { groups: seedGroups(seeded?.a) ?? [newGroup()], orders: { ...DEFAULT_ORDERS }, style: 'raptor' },
-    { groups: seedGroups(seeded?.d) ?? [newGroup()], orders: { ...DEFAULT_ORDERS, stance: 'hold_range' }, style: 'lattice' },
+    {
+      groups: seedGroups(seeded?.a) ?? [newGroup()],
+      orders: { ...DEFAULT_ORDERS, ...((seeded?.ordersA as Partial<BattleOrders> | undefined) ?? {}) },
+      style: seeded?.styleA ?? 'raptor',
+    },
+    {
+      groups: seedGroups(seeded?.d) ?? [newGroup()],
+      orders: { ...DEFAULT_ORDERS, ...((seeded?.ordersD as Partial<BattleOrders> | undefined) ?? {}) },
+      style: seeded?.styleD ?? 'lattice',
+    },
   ]);
   const fromGame = seeded !== null;
-  let seed = $state('battle-lab-0001');
+  let seed = $state(seeded?.seed ?? 'battle-lab-0001');
   let viewing = $state<ReplayEntry | null>(null);
   let error = $state('');
 

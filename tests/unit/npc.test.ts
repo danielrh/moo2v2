@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { gameEngine } from '@engine/index';
+import { MONSTER_COMBAT_ID } from '@engine/ids';
 import { detectBattles, resolveBattle } from '@engine/battles';
 import { validateCommand } from '@engine/commands';
 import {
@@ -219,7 +220,7 @@ describe('npc combat fixtures', () => {
       const cs = monsterToCombat(m, 1);
       expect(cs.structureHp).toBeGreaterThan(0);
       expect(cs.weapons.length).toBeGreaterThan(0);
-      expect(cs.shipId).toBe(2_000_000 + m.id);
+      expect(cs.shipId).toBe(MONSTER_COMBAT_ID + m.id);
       expect([MONSTER_EMPIRE, ANTARAN_EMPIRE]).toContain(factionOf(m));
     }
   });

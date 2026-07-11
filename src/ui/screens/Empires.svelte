@@ -4,10 +4,11 @@
   import { PICK_ROWS, GOVERNMENTS, pickById } from '@engine/data/index';
   import type { ProposalKind } from '@engine/types';
   import { ownerName, playerColor } from '../colors';
-  import { enemySeedsFromReplays, setLabSeed, type LabSeedGroup } from '../labSeed';
+  import { battleToLabSeed, enemySeedsFromReplays, setLabSeed, type LabSeedGroup } from '../labSeed';
   import GroundBattleDialog from '../battle/GroundBattleDialog.svelte';
   import type { GroundBattleEntry } from '../state.svelte';
   import { app, getActive } from '../state.svelte';
+  import { addBotForSeat, removeBotForSeat } from '../net';
 
   const session = () => getActive()!.session;
   const gs = $derived.by(() => {
@@ -152,10 +153,65 @@
 
   // ---------- antarans ----------
   const portalColony = $derived(myColonies.find((c) => c.buildings.includes('dimensional_portal')));
+
+  // ---------- seat issues (moved off the main screen; bugs.md) ----------
+  const roster = $derived.by(() => {
+    void app.version;
+    return getActive()?.session.getRoster() ?? [];
+  });
+  const botOnSeat = (seatId: number) => getActive()?.bots.find((b) => b.seatId === seatId) ?? null;
+  const seatIssues = $derived.by(() => {
+    void app.version;
+    if (!getActive()?.host) return [];
+    return roster
+      .map((p) => ({ p, bot: botOnSeat(p.id) }))
+      .filter(({ p, bot }) => p.id !== selfId && (!p.connected || bot));
+  });
+
+  // ---------- leader card portraits (deterministic per leader) ----------
+  const COLONY_FACES = ['🧑‍🔬', '👩‍💼', '🧕', '👨‍🌾', '🧙', '👳', '👩‍⚖️', '🤴'];
+  const SHIP_FACES = ['🧑‍✈️', '👨‍🚀', '👩‍✈️', '🫡', '🦾', '🏴‍☠️', '👽', '🤖'];
+  function portraitOf(leaderId: string, kind: string | undefined): string {
+    let h = 0;
+    for (let i = 0; i < leaderId.length; i++) h = (h * 31 + leaderId.charCodeAt(i)) >>> 0;
+    const faces = kind === 'ship' ? SHIP_FACES : COLONY_FACES;
+    return faces[h % faces.length]!;
+  }
 </script>
 
 {#if gs && me}
   {#if note}<p class="error" data-testid="empire-note">{note}</p>{/if}
+
+  {#each seatIssues as { p, bot } (p.id)}
+    <div class="banner" class:warn={!bot} class:dim={!!bot} data-testid="seat-issue-{p.id}">
+      {#if bot}
+        <!-- "The bot is playing Bot" read like a stutter when the seat itself
+             is the built-in bot — name the empire only when it adds anything -->
+        🤖 A bot runs seat #{p.id}{p.name && p.name.toLowerCase() !== 'bot' ? ' for ' : ''}{#if p.name && p.name.toLowerCase() !== 'bot'}<b>{p.name}</b>{/if}.
+        <button data-testid="bot-release-{p.id}" title="retire the bot; the player gets the empire back by rejoining with their name"
+          onclick={() => bot && removeBotForSeat(getActive()!, bot)}>✕ hand the seat back</button>
+      {:else}
+        ⏳ <b>{p.name}</b> (seat #{p.id}) is not connected — the game waits for their commit.
+        <button data-testid="bot-sub-{p.id}" title="a fair (non-cheating) bot plays their empire until they rejoin with the same name"
+          onclick={() => addBotForSeat(getActive()!, p.name)}>🤖 let the bot play {p.name}</button>
+      {/if}
+    </div>
+  {/each}
+
+  <!-- your own race's traits, shown for PRESET races too (bugs.md) -->
+  <h3>Your race — {me.raceName}</h3>
+  <p class="pickrow" data-testid="my-race-picks">
+    {#each me.picks as p (p)}
+      {@const row = pickById.get(p)}
+      <span
+        class="pickchip"
+        class:flaw={(row?.cost ?? 0) < 0}
+        class:gov={(GOVERNMENTS as readonly string[]).includes(p)}
+        title={row?.meaning ?? p}
+      >{p.replaceAll('_', ' ')}{row && row.cost !== 0 ? ` (${row.cost > 0 ? '+' : ''}${row.cost})` : ''}</span>
+    {/each}
+    {#if me.picks.length === 0}<span class="dim">no racial modifiers</span>{/if}
+  </p>
 
   <h3>Relations</h3>
   {#if unmetCount > 0}
@@ -296,51 +352,73 @@
 
   <h3>Leaders ({countKind(me, 'colony')}/{MAX_LEADERS_PER_KIND} colony, {countKind(me, 'ship')}/{MAX_LEADERS_PER_KIND} ship)</h3>
   {#if myOffers.length}
-    <ul data-testid="leader-offers">
+    <div class="cards" data-testid="leader-offers">
       {#each myOffers as o (o.leaderId)}
         {@const row = leaderById.get(o.leaderId)}
-        <li>
-          <b>{row?.name}</b> {row?.title} — {row?.kind} leader,
-          {row?.skills.map((s) => `${s.skill.replaceAll('_', ' ')}${s.enhanced ? '★' : ''}`).join(', ')}
-          — {o.priceBc} BC (expires turn {o.expiresTurn} — {o.expiresTurn - gs.turn} turn{o.expiresTurn - gs.turn === 1 ? '' : 's'} left)
-          <button data-testid="hire-{o.leaderId}" onclick={() => submit('hire_leader', { leaderId: o.leaderId })}>Hire</button>
-        </li>
+        {@const turnsLeft = o.expiresTurn - gs.turn}
+        <div class="leadercard offer" class:ship={row?.kind === 'ship'}>
+          <div class="portrait">{portraitOf(o.leaderId, row?.kind)}</div>
+          <div class="who">
+            <b>{row?.name}</b>
+            <span class="title">{row?.title}</span>
+            <span class="kind">{row?.kind === 'ship' ? '🚀 ship officer' : '🏛 colony leader'}</span>
+          </div>
+          <div class="skills">
+            {#each row?.skills ?? [] as s (s.skill)}
+              <span class="skill" class:enh={s.enhanced}>{s.skill.replaceAll('_', ' ')}{s.enhanced ? ' ★' : ''}</span>
+            {/each}
+          </div>
+          <div class="foot">
+            <span class="price">{o.priceBc} BC</span>
+            <span class="dim" title="the offer expires turn {o.expiresTurn}">⏳ {turnsLeft} turn{turnsLeft === 1 ? '' : 's'}</span>
+            <button data-testid="hire-{o.leaderId}" onclick={() => submit('hire_leader', { leaderId: o.leaderId })}>Hire</button>
+          </div>
+        </div>
       {/each}
-    </ul>
+    </div>
   {/if}
   {#if me.leaders.length}
-    <table data-testid="leader-roster">
-      <thead><tr><th>Leader</th><th>Level</th><th>Skills</th><th>Salary</th><th>Assignment</th><th></th></tr></thead>
-      <tbody>
-        {#each me.leaders as l (l.leaderId)}
-          {@const row = leaderById.get(l.leaderId)}
-          <tr>
-            <td>{row?.name} <span class="dim">{row?.title}</span></td>
-            <td>{l.level} <span class="dim">({l.xp} xp)</span></td>
-            <td>{row?.skills.map((s) => `${s.skill.replaceAll('_', ' ')}${s.enhanced ? '★' : ''}`).join(', ')}</td>
-            <td>{row ? salaryOf(row) : 0} BC/t</td>
-            <td>
-              {#if row?.kind === 'colony'}
-                <select
-                  data-testid="assign-{l.leaderId}"
-                  value={l.colonyId ?? -1}
-                  onchange={(e) => {
-                    const v = Number((e.target as HTMLSelectElement).value);
-                    submit('assign_leader', { leaderId: l.leaderId, colonyId: v < 0 ? null : v });
-                  }}
-                >
-                  <option value={-1}>unassigned</option>
-                  {#each myColonies as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
-                </select>
-              {:else}
-                fleet-wide
-              {/if}
-            </td>
-            <td><button onclick={() => submit('dismiss_leader', { leaderId: l.leaderId })}>Dismiss</button></td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+    <div class="cards" data-testid="leader-roster">
+      {#each me.leaders as l (l.leaderId)}
+        {@const row = leaderById.get(l.leaderId)}
+        <div class="leadercard" class:ship={row?.kind === 'ship'}>
+          <div class="portrait">{portraitOf(l.leaderId, row?.kind)}</div>
+          <div class="who">
+            <b>{row?.name}</b>
+            <span class="title">{row?.title}</span>
+            <span class="kind">{row?.kind === 'ship' ? '🚀 ship officer' : '🏛 colony leader'}</span>
+          </div>
+          <div class="levelrow" title="{l.xp} xp">
+            <span>lvl {l.level}</span>
+            <span class="xpbar"><span class="xpfill" style="width:{Math.min(100, l.xp % 100)}%"></span></span>
+            <span class="dim">{row ? salaryOf(row) : 0} BC/t</span>
+          </div>
+          <div class="skills">
+            {#each row?.skills ?? [] as s (s.skill)}
+              <span class="skill" class:enh={s.enhanced}>{s.skill.replaceAll('_', ' ')}{s.enhanced ? ' ★' : ''}</span>
+            {/each}
+          </div>
+          <div class="foot">
+            {#if row?.kind === 'colony'}
+              <select
+                data-testid="assign-{l.leaderId}"
+                value={l.colonyId ?? -1}
+                onchange={(e) => {
+                  const v = Number((e.target as HTMLSelectElement).value);
+                  submit('assign_leader', { leaderId: l.leaderId, colonyId: v < 0 ? null : v });
+                }}
+              >
+                <option value={-1}>unassigned</option>
+                {#each myColonies as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
+              </select>
+            {:else}
+              <span class="dim">fleet-wide</span>
+            {/if}
+            <button class="dismiss" onclick={() => submit('dismiss_leader', { leaderId: l.leaderId })}>Dismiss</button>
+          </div>
+        </div>
+      {/each}
+    </div>
   {:else}
     <p class="dim">No leaders in your employ. Offers arrive from time to time — Famous and charismatic help.</p>
   {/if}
@@ -399,6 +477,15 @@
           {ownerName(Number(s['defender']), (x) => gs.empires.find((e) => e.id === x)?.name)}
           {r.watched ? ' (watched)' : ''}
           <button data-testid="watch-{r.battleId}" onclick={() => (app.viewing = r)}>▶ watch</button>
+          <button
+            data-testid="simulate-{r.battleId}"
+            title="open the battle simulator preloaded with this exact battle — both fleets, both sides' orders"
+            onclick={() => {
+              const s = battleToLabSeed(r.input as never);
+              setLabSeed(s.a, s.d, s);
+              location.hash = '#battle-lab';
+            }}
+          >⚗ simulate</button>
         </li>
       {/each}
     </ul>
@@ -424,6 +511,153 @@
 {/if}
 
 <style>
+  .pickrow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    max-width: 60rem;
+  }
+  .pickchip {
+    border: 1px solid #3a4a80;
+    background: #1a2140;
+    border-radius: 999px;
+    padding: 0.1rem 0.6rem;
+    font-size: 0.82rem;
+    cursor: default;
+  }
+  .pickchip.gov {
+    border-color: var(--gold, #d8b653);
+    background: #2c2612;
+  }
+  .pickchip.flaw {
+    border-color: #7a3a3a;
+    background: #2c1616;
+    color: #e0a9a2;
+  }
+  /* seat-issue banners (moved here from the main shell; bugs.md) */
+  .banner {
+    border: 1px solid #3a4a80;
+    border-radius: 8px;
+    background: #141830;
+    padding: 0.4rem 0.8rem;
+    margin-bottom: 0.5rem;
+    max-width: 60rem;
+  }
+  .banner.warn {
+    border-color: var(--gold, #d8b653);
+    background: #2c2612;
+    color: #ffe9b0;
+  }
+  .banner.dim {
+    opacity: 0.85;
+  }
+  /* ---- leader cards (bugs.md: "Leaders to look like cards") ---- */
+  .cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+    margin-bottom: 0.8rem;
+  }
+  .leadercard {
+    width: 15.5rem;
+    border: 1px solid #3a4a80;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #182046, #10142c);
+    padding: 0.6rem 0.7rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  }
+  .leadercard.ship {
+    border-color: #806a3a;
+    background: linear-gradient(180deg, #2a2246, #140f2c);
+  }
+  .leadercard.offer {
+    border-style: dashed;
+  }
+  .leadercard .portrait {
+    font-size: 2.2rem;
+    line-height: 1;
+    width: 3.2rem;
+    height: 3.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #31407c, #10142c 75%);
+    border: 1px solid #4a5a90;
+    align-self: center;
+  }
+  .leadercard.ship .portrait {
+    background: radial-gradient(circle at 35% 30%, #6a5424, #140f2c 75%);
+    border-color: #806a3a;
+  }
+  .leadercard .who {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .leadercard .who .title {
+    font-size: 0.8rem;
+    opacity: 0.75;
+    font-style: italic;
+  }
+  .leadercard .who .kind {
+    font-size: 0.75rem;
+    opacity: 0.6;
+  }
+  .leadercard .levelrow {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.82rem;
+  }
+  .leadercard .xpbar {
+    flex: 1;
+    height: 0.35rem;
+    border-radius: 999px;
+    background: #0a0e22;
+    border: 1px solid #26304f;
+    overflow: hidden;
+  }
+  .leadercard .xpfill {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #4da3ff, #5ee6e0);
+  }
+  .leadercard .skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    justify-content: center;
+  }
+  .leadercard .skill {
+    border: 1px solid #26304f;
+    background: #0e1330;
+    border-radius: 999px;
+    padding: 0.05rem 0.5rem;
+    font-size: 0.75rem;
+  }
+  .leadercard .skill.enh {
+    border-color: var(--gold, #d8b653);
+    color: #ffe9b0;
+  }
+  .leadercard .foot {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    justify-content: space-between;
+  }
+  .leadercard .price {
+    font-weight: 700;
+    color: #ffe9b0;
+  }
+  .leadercard .dismiss {
+    opacity: 0.75;
+  }
   table {
     border-collapse: collapse;
     margin-bottom: 0.6rem;

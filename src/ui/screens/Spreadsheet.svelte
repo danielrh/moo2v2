@@ -193,6 +193,17 @@
     }
   }
 
+  /** "fix food": put the farming load on the most productive selected worlds */
+  function applyFixFood() {
+    const s = session().getPlanned();
+    if (!s) return;
+    const ids = rows.filter((r) => selected.has(r.id) && !r.outpost).map((r) => r.id);
+    const plan = selectors.fixFoodJobs(s, ids);
+    for (const [colonyId, groups] of plan) {
+      session().submit('set_jobs', { colonyId, groups });
+    }
+  }
+
   type Job = 'farmers' | 'workers' | 'scientists';
   /** reassign within ONE race group — captured colonists keep their own
    * group, so a multi-race colony never gets its groups overwritten */
@@ -409,9 +420,9 @@
     </select>
     <span class="presets">
       jobs:
-      <button data-testid="preset-research" title="minimum farmers to stay fed; everyone else does research" onclick={() => applyPreset('research')}>⚗ research</button>
-      <button data-testid="preset-industry" title="minimum farmers to stay fed; everyone else works industry" onclick={() => applyPreset('industry')}>⚒ industry</button>
-      <button data-testid="preset-blend" title="industry capped at ≤2 pollution; the rest research" onclick={() => applyPreset('blend')}>⚗⚒ blend</button>
+      <button data-testid="preset-research" title="fewest farmers that keep the colony fed AND keep exporting what the rest of the empire needs; everyone else does research" onclick={() => applyPreset('research')}>⚗ research</button>
+      <button data-testid="preset-industry" title="fewest farmers that keep the colony fed AND keep exporting what the rest of the empire needs; everyone else works industry" onclick={() => applyPreset('industry')}>⚒ industry</button>
+      <button data-testid="preset-feed" title="fix food production: concentrate the empire's farming on the most productive food worlds among the selected colonies" onclick={applyFixFood}>🌾 fix food</button>
     </span>
     <button onclick={() => (selected = new Set())}>clear selection</button>
   {:else if showCitizensTip}

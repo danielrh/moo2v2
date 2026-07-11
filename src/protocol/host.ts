@@ -167,6 +167,14 @@ export class HostCore<S> {
     if (msg.t === 'hello') return this.onHello(from, msg);
     const seat = this.seatMap.get(from);
     if (seat === undefined) return; // must hello (and get a seat) first
+    // lobbylink signaling blips fire player-left while the data channel is
+    // fine — any message from the seat proves they are alive, so self-heal
+    // the flag instead of showing a phantom "not connected" (bugs.md)
+    const seatInfo = this.seats.get(seat);
+    if (seatInfo && !seatInfo.connected) {
+      seatInfo.connected = true;
+      this.broadcastLobby();
+    }
     switch (msg.t) {
       case 'race_config':
         return this.onRaceConfig(seat, msg);

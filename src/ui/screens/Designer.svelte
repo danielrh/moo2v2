@@ -164,6 +164,63 @@
     session().submit('obsolete_design', { designId });
   }
 
+  // ---- design files: download the current fit / upload one into the editor ----
+  let importNote = $state('');
+  function exportDesign() {
+    const data = {
+      format: 'moo2v2-design',
+      version: 1,
+      name, hull, computer, shield,
+      specials: [...specials],
+      weapons: weapons.map((w) => ({ weapon: w.weapon, count: w.count, mods: [...w.mods], arc: w.arc })),
+      modelIdx: wrapVariant(hull as ArtClass, modelIdx),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${(name || 'design').replace(/[^\w-]+/g, '_')}.moo2design.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+  async function importDesign(ev: Event) {
+    const inputEl = ev.target as HTMLInputElement;
+    const file = inputEl.files?.[0];
+    inputEl.value = '';
+    if (!file) return;
+    try {
+      const cfg = JSON.parse(await file.text()) as {
+        format?: string;
+        name?: unknown; hull?: unknown; computer?: unknown; shield?: unknown;
+        specials?: unknown; weapons?: unknown; modelIdx?: unknown;
+      };
+      if (cfg.format !== 'moo2v2-design') throw new Error('not a moo2v2 design file');
+      const int = (v: unknown, lo: number, hi: number, dflt: number) =>
+        typeof v === 'number' && Number.isSafeInteger(v) ? Math.max(lo, Math.min(hi, v)) : dflt;
+      // load into the EDITOR (not straight to save): the live stats panel
+      // re-validates against this empire's tech and flags anything unknown
+      nameAuto = false;
+      name = typeof cfg.name === 'string' ? cfg.name.slice(0, 30) : 'Imported';
+      hull = typeof cfg.hull === 'string' ? cfg.hull : 'frigate';
+      computer = int(cfg.computer, 0, 6, 0);
+      shield = int(cfg.shield, 0, 6, 0);
+      specials = Array.isArray(cfg.specials) ? cfg.specials.filter((s): s is string => typeof s === 'string') : [];
+      weapons = Array.isArray(cfg.weapons)
+        ? cfg.weapons
+            .filter((w): w is { weapon: string } & Record<string, unknown> => !!w && typeof (w as Record<string, unknown>)['weapon'] === 'string')
+            .map((w) => ({
+              weapon: w['weapon'] as string,
+              count: int(w['count'], 1, 200, 1),
+              mods: Array.isArray(w['mods']) ? (w['mods'] as unknown[]).filter((m): m is string => typeof m === 'string') : [],
+              arc: (['F', 'FX', 'R', '360'] as const).includes(w['arc'] as never) ? (w['arc'] as WeaponArc) : 'F',
+            }))
+        : [];
+      modelIdx = int(cfg.modelIdx, 0, 8, 0);
+      importNote = `“${name}” loaded — check the stats, then Save`;
+    } catch (e) {
+      importNote = `⛔ import failed: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
+
   const hullsOpen = $derived(empire ? availableHulls(empire) : []);
   const HULL_REQS: Record<string, string> = {
     cruiser: 'requires Capsule Construction',
@@ -316,6 +373,21 @@
         onclick={simulate}
         title="open the Battle Lab with this exact fit (unsaved is fine) vs every enemy type you have met — sandbox only"
       >⚗ Simulate</button>
+      <button
+        data-testid="design-export"
+        onclick={exportDesign}
+        title="download this fit as a .moo2design.json file — share it or re-import it in any game"
+      >⬇ Download</button>
+      <label class="importbtn" title="load a .moo2design.json file into the editor (stats re-validate against YOUR current tech)">
+        ⬆ Upload<input
+          data-testid="design-import"
+          type="file"
+          accept=".json,.moo2design,application/json"
+          onchange={importDesign}
+          style="display:none"
+        />
+      </label>
+      {#if importNote}<span class="dim" data-testid="design-import-note">{importNote}</span>{/if}
     </div>
 
     <div class="list">
@@ -363,6 +435,19 @@
 {/if}
 
 <style>
+  /* the Upload control is a <label> around a hidden file input, dressed as a button */
+  .importbtn {
+    display: inline-block;
+    border: 1px solid var(--line, #26304f);
+    border-radius: 6px;
+    background: #1a2140;
+    padding: 0.25rem 0.6rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .importbtn:hover {
+    background: #232c55;
+  }
   .appearance {
     border: 1px solid #26304f;
     border-radius: 10px;

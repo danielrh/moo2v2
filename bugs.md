@@ -1,32 +1,31 @@
 Several regressions marked CRITICAL happened in this recent version. They must have been added in the last 28 hours.
-- [ ] CRITICAL: After the battle the ships were not actually removed from the game and
-- [ ] CRITICAL: After a bombard the output should be destroyed a test case is included bugs/moo2v2-pvd0-turn92.moo after 2 turns of successful battle where the 2 ships defeated the 3 and one was lost then more ships were built. I think any game could show this bug.
-- [ ] CRITICAL Player bombing colonies does not remove population
-- [ ] CRITICAL bullwark looks extra ugly as a ship pick. Please use bugs/bullwark.png as a replacement for the scout/frigate/destroyer/cruiser/battleship/titan and inspiration for all the other related variants to be generated.
-- [ ] Players should be able to choose color when they start
-- [ ] Download and upload ships into ship design
-- [ ] Leaders to look like cards and more stylistic
-- [ ] Research categories to have emojis
-- [ ] 🤖 The bot is playing Bot (seat #1).
-- [ ] Assault shuttles
-- [ ] Don't let ships get stuck at corners 
-- [ ] play when at the last frame should start from frame 0
-- [ ] The automated select-all mechanism across all colonies "Jobs" buttons for research industry or blend: when citizens are moved to research or production, if their food is needed to support the empire with freighters, today those farmers are pulled. Instead the farmers should be left where they are
-- [ ] Why do disconnections happen when the actual internet connections are stable. Is it a bug with lobbylink? This is what I see: ⏳ Patrick (seat #1) is not connected — the game waits for their commit. If this is not solveable then put the big yellow notification in the empires menu only, not blocking the whole main screen.
-- [ ] The synced button is variable width. TURN 23· synced 22: Make that a tool type
-- [ ] Instead of "blend" in the jobs buttons make a button to fix food production so most productive food worlds
-- [ ] Tooltip over freighters to show freighters needed
-- [ ] Display your very own race specials in the empire menu even for the prebuilt races
-- [ ] For the freewheeling mode the save should only save the committed synced turn.
-- [ ] End turn button should be at the very top left so it is in the same place
-- [ ] Map's Zoom to fit should match height
-- [ ] Can fleets have a number of fleets in flight like colonies have number of idle colonies.
-- [ ] The player ship color and homeworld color should be the same. Every player should have a unique color that is consistent everywhere. The inflight ships seem to be different colors.
-- [ ] Unify all the fuel range cirlces to be one unified territory and make it the same color as the player color but muted
-- [ ] A player should be able to not kill non-combatant ships with a checkbox like how bombardment works
-- [ ] Outposts shoudl be able to be scrapped from the map menu
-- [ ] Can each battle replay have a button to hook into the battle simulator next to it and load that exact battle configuration.
-- [ ] In the battle simulator there was a nuclear bomb slot and it ended up being blank in the replay
-- [ ] This hold range does not work well because ships turn tail. Maybe it should be hold position. Change default to charge
-- [ ] The worlds in system view should look nicer like maybe several possible world types or palettes for worlds instead of a flat image.
-
+- [x] CRITICAL: After the battle the ships were not actually removed from the game and — FIXED: per-empire id blocks (20M+) collided with the battle sim's synthetic id fences (1e6/2e6), so every real ship outcome was misrouted to the monster branch and dropped. Synthetic ids moved to 1e9/2e9 (`ids.ts`), ENGINE_VERSION → 0.9.1. Full analysis: bugs/root-causes-2026-07-11.md. Regression test: tests/unit/battleids.test.ts (includes "nothing comes back one turn later").
+- [x] CRITICAL: After a bombard the output should be destroyed a test case is included bugs/moo2v2-pvd0-turn92.moo after 2 turns of successful battle where the 2 ships defeated the 3 and one was lost then more ships were built. I think any game could show this bug. — FIXED: same id-fence root cause (victories never applied, so the bombard step was never reached again), plus bombardment rolls that fizzled when one target class ran out. Verified by replaying the save's log: losses now stick and sieges progress.
+- [x] CRITICAL Player bombing colonies does not remove population — FIXED: every 20 bomb damage now lands somewhere — a "destroy building" roll with no destructible building left falls through to killing population (and vice versa), instead of silently evaporating.
+- [x] CRITICAL bullwark looks extra ugly as a ship pick. Please use bugs/bullwark.png as a replacement for the scout/frigate/destroyer/cruiser/battleship/titan and inspiration for all the other related variants to be generated. — FIXED: all six hulls imported pixel-for-pixel from bugs/bullwark.png (hi-res grids with a pxScale so footprints stay standard); variants 1-3 are generated refits of the same silhouette (chevron refit / warpaint prow / bastion turrets); stations restyled to match.
+- [x] Players should be able to choose color when they start — lobby "Banner color" swatches; the choice rides raceJson → Empire.color and every surface (map, fleets, battles, chips) renders it via one shared registry.
+- [x] Download and upload ships into ship design — ⬇ Download / ⬆ Upload buttons in the Designer (.moo2design.json files; uploads load into the editor and re-validate against your tech).
+- [x] Leaders to look like cards and more stylistic — offers and roster are portrait cards with skill chips, XP bar, salary, assignment.
+- [x] Research categories to have emojis — 🏗️ ⚡ 🧪 🏛️ 💻 🌿 ⚛️ 🛡️.
+- [x] 🤖 The bot is playing Bot (seat #1). — banner de-stuttered ("A bot runs seat #1"), downgraded from warning to info, and moved to the Empires tab.
+- [x] Assault shuttles — verified working end-to-end (researchable, designable, launch as boarding craft, cripple systems); stub ledger corrected; regression test added.
+- [x] Don't let ships get stuck at corners — cornered ships punch out toward open field instead of strafing back into the corner; hold-position removes the main corner-grinder (see below).
+- [x] play when at the last frame should start from frame 0 — ▶ at the end restarts the replay.
+- [x] The automated select-all mechanism across all colonies "Jobs" buttons for research industry or blend: when citizens are moved to research or production, if their food is needed to support the empire with freighters, today those farmers are pulled. Instead the farmers should be left where they are — presets now keep the farmers whose exports the rest of the empire eats (tests/unit/foodjobs.test.ts).
+- [x] Why do disconnections happen when the actual internet connections are stable. Is it a bug with lobbylink? … put the big yellow notification in the empires menu only — both: the host now self-heals a seat's connected flag when any message arrives from it (lobbylink signaling blips fire player-left while the data channel is fine), and the banner lives on the Empires tab with only a small ⏳ badge on the tab button.
+- [x] The synced button is variable width. TURN 23· synced 22: Make that a tool type — turn stat is fixed-width with tabular digits; the synced detail moved into its tooltip (⚡ marker shows when ahead).
+- [x] Instead of "blend" in the jobs buttons make a button to fix food production so most productive food worlds — 🌾 "fix food" concentrates the empire's farming on the most productive selected worlds.
+- [x] Tooltip over freighters to show freighters needed — the 🚚 tooltip now breaks down free/busy/needed and flags shortfalls.
+- [x] Display your very own race specials in the empire menu even for the prebuilt races — "Your race" chip row on the Empires tab (flaws highlighted, hover for meanings).
+- [x] For the freewheeling mode the save should only save the committed synced turn. — verified true and pinned with tests/protocol/fastsave.test.ts (preview turns never reach the save file).
+- [x] End turn button should be at the very top left so it is in the same place — commit/End-turn is the first element of the header with a stable footprint.
+- [x] Map's Zoom to fit should match height — fit mode now fits inside the viewport height instead of scrolling vertically.
+- [x] Can fleets have a number of fleets in flight like colonies have number of idle colonies. — blue badge on the Fleets tab.
+- [x] The player ship color and homeworld color should be the same … The inflight ships seem to be different colors. — in-flight markers, route lines, and ETA labels use the player color (re-routable keeps its yellow affordance).
+- [x] Unify all the fuel range cirlces to be one unified territory and make it the same color as the player color but muted — group-opacity union renders one flat muted region in the player color.
+- [x] A player should be able to not kill non-combatant ships with a checkbox like how bombardment works — "Spare non-combatant ships" checkbox in battle orders; spared ships flee home instead of being scuttled.
+- [x] Outposts shoudl be able to be scrapped from the map menu — 🗑 scrap outpost button on the map side panel (new scrap_outpost command, 25 BC salvage).
+- [x] Can each battle replay have a button to hook into the battle simulator next to it and load that exact battle configuration. — ⚗ simulate button per replay loads both fleets, both sides' orders, styles, and a matching seed into the Battle Lab.
+- [x] In the battle simulator there was a nuclear bomb slot and it ended up being blank in the replay — the lab's weapon list only offered classId ≤ 2, so bombs/strike-craft slots rendered empty; every mountable weapon is now listed and battle→lab seeding keeps them.
+- [x] This hold range does not work well because ships turn tail. Maybe it should be hold position. Change default to charge — hold_range is now HOLD POSITION (stand fast, swing the bow, fight); both sides default to charge.
+- [x] The worlds in system view should look nicer like maybe several possible world types or palettes for worlds instead of a flat image. — shaded globes with climate-specific surface patterns (seas/bands/craters/ice caps), night-side terminator, and deterministic per-planet variety; gas giants got banding too.

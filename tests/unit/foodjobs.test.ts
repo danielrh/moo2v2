@@ -1,0 +1,110 @@
+// bugs.md: job preset sweeps must not pull farmers whose food the rest of
+// the empire depends on; "fix food" concentrates farming on the best worlds.
+import { describe, expect, it } from 'vitest';
+import { gameEngine, selectors } from '@engine/index';
+import { colonyOutput } from '@engine/economy';
+import type { GameState } from '@engine/types';
+
+const SEED = 'aaaabbbbccccddddeeeeffff00001111';
+
+function newGame(): GameState {
+  return gameEngine.init({
+    seed: SEED,
+    settings: {
+      galaxySize: 'small',
+      startMode: 'average',
+      playerCount: 2,
+      modes: { creativeVariant: false, pickBidding: false, stickyBuild: false, antarans: false, randomEvents: false },
+      battleOrdersTimeoutMs: 1000,
+      debugCommands: false,
+    },
+    players: [
+      { id: 0, name: 'A', raceJson: JSON.stringify({ presetId: 'solari' }) },
+      { id: 1, name: 'B', raceJson: JSON.stringify({ presetId: 'solari' }) },
+    ],
+    dataVersion: 'test',
+  });
+}
+
+/** homeworld + a barren mining colony that cannot farm and eats imports */
+function stageBreadbasket(state: GameState) {
+  const home = state.colonies.find((c) => c.owner === 0 && !c.outpost)!;
+  // make the homeworld the breadbasket: everyone farms
+  for (const g of home.groups) {
+    const units = Math.floor(g.popK / 1000);
+    g.farmers = units;
+    g.workers = 0;
+    g.scientists = 0;
+  }
+  // second colony on a barren world: 3 units, all workers, needs imports
+  const barren = state.planets.find(
+    (p) => p.climate === 'barren' && !state.colonies.some((c) => c.planetId === p.id),
+  )!;
+  state.colonies.push({
+    id: 900001,
+    planetId: barren.id,
+    owner: 0,
+    name: 'Mine',
+    groups: [{ race: 0, popK: 3000, farmers: 0, workers: 3, scientists: 0, unrest: false }],
+    buildings: [],
+    queue: [],
+    storedProd: 0,
+    stickyInvested: {},
+    boughtThisTurn: false,
+    foodLackPrev: 0,
+    prodLackPrev: 0,
+    housingPPPrev: 0,
+    outpost: false,
+  });
+  state.colonies.sort((a, b) => a.id - b.id);
+  return { home, mine: state.colonies.find((c) => c.id === 900001)! };
+}
+
+describe('job presets vs empire food', () => {
+  it('research preset keeps the farmers the empire depends on', () => {
+    const state = newGame();
+    const { home, mine } = stageBreadbasket(state);
+    const mineNeed = -colonyOutput(state, mine).foodNet;
+    expect(mineNeed).toBeGreaterThan(0); // the mine really eats imports
+
+    const groups = selectors.presetJobs(state, home.id, 'research')!;
+    expect(groups).toBeTruthy();
+    for (const g of groups) {
+      const target = home.groups.find((x) => x.race === g.race)!;
+      target.farmers = g.farmers;
+      target.workers = g.workers;
+      target.scientists = g.scientists;
+    }
+    // the breadbasket must still export what the mine needs
+    expect(colonyOutput(state, home).foodNet).toBeGreaterThanOrEqual(mineNeed);
+  });
+
+  it('fix-food concentrates farming and feeds the empire', () => {
+    const state = newGame();
+    const { home, mine } = stageBreadbasket(state);
+    // start from a broken state: nobody farms anywhere
+    for (const g of home.groups) {
+      const units = Math.floor(g.popK / 1000);
+      g.farmers = 0;
+      g.workers = units;
+      g.scientists = 0;
+    }
+    const plan = selectors.fixFoodJobs(state, [home.id, mine.id]);
+    expect(plan.size).toBeGreaterThan(0);
+    for (const [colonyId, groups] of plan) {
+      const colony = state.colonies.find((c) => c.id === colonyId)!;
+      for (const g of groups) {
+        const target = colony.groups.find((x) => x.race === g.race)!;
+        target.farmers = g.farmers;
+        target.workers = g.workers;
+        target.scientists = g.scientists;
+      }
+    }
+    const net =
+      colonyOutput(state, home).foodNet + colonyOutput(state, mine).foodNet;
+    expect(net).toBeGreaterThanOrEqual(0); // the empire is fed again
+    // and the farming landed on the fertile world, not the barren mine
+    expect(mine.groups[0]!.farmers).toBe(0);
+    expect(home.groups.reduce((n, g) => n + g.farmers, 0)).toBeGreaterThan(0);
+  });
+});

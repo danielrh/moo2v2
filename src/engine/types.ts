@@ -140,6 +140,10 @@ export interface Empire {
   id: number; // playerId
   name: string;
   raceName: string;
+  /** chosen banner color (#rrggbb, lowercase); absent = classic per-seat
+   * default. Purely cosmetic — every UI surface (map, fleets, battles)
+   * renders this empire in this color. */
+  color?: string;
   picks: string[]; // sorted
   government: Government;
   bc: number;

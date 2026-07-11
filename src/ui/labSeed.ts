@@ -17,19 +17,98 @@ export interface LabSeedGroup {
   count: number;
 }
 
-let pending: { a: LabSeedGroup[]; d: LabSeedGroup[] } | null = null;
-
-export function setLabSeed(a: LabSeedGroup[], d: LabSeedGroup[]): void {
-  pending = { a, d };
+export interface LabSeedExtras {
+  /** battle orders per side (loading an exact battle keeps its orders) */
+  ordersA?: unknown;
+  ordersD?: unknown;
+  /** cosmetic fleet styles per side */
+  styleA?: string;
+  styleD?: string;
+  /** deterministic seed label so the lab reproduces the source battle */
+  seed?: string;
 }
 
-export function takeLabSeed(): { a: LabSeedGroup[]; d: LabSeedGroup[] } | null {
+let pending: ({ a: LabSeedGroup[]; d: LabSeedGroup[] } & LabSeedExtras) | null = null;
+
+export function setLabSeed(a: LabSeedGroup[], d: LabSeedGroup[], extras: LabSeedExtras = {}): void {
+  pending = { a, d, ...extras };
+}
+
+export function takeLabSeed(): ({ a: LabSeedGroup[]; d: LabSeedGroup[] } & LabSeedExtras) | null {
   const out = pending;
   pending = null;
   return out;
 }
 
 const SHIELD_FLAT_TIERS = [0, 1, 3, 5, 7, 10];
+
+/** approximate a combat ship back into a lab group (computer/shield/armor
+ * tiers are not directly observable; weapons keep only designer-legal mods) */
+function shipToGroup(s: {
+  hull: string;
+  beamAttack: number;
+  shieldFlat: number;
+  armorHp: number;
+  specials?: string[];
+  weapons: Array<{ weaponId: string; count: number; mods: string[]; arc?: string }>;
+}, label: string): LabSeedGroup {
+  const hullRow = hullById.get(s.hull);
+  const heavy = (s.specials ?? []).includes('heavy_armor') ? 3 : 1;
+  const observedMult = hullRow && hullRow.armorHp > 0 ? s.armorHp / (hullRow.armorHp * heavy) : 1;
+  let armor = 1;
+  for (let t = 0; t < ARMOR_MULT.length; t++) {
+    if (Math.abs(ARMOR_MULT[t]! - observedMult) < Math.abs(ARMOR_MULT[armor - 1]! - observedMult)) armor = t + 1;
+  }
+  return {
+    label,
+    hull: s.hull,
+    computer: Math.max(0, Math.min(6, Math.round(s.beamAttack / 25))),
+    shield: Math.max(0, SHIELD_FLAT_TIERS.findIndex((f) => f >= s.shieldFlat)),
+    armor,
+    specials: [...(s.specials ?? [])],
+    weapons: s.weapons
+      .filter((w) => weaponById.has(w.weaponId))
+      .map((w) => ({
+        weapon: w.weaponId,
+        count: w.count,
+        // combat inputs fold in natural behavior mods (nr, hit, ...) that the
+        // designer refuses — keep only mods a design may legally choose
+        mods: w.mods.filter((m) => weaponById.get(w.weaponId)!.availableMods.includes(m)),
+        arc: (w.arc ?? 'F') as LabSeedGroup['weapons'][number]['arc'],
+      })),
+    count: 1,
+  };
+}
+
+/** Load ONE battle exactly as fought: both sides' ships (deduped into
+ * counted groups), the orders each side used, and the fleet styles. Bases
+ * and monsters stay out — the lab builds warships only. */
+export function battleToLabSeed(input: BattleInput): { a: LabSeedGroup[]; d: LabSeedGroup[] } & LabSeedExtras {
+  const bySide: [Map<string, LabSeedGroup>, Map<string, LabSeedGroup>] = [new Map(), new Map()];
+  const styles: [string | undefined, string | undefined] = [undefined, undefined];
+  for (const s of input.ships) {
+    if (s.isBase) continue;
+    if (!(HULLS_BUILDABLE as readonly string[]).includes(s.hull) && s.modelKind !== 'scout') continue;
+    styles[s.side] ??= s.style;
+    const g = shipToGroup(
+      { ...s, hull: s.modelKind === 'scout' ? 'frigate' : s.hull },
+      `${s.side === 0 ? 'attacker' : 'defender'} ${s.hull}`,
+    );
+    const key = JSON.stringify([g.hull, g.computer, g.shield, g.armor, g.specials, g.weapons]);
+    const existing = bySide[s.side].get(key);
+    if (existing) existing.count += 1;
+    else bySide[s.side].set(key, g);
+  }
+  return {
+    a: [...bySide[0].values()],
+    d: [...bySide[1].values()],
+    ordersA: input.ordersA,
+    ordersD: input.ordersD,
+    styleA: styles[0],
+    styleD: styles[1],
+    seed: `replay-${input.battleId}`,
+  };
+}
 
 /** Enemy ship types seen across the battles we hold replays for, deduped,
  * with approximated computer/shield tiers (they are not directly observable). */
@@ -44,12 +123,14 @@ export function enemySeedsFromReplays(
     for (const s of input.ships) {
       if (s.side === mySide || s.isBase) continue;
       if (!(HULLS_BUILDABLE as readonly string[]).includes(s.hull)) continue; // monsters stay wild
+      // keep EVERY weapon class — dropping bombs/strike craft here left their
+      // slots blank in the simulator (bugs.md "nuclear bomb slot ... blank")
       const weapons = s.weapons
-        .filter((w) => w.classId <= 2 && weaponById.has(w.weaponId))
+        .filter((w) => weaponById.has(w.weaponId))
         .map((w) => ({
           weapon: w.weaponId,
           count: w.count,
-          mods: [...w.mods],
+          mods: w.mods.filter((m) => weaponById.get(w.weaponId)!.availableMods.includes(m)),
           arc: (w.arc ?? 'F') as LabSeedGroup['weapons'][number]['arc'],
         }));
       const key = JSON.stringify([s.hull, weapons, s.specials ?? []]);

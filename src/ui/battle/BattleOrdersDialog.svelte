@@ -15,10 +15,11 @@
     return b ? (isAttacker ? b.ordersA !== null : b.ordersD !== null) : false;
   });
 
-  let stance = $state(isAttacker ? 'charge' : 'hold_range');
+  let stance = $state('charge'); // charge is the default for BOTH sides (bugs.md)
   let priority = $state('nearest');
   let retreatThresholdPct = $state(25);
   let bombard = $state(false);
+  let spareNoncombatants = $state(false);
 
   const roster = $derived.by(() => {
     void app.version;
@@ -65,6 +66,7 @@
         priority,
         retreatThresholdPct,
         bombard: isAttacker ? bombard : false,
+        spareNoncombatants,
       },
     });
   }
@@ -86,7 +88,7 @@
         <label>Stance
           <select data-testid="battle-stance" bind:value={stance}>
             <option value="charge">Charge — close to point-blank</option>
-            <option value="hold_range">Hold range — fight at medium band</option>
+            <option value="hold_range">Hold position — stand fast and fight</option>
             <option value="standoff">Standoff — stay at long range</option>
             <option value="formation">Formation — advance as one line at fleet speed</option>
             <option value="passthrough">Passthrough — punch through, then withdraw together (raid)</option>
@@ -112,6 +114,10 @@
             Bombard the colony if the pass is won
           </label>
         {/if}
+        <label class="row" title="if you win the field, the enemy's unarmed ships (colony/outpost ships, transports) are normally captured and destroyed — check to let them go">
+          <input type="checkbox" data-testid="battle-spare" bind:checked={spareNoncombatants} />
+          Spare non-combatant ships if the pass is won
+        </label>
       </div>
       <button data-testid="battle-submit" onclick={submit}>Lock in orders</button>
     {/if}

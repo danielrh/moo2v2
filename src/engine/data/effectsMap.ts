@@ -132,7 +132,7 @@ export const EFFECTS: Record<string, EffectSpec> = {
   powered_armor: { kind: 'ground_unit', stub: 'ground combat (Phase 6)' },
   fast_missile_racks: { kind: 'ship_special', handler: 'combat' }, // missiles cycle 2x
   advanced_damage_control: { kind: 'ship_special', handler: 'combat' }, // full repair after each battle
-  assault_shuttle: { kind: 'weapon', stub: 'boarding shuttles (Phase 6)' },
+  assault_shuttle: { kind: 'weapon', handler: 'combat' }, // boarding craft: launch as strike craft, cripple systems on contact (combat.ts classId 4)
   titan_construction: { kind: 'unlock', handler: 'shipdesign' },
   doom_star_construction: { kind: 'unlock', handler: 'shipdesign' },
   ground_batteries: { kind: 'building', handler: 'combat' }, // +6 heavy beams on the defense platform (battles.ts)

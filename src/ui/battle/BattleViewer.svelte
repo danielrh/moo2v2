@@ -119,7 +119,7 @@
     const tex = textureForModel(`${monster ? 'npc' : style}|${cls}|${init.modelIdx ?? 0}|${colorHex}|${specialsKey}|${heavyBeams ? 1 : 0}|${Math.min(9, missileTubes)}`, model, pal);
     const sprite = new Sprite(tex);
     sprite.anchor.set(0.5);
-    sprite.scale.set(PIX);
+    sprite.scale.set(PIX * (model.pxScale ?? 1));
     sprite.visible = false;
     shipC.addChild(sprite);
     const tier = Math.min(6, Math.max(0, init.modelKind === 'scout' ? 0 : init.hullIdx));
@@ -131,7 +131,7 @@
       sprite,
       color: cssToNum(colorHex),
       flame: cssToNum(flameColorFor(style, npc || monster)),
-      radius: (model.radius + 1.5) * PIX,
+      radius: (model.radius * (model.pxScale ?? 1) + 1.5) * PIX,
       flameLen: (3.2 + tier * 1.5) * PIX,
       flameW: (0.9 + tier * 0.22) * PIX,
       lights,
@@ -142,8 +142,9 @@
 
   /** rotate a model-local mount into world space */
   function mountWorld(v: ShipView, x: number, y: number, angle: number, m: Mount): [number, number] {
-    const lx = (m.x + 0.5 - v.model.w / 2) * PIX;
-    const ly = (m.y + 0.5 - v.model.h / 2) * PIX;
+    const ps = PIX * (v.model.pxScale ?? 1);
+    const lx = (m.x + 0.5 - v.model.w / 2) * ps;
+    const ly = (m.y + 0.5 - v.model.h / 2) * ps;
     const ca = Math.cos(angle);
     const sa = Math.sin(angle);
     return [x + lx * ca - ly * sa, y + lx * sa + ly * ca];
@@ -578,7 +579,10 @@
         <span style="color:{ownerColor(input.defender)}">{nameOf(input.defender)} ({sideCount(1)})</span>
       </span>
       <span class="tick">tick {totalFrames ? Math.min(frameIdx, totalFrames - 1) : 0}/{totalFrames}</span>
-      <button onclick={() => (playing = !playing)}>{playing ? '⏸ Pause' : '▶ Play'}</button>
+      <button onclick={() => {
+        if (!playing && frameIdx >= totalFrames - 1) frameIdx = 0; // ▶ at the end replays from the top (bugs.md)
+        playing = !playing;
+      }}>{playing ? '⏸ Pause' : '▶ Play'}</button>
       <button onclick={() => (speed = speed === 1 ? 2 : speed === 2 ? 4 : 1)}>{speed}×</button>
       <button data-testid="battle-skip" onclick={skip}>Skip to end</button>
       <button data-testid="battle-close" onclick={close}>Close</button>

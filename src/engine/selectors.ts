@@ -299,10 +299,26 @@ export function empireSummary(state: GameState, empireId: number): EmpireSummary
 
 export type JobPreset = 'research' | 'industry' | 'blend';
 
+/** food (units) the rest of the empire is short of WITHOUT this colony's
+ * contribution: what this colony's farmers must keep exporting via
+ * freighters so a preset sweep does not starve other worlds (bugs.md) */
+function foodNeededFromColony(state: GameState, colony: Colony): number {
+  let deficit = 0;
+  let surplus = 0;
+  for (const c of state.colonies) {
+    if (c.owner !== colony.owner || c.outpost || c.id === colony.id) continue;
+    const net = colonyOutput(state, c).foodNet;
+    if (net >= 0) surplus += net;
+    else deficit += -net;
+  }
+  return Math.max(0, deficit - surplus);
+}
+
 /** Bulk job presets for the colonies screen. Farmers are set to the fewest
- * that keep the colony fed (0 if farming cannot feed it — freighters cover
- * shortfalls); the rest go to science ('research'), industry ('industry'), or
- * industry capped at pollution <= 2 with the remainder on science ('blend'). */
+ * that keep the colony fed AND keep exporting whatever food the rest of the
+ * empire depends on; the rest go to science ('research'), industry
+ * ('industry'), or industry capped at pollution <= 2 with the remainder on
+ * science ('blend'). */
 export function presetJobs(
   state: GameState,
   colonyId: number,
@@ -328,18 +344,28 @@ export function presetJobs(
     }
   };
 
-  // fewest farmers that feed the colony (foodNet is monotone in farmers)
+  // fewest farmers that (a) feed the colony and (b) keep exporting the food
+  // the REST of the empire depends on — a research/industry sweep must not
+  // pull the breadbasket's farmers (bugs.md)
+  const mustExport = foodNeededFromColony(state, colony);
   let farmers = 0;
   let fed = false;
   for (let f = 0; f <= total; f++) {
     assign(f, 0);
-    if (colonyOutput(state, probe).foodNet >= 0) {
+    if (colonyOutput(state, probe).foodNet >= mustExport) {
       farmers = f;
       fed = true;
       break;
     }
   }
-  if (!fed) farmers = 0; // farming cannot feed this world: do not waste hands
+  if (!fed) {
+    // this world alone cannot cover the whole empire need: keep its CURRENT
+    // farmer count (never make the empire's food balance worse) — unless
+    // farming is outright hopeless here (then free every hand, as before)
+    assign(total, 0);
+    const bestPossible = colonyOutput(state, probe).foodNet;
+    farmers = bestPossible > 0 ? Math.min(total, colony.groups.reduce((n, g) => n + g.farmers, 0)) : 0;
+  }
 
   const rest = total - farmers;
   let workers = 0;
@@ -361,6 +387,86 @@ export function presetJobs(
     workers: g.workers,
     scientists: g.scientists,
   }));
+}
+
+/** "Fix food": concentrate the empire's farming on its most productive food
+ * worlds. The SELECTED colonies form the flexible pool — each is first
+ * relieved to its minimum (empire-safe) farming, then farmers are added back
+ * one at a time on whichever selected world yields the most food per farmer,
+ * until the empire's food balance is positive (or nobody can improve it).
+ * Returns per-colony job groups to submit. */
+export function fixFoodJobs(
+  state: GameState,
+  colonyIds: number[],
+): Map<number, Array<{ race: number; farmers: number; workers: number; scientists: number }>> {
+  const out = new Map<number, Array<{ race: number; farmers: number; workers: number; scientists: number }>>();
+  const probeState: GameState = structuredClone(state);
+  const probes = colonyIds
+    .map((id) => probeState.colonies.find((c) => c.id === id))
+    .filter((c): c is Colony => !!c && !c.outpost && c.groups.length > 0);
+  if (!probes.length) return out;
+  const owner = probes[0]!.owner;
+
+  const empireFood = (): number => {
+    let net = 0;
+    for (const c of probeState.colonies) {
+      if (c.owner !== owner || c.outpost) continue;
+      net += colonyOutput(probeState, c).foodNet;
+    }
+    return net;
+  };
+  const addFarmer = (c: Colony): boolean => {
+    // pull from workers first, then scientists (largest group first)
+    for (const job of ['workers', 'scientists'] as const) {
+      const grp = [...c.groups].sort((a, b) => b[job] - a[job])[0];
+      if (grp && grp[job] > 0) {
+        grp[job] -= 1;
+        grp.farmers += 1;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // pass 1: relieve every selected colony to its lean-farming research pose
+  for (const c of probes) {
+    const groups = presetJobs(probeState, c.id, 'research');
+    if (!groups) continue;
+    for (const g of groups) {
+      const target = c.groups.find((x) => x.race === g.race);
+      if (target) {
+        target.farmers = g.farmers;
+        target.workers = g.workers;
+        target.scientists = g.scientists;
+      }
+    }
+  }
+  // pass 2: farm the best dirt first until the empire is fed
+  let guard = 0;
+  while (empireFood() < 0 && guard++ < 500) {
+    let best: Colony | null = null;
+    let bestGain = 0;
+    for (const c of probes) {
+      const before = colonyOutput(probeState, c).foodNet;
+      const snapshot = structuredClone(c.groups);
+      if (!addFarmer(c)) continue;
+      const gain = colonyOutput(probeState, c).foodNet - before;
+      c.groups = snapshot; // roll back the trial
+      if (gain > bestGain) {
+        bestGain = gain;
+        best = c;
+      }
+    }
+    if (!best || bestGain <= 0) break; // nobody can grow more food
+    addFarmer(best);
+  }
+  for (const c of probes) {
+    out.set(
+      c.id,
+      c.groups.map((g) => ({ race: g.race, farmers: g.farmers, workers: g.workers, scientists: g.scientists })),
+    );
+  }
+  return out;
 }
 
 export interface ResearchChoice {

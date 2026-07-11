@@ -85,6 +85,10 @@ export interface BattleOrders {
   retreatThresholdPct: number;
   /** attacker only: bombard the colony after winning the pass */
   bombard: boolean;
+  /** winner-side mercy: leave the loser's unarmed ships (colony/outpost
+   * ships, transports) alive instead of capturing-and-scuttling them.
+   * Optional for wire/save compatibility; absent = false (classic behavior). */
+  spareNoncombatants?: boolean;
 }
 
 export const DEFAULT_ORDERS: BattleOrders = {
@@ -440,12 +444,15 @@ export function runBattle(
           break;
         }
         case 'hold_range': {
+          // HOLD POSITION (renamed in the UI): stand fast and swing the bow
+          // onto the target so the forward arcs bear — the old "keep 150-200u"
+          // behavior made ships literally turn tail and grind into the field
+          // edge whenever the enemy closed (bugs.md)
           if (target && active(target)) {
-            const d = idist(Math.abs(target.x - s.x), Math.abs(target.y - s.y));
-            if (d > 200 * FP) steer(target.x, target.y, 1, 200 * FP);
-            else if (d < 150 * FP) steer(target.x, target.y, -1);
-            else travel = 0;
-          } else steer(s.x + dir * FIELD_W, s.y, 1);
+            desiredX = target.x - s.x;
+            desiredY = target.y - s.y;
+            travel = 0;
+          } else travel = 0;
           break;
         }
         case 'standoff': {
@@ -459,10 +466,16 @@ export function runBattle(
               const nearRight = s.x >= FIELD_W - 40 * FP && target.x < s.x;
               const nearTop = s.y <= 40 * FP && target.y > s.y;
               const nearBottom = s.y >= FIELD_H - 40 * FP && target.y < s.y;
-              if (nearLeft || nearRight) {
-                steer(s.x, target.y > s.y ? s.y - FIELD_H : s.y + FIELD_H, 1);
+              const inCorner = (s.x <= 40 * FP || s.x >= FIELD_W - 40 * FP) && (s.y <= 40 * FP || s.y >= FIELD_H - 40 * FP);
+              if (inCorner) {
+                // cornered: the old strafe pointed BACK INTO the corner and
+                // ships parked there forever — punch out toward open field
+                steer(FIELD_W / 2, FIELD_H / 2, 1);
+              } else if (nearLeft || nearRight) {
+                // strafe vertically toward the side with more room
+                steer(s.x, s.y <= FIELD_H / 2 ? s.y + FIELD_H : s.y - FIELD_H, 1);
               } else if (nearTop || nearBottom) {
-                steer(target.x > s.x ? s.x - FIELD_W : s.x + FIELD_W, s.y, 1);
+                steer(s.x <= FIELD_W / 2 ? s.x + FIELD_W : s.x - FIELD_W, s.y, 1);
               } else {
                 steer(target.x, target.y, -1);
               }

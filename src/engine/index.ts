@@ -4,7 +4,7 @@
 // - No imports from outside src/engine (zero runtime dependencies).
 // - No sources of nondeterminism; randomness comes only from the seeded PRNG.
 
-export const ENGINE_VERSION = '0.9.0'; // fast-start groundwork: per-empire dynamic entity ids (ids.ts), freighter in-use upkeep (0.5 BC), settler runs on second-best drive, Unification skips morale tech, PD weapons mount as 360 at base space, colony_ship_arrived event; starts: pre-warp loses the free colony ship, new 'advanced' big-identical-empires mode
+export const ENGINE_VERSION = '0.9.1'; // combat-critical fix: synthetic battle ids (bases/monsters) moved to 1e9/2e9 so they clear the per-empire dynamic id blocks — 0.9.0 misrouted every block-id ship outcome to the monster branch (battle losses never applied, bombardment never reached). 0.9.0 replays would diverge, so saves from it load snapshot-first.
 
 export * from './types';
 export * from './ids';

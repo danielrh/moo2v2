@@ -27,6 +27,15 @@ export interface RaceConfig {
   presetId?: string;
   picks?: string[];
   raceName?: string;
+  /** chosen banner color (#rrggbb); omitted = the classic per-seat default */
+  color?: string;
+}
+
+/** normalized #rrggbb or undefined — bad input falls back to the seat default */
+export function normalizeEmpireColor(color: unknown): string | undefined {
+  if (typeof color !== 'string') return undefined;
+  const c = color.trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(c) ? c : undefined;
 }
 
 export interface EngineGameStart {
@@ -36,7 +45,10 @@ export interface EngineGameStart {
   dataVersion: string;
 }
 
-export function resolveRaceConfig(raceJson: string | null, pickBudget?: number): { picks: string[]; raceName: string } {
+export function resolveRaceConfig(
+  raceJson: string | null,
+  pickBudget?: number,
+): { picks: string[]; raceName: string; color?: string } {
   let cfg: RaceConfig = {};
   if (raceJson) {
     try {
@@ -45,15 +57,16 @@ export function resolveRaceConfig(raceJson: string | null, pickBudget?: number):
       cfg = {};
     }
   }
+  const color = normalizeEmpireColor(cfg.color);
   if (cfg.presetId) {
     const preset = racePresetById.get(cfg.presetId);
-    if (preset) return { picks: [...preset.picks], raceName: cfg.raceName ?? preset.name };
+    if (preset) return { picks: [...preset.picks], raceName: cfg.raceName ?? preset.name, color };
   }
   if (cfg.picks && validatePicks(cfg.picks, pickBudget).ok) {
-    return { picks: [...cfg.picks].sort(), raceName: cfg.raceName ?? 'Custom' };
+    return { picks: [...cfg.picks].sort(), raceName: cfg.raceName ?? 'Custom', color };
   }
   const fallback = racePresetById.get('solari')!;
-  return { picks: [...fallback.picks], raceName: fallback.name };
+  return { picks: [...fallback.picks], raceName: fallback.name, color };
 }
 
 export function initGame(start: EngineGameStart): GameState {
@@ -109,6 +122,7 @@ export function initGame(start: EngineGameStart): GameState {
       id: player.id,
       name: player.name,
       raceName: cfg.raceName,
+      ...(cfg.color ? { color: cfg.color } : {}),
       picks: [...cfg.picks].sort(),
       government: resolveTraits(cfg.picks).government,
       bc: 50,

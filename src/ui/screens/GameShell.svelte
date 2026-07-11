@@ -2,7 +2,7 @@
   import { selectors, gameEngine } from '@engine/index';
   import { FAST_MAX_AHEAD } from '@protocol/messages';
   import { app, getActive, leaveGame } from '../state.svelte';
-  import { addBotForSeat, removeBotForSeat } from '../net';
+  import { syncEmpireColors } from '../colors';
   import { latchEdge, type EdgeLatch, type EdgeLevel } from '../commitEdge';
   import { describeSaveError, downloadRawDatabase, downloadSave } from '../saveload';
   import Spreadsheet from './Spreadsheet.svelte';
@@ -25,6 +25,11 @@
   const gs = $derived.by(() => {
     void app.version;
     return session().getPlanned();
+  });
+  // one consistent color per player on every surface: fold chosen banner
+  // colors into the shared registry whenever the state changes
+  $effect(() => {
+    if (gs) syncEmpireColors(gs.empires);
   });
   const summary = $derived.by(() => {
     void app.version;
@@ -189,6 +194,13 @@
     }).length;
   });
 
+  /** own fleets under way — mirrors the Colonies badge on the Fleets tab */
+  const fleetsInFlight = $derived.by(() => {
+    if (!gs) return 0;
+    const me = session().playerId;
+    return gs.ships.filter((s) => s.owner === me && s.location.kind === 'transit').length;
+  });
+
   // ---- research breakthrough + colony-ship arrival celebrations ----
   let celebration = $state<{ field: string; granted: string[] } | null>(null);
   let celebrationTimer: ReturnType<typeof setTimeout> | null = null;
@@ -294,16 +306,51 @@
 
 {#if gs && summary}
   <header>
+    <!-- End turn lives at the very top-left so it is ALWAYS in the same
+         place, no matter how wide the stats to its right get (bugs.md) -->
+    {#if fastActive}
+      <button
+        data-testid="commit"
+        class="commit fast"
+        class:warn={researchIdle}
+        disabled={fastBlind || fastAhead >= FAST_MAX_AHEAD}
+        title={fastBlind
+          ? 'Recovering your fast-forwarded turns after the reload — planning resumes when the log catches up.'
+          : fastAhead >= FAST_MAX_AHEAD
+            ? `You are ${FAST_MAX_AHEAD} turns ahead of the slowest player — the cap. Play resumes as they catch up.`
+            : researchIdle
+              ? 'Warning: no research selected — RP will be banked unspent'
+              : 'Fast start: ends your turn immediately — nobody is waited on until CONTACT'}
+        onclick={endTurn}
+      >{researchIdle ? '⚠ ' : ''}End turn ⚡{fastAhead > 0 ? ` (+${fastAhead})` : ''}</button>
+    {:else}
+      <button
+        data-testid="commit"
+        class="commit"
+        class:committed={iCommitted}
+        class:warn={researchIdle && !iCommitted}
+        title={researchIdle && !iCommitted ? 'Warning: no research selected — RP will be banked unspent' : ''}
+        onclick={toggleCommit}
+      >{iCommitted ? 'Committed ✓' : researchIdle ? '⚠ Commit turn' : 'Commit turn'} ({committed.length}/{roster.length})</button>
+    {/if}
     <span class="title">MOO2<span class="v2">v2</span></span>
     <span class="stat" data-testid="my-seat" title="the empire you play (seat #{session().playerId}) — a resumed save matches players to their empire by name">👤 {mySeatName}</span>
-    <span class="stat" data-testid="turn"><span class="lbl">Turn</span> {gs.turn}{#if fastActive && fastAhead > 0}<span class="dim" title="fast start: your preview runs {fastAhead} turn{fastAhead > 1 ? 's' : ''} ahead of the synced (slowest-player) turn {syncedTurn}"> · synced {syncedTurn}</span>{/if}</span>
+    <!-- fixed-width turn stat: tabular digits + the synced turn lives in the
+         tooltip, so the header never jiggles as numbers change (bugs.md) -->
+    <span
+      class="stat turnstat"
+      data-testid="turn"
+      title={fastActive && fastAhead > 0
+        ? `fast start: your preview runs ${fastAhead} turn${fastAhead > 1 ? 's' : ''} ahead of the synced (slowest-player) turn ${syncedTurn}`
+        : 'current turn'}
+    ><span class="lbl">Turn</span> {gs.turn}{#if fastActive && fastAhead > 0}<span class="dim syncmark">⚡</span>{/if}</span>
     <span class="stat" data-testid="bc" title="treasury (change per turn)">💰 {summary.bc} <span class="delta" class:neg={summary.bcDelta < 0}>({summary.bcDelta >= 0 ? '+' : ''}{summary.bcDelta})</span></span>
     <span class="stat" data-testid="food" title="empire food surplus" class:neg={summary.foodNet < 0}>🌾 {summary.foodNet >= 0 ? '+' : ''}{summary.foodNet}</span>
     <span
       class="stat"
       data-testid="freighters"
       class:neg={summary.freightersFree < summary.freightersNeeded}
-      title="freighters: free / total. Food deliveries need {summary.freightersNeeded}; hauling colonists between systems ties up 5 per colonist{summary.colonistsInTransit > 0 ? ` (${summary.colonistsInTransit} colonist${summary.colonistsInTransit > 1 ? 's' : ''} en route)` : ''}."
+      title="freighters: {summary.freightersFree} free of {summary.freighters} total ({summary.freighters - summary.freightersFree} busy). NEEDED now: {summary.freightersNeeded} for food deliveries{summary.colonistsInTransit > 0 ? ` + ${5 * summary.colonistsInTransit} hauling ${summary.colonistsInTransit} colonist${summary.colonistsInTransit > 1 ? 's' : ''} (5 per colonist)` : ''}.{summary.freightersFree < summary.freightersNeeded ? ` SHORT ${summary.freightersNeeded - summary.freightersFree} — build freighter fleets or food goes undelivered.` : ''}"
     >🚚 {summary.freightersFree}/{summary.freighters}</span>
     <span class="stat" data-testid="rp" title="research points per turn">🔬 {summary.researchPerTurn}</span>
     <span
@@ -341,31 +388,6 @@
             : ''}
       {/if}
     </button>
-    {#if fastActive}
-      <button
-        data-testid="commit"
-        class="commit fast"
-        class:warn={researchIdle}
-        disabled={fastBlind || fastAhead >= FAST_MAX_AHEAD}
-        title={fastBlind
-          ? 'Recovering your fast-forwarded turns after the reload — planning resumes when the log catches up.'
-          : fastAhead >= FAST_MAX_AHEAD
-            ? `You are ${FAST_MAX_AHEAD} turns ahead of the slowest player — the cap. Play resumes as they catch up.`
-            : researchIdle
-              ? 'Warning: no research selected — RP will be banked unspent'
-              : 'Fast start: ends your turn immediately — nobody is waited on until CONTACT'}
-        onclick={endTurn}
-      >{researchIdle ? '⚠ ' : ''}End turn ⚡{fastAhead > 0 ? ` (+${fastAhead})` : ''}</button>
-    {:else}
-      <button
-        data-testid="commit"
-        class="commit"
-        class:committed={iCommitted}
-        class:warn={researchIdle && !iCommitted}
-        title={researchIdle && !iCommitted ? 'Warning: no research selected — RP will be banked unspent' : ''}
-        onclick={toggleCommit}
-      >{iCommitted ? 'Committed ✓' : researchIdle ? '⚠ Commit turn' : 'Commit turn'} ({committed.length}/{roster.length})</button>
-    {/if}
     {#if getActive()?.solo}
       <label class="aggro" title="aggressive: the bot declares war and throws half its fleet at your nearest systems">
         <input
@@ -416,19 +438,8 @@
       📬 play-by-mail — {pbmInfo.note}
     </div>
   {/if}
-  {#each seatIssues as { p, bot } (p.id)}
-    <div class="banner warn" data-testid="seat-issue-{p.id}">
-      {#if bot}
-        🤖 The bot is playing <b>{p.name}</b> (seat #{p.id}).
-        <button data-testid="bot-release-{p.id}" title="retire the bot; the player gets the empire back by rejoining with their name"
-          onclick={() => removeBotForSeat(getActive()!, bot)}>✕ hand the seat back</button>
-      {:else}
-        ⏳ <b>{p.name}</b> (seat #{p.id}) is not connected — the game waits for their commit.
-        <button data-testid="bot-sub-{p.id}" title="a fair (non-cheating) bot plays their empire until they rejoin with the same name"
-          onclick={() => addBotForSeat(getActive()!, p.name)}>🤖 let the bot play {p.name}</button>
-      {/if}
-    </div>
-  {/each}
+  <!-- seat problems live on the Empires tab now (bugs.md: the big yellow
+       banner must not block the whole main screen); the tab badge points there -->
   {#if autoTurnRemaining !== null && !iCommitted}
     <div class="banner warn" data-testid="auto-turn-banner">
       ⏱ Everyone else has committed — the turn advances in {autoTurnRemaining}s unless you commit (or someone uncommits).
@@ -463,9 +474,13 @@
     </button>
     <button class:active={tab === 'map'} data-testid="tab-map" onclick={() => (tab = 'map')}>Map</button>
     <button class:active={tab === 'research'} class:pulse={researchIdle} data-testid="tab-research" onclick={() => (tab = 'research')}>Research</button>
-    <button class:active={tab === 'fleets'} data-testid="tab-fleets" onclick={() => (tab = 'fleets')}>Fleets</button>
+    <button class:active={tab === 'fleets'} data-testid="tab-fleets" onclick={() => (tab = 'fleets')}>
+      Fleets{#if fleetsInFlight > 0}<span class="idlebadge flying" data-testid="fleets-in-flight-badge" title="{fleetsInFlight} fleet{fleetsInFlight > 1 ? 's' : ''} in flight">{fleetsInFlight}</span>{/if}
+    </button>
     <button class:active={tab === 'designer'} data-testid="tab-designer" onclick={() => (tab = 'designer')}>Designer</button>
-    <button class:active={tab === 'empires'} data-testid="tab-empires" onclick={() => (tab = 'empires')}>Empires</button>
+    <button class:active={tab === 'empires'} data-testid="tab-empires" onclick={() => (tab = 'empires')}>
+      Empires{#if seatIssues.length > 0}<span class="idlebadge" data-testid="seat-issue-badge" title="{seatIssues.length} seat{seatIssues.length > 1 ? 's need' : ' needs'} attention (disconnected player or bot stand-in) — details here">⏳{seatIssues.length}</span>{/if}
+    </button>
     <button
       class:active={tab === 'reports'}
       data-testid="tab-reports"
@@ -665,6 +680,18 @@
     font-weight: 700;
     background: linear-gradient(180deg, #24418a, #1b2f66);
     border-color: #4a6ab8;
+    /* pinned first in the header: a stable footprint keeps it in the exact
+       same place as its label changes (Commit ↔ Committed, +N suffix) */
+    min-width: 11.5rem;
+    order: -1;
+  }
+  /* fixed-width turn readout: digits are tabular and the synced detail lives
+     in the tooltip, so this stat never resizes its neighbors */
+  .turnstat {
+    min-width: 6.2rem;
+  }
+  .syncmark {
+    margin-left: 0.15rem;
   }
   .commit.warn {
     background: linear-gradient(180deg, #8a6a1c, #6e5312);
@@ -901,6 +928,12 @@
     color: #ffe9b0;
     font-size: 0.72rem;
     text-align: center;
+  }
+  /* fleets-in-flight: informational (blue), not a nag (gold) */
+  .idlebadge.flying {
+    background: linear-gradient(180deg, #24406a, #1c3254);
+    border-color: #6ea8ff;
+    color: #bfe6ff;
   }
   .celebration.arrival {
     border-color: var(--good);

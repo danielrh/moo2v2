@@ -17,7 +17,7 @@
 //     lucky races are never the victim of the bad ones.
 
 import { HOP_RANGE_CP, starDistance } from './galaxy';
-import { allocWorldId } from './ids';
+import { allocWorldId, MONSTER_COMBAT_ID } from './ids';
 import { rngFor } from './rng';
 import { NEXT_TERRAFORM } from './terraform';
 import { grantApp } from './research';
@@ -124,7 +124,7 @@ const GUARDABLE: MonsterKind[] = ['amoeba', 'hydra', 'eel', 'crystal', 'dragon']
 export function monsterToCombat(m: MonsterUnit, side: 0 | 1): CombatShipInit {
   const spec = MONSTER_SPECS[m.kind];
   return {
-    shipId: 2_000_000 + m.id,
+    shipId: MONSTER_COMBAT_ID + m.id,
     side,
     hull: m.kind,
     hullIdx: m.kind === 'guardian' || m.kind === 'antaran_fortress' ? 9 : 6,

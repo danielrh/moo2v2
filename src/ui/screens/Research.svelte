@@ -34,6 +34,18 @@
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   });
 
+  /** research category emojis (bugs.md) */
+  const SUBJECT_EMOJI: Record<string, string> = {
+    construction: '🏗️',
+    power: '⚡',
+    chemistry: '🧪',
+    sociology: '🏛️',
+    computers: '💻',
+    ecology: '🌿',
+    physics: '⚛️',
+    force_fields: '🛡️',
+  };
+
   let pendingTarget = $state<Record<number, string>>({});
 
   let researchNote = $state('');
@@ -133,7 +145,7 @@
   <div class="subjects">
     {#each bySubject as [subject, fields] (subject)}
       <div class="subject">
-        <h3>{subject.replace('_', ' ')}</h3>
+        <h3>{SUBJECT_EMOJI[subject] ?? '🔬'} {subject.replace('_', ' ')}</h3>
         {#each fields as choice (choice.field.num)}
           {@const isCurrent = empire.research.fieldNum === choice.field.num}
           <div class="field" class:current={isCurrent}>

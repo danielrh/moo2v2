@@ -248,6 +248,49 @@
     gaia: '#5ee08a', terran: '#6cc862', arid: '#d8bb6a', swamp: '#7aa85a', ocean: '#4da3ff',
     tundra: '#bcd7e8', desert: '#e0a35e', barren: '#8f8a80', energized: '#c78bff', hostile: '#ff6b5e',
   };
+
+  // ---- little worlds (bugs.md: "worlds in system view should look nicer") ----
+  // each planet gets a shaded globe with climate-specific surface details and
+  // a deterministic per-planet variant, instead of a flat color disc
+  function mixHex(a: string, b: string, t: number): string {
+    const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
+    const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+    return `#${pa.map((v, i) => Math.round(v + (pb[i]! - v) * t).toString(16).padStart(2, '0')).join('')}`;
+  }
+  interface WorldLook {
+    base: string;
+    light: string;
+    dark: string;
+    detail: string;
+    pattern: 'seas' | 'bands' | 'craters' | 'ice';
+    cap: boolean;
+    /** deterministic tweak 0..3 shifting the detail placement */
+    v: number;
+  }
+  const CLIMATE_PATTERNS: Record<string, Array<WorldLook['pattern']>> = {
+    gaia: ['seas'], terran: ['seas'], ocean: ['seas'], swamp: ['seas', 'bands'],
+    arid: ['bands', 'craters'], desert: ['bands', 'craters'], tundra: ['ice', 'craters'],
+    barren: ['craters'], energized: ['bands', 'seas'], hostile: ['craters', 'bands'],
+  };
+  const DETAIL_TINT: Record<string, string> = {
+    gaia: '#2f8f5a', terran: '#3f7fbf', ocean: '#2c6cc0', swamp: '#4d7a3a',
+    arid: '#a8843c', desert: '#b07a3a', tundra: '#8fb8d8', barren: '#5d5a52',
+    energized: '#8f5fd0', hostile: '#b03a30',
+  };
+  function worldLook(p: { id: number; climate: string }): WorldLook {
+    const base = CLIMATE_COLORS[p.climate] ?? '#999';
+    const h = ((p.id * 2654435761) >>> 0) % 1024;
+    const patterns = CLIMATE_PATTERNS[p.climate] ?? ['craters'];
+    return {
+      base,
+      light: mixHex(base, '#ffffff', 0.35),
+      dark: mixHex(base, '#000000', 0.45),
+      detail: DETAIL_TINT[p.climate] ?? mixHex(base, '#000000', 0.3),
+      pattern: patterns[h % patterns.length]!,
+      cap: p.climate === 'tundra' || p.climate === 'terran' || p.climate === 'gaia' ? h % 3 !== 0 : h % 5 === 0,
+      v: h % 4,
+    };
+  }
   function mineralRing(m: string): { stroke: string; width: number; dash: string } | null {
     if (m === 'ultra_rich') return { stroke: '#ffd75e', width: 2.5, dash: '' };
     if (m === 'rich') return { stroke: '#ffd75e', width: 1.5, dash: '' };
@@ -291,9 +334,14 @@
         </filter>
       </defs>
 
-      {#each rangeCircles as rc, i (i)}
-        <circle cx={rc.x} cy={rc.y} r={rc.r} class="range" />
-      {/each}
+      <!-- fuel range as ONE muted territory in the player color: solid circles
+           inside a group whose opacity applies AFTER compositing, so overlaps
+           never darken and the union reads as a single region -->
+      <g class="territory" style="fill:{playerColor(me())}">
+        {#each rangeCircles as rc, i (i)}
+          <circle cx={rc.x} cy={rc.y} r={rc.r} />
+        {/each}
+      </g>
 
       {#each wormholeLinks as wl, i (i)}
         <line x1={wl.x1} y1={wl.y1} x2={wl.x2} y2={wl.y2} class="wormhole">
@@ -302,11 +350,13 @@
       {/each}
 
       {#each transits as t (t.id)}
-        <line x1={t.x} y1={t.y} x2={t.tx} y2={t.ty} class="route" />
+        <line x1={t.x} y1={t.y} x2={t.tx} y2={t.ty} class="route" style="stroke:{playerColor(me())}" />
         <g transform="translate({t.x},{t.y}) rotate({t.angle})">
-          <polygon points="18,0 -12,-11 -6,0 -12,11" class="fleetmark" class:reroutable={t.reroutable} />
+          <!-- in-flight ships wear the same player color as everything else;
+               re-routable fleets keep the yellow fill as the affordance -->
+          <polygon points="18,0 -12,-11 -6,0 -12,11" class="fleetmark" class:reroutable={t.reroutable} style="fill:{t.reroutable ? '' : playerColor(me())}" />
         </g>
-        <text x={t.x} y={t.y - 18} text-anchor="middle" class="eta">{t.name} · {t.eta}t</text>
+        <text x={t.x} y={t.y - 18} text-anchor="middle" class="eta" fill={playerColor(me())}>{t.name} · {t.eta}t</text>
       {/each}
 
       {#each view as v (v.star.id)}
@@ -493,11 +543,54 @@
                   <circle cx={px + off} cy={46 + ((ai * 7) % 11) - 5} r="1.6" fill="#8f8a80" />
                 {/each}
               {:else if p.body === 'gas_giant'}
-                <circle cx={px} cy="46" r="13" fill="#c9a06a" opacity="0.85" />
+                <circle cx={px} cy="46" r="13" fill="url(#gg-{p.id})" />
+                <g clip-path="url(#clip-{p.id})" opacity="0.5">
+                  <ellipse cx={px} cy="42" rx="14" ry="2.2" fill="#a87c46" />
+                  <ellipse cx={px} cy="49" rx="14" ry="1.8" fill="#e6c898" />
+                </g>
                 <ellipse cx={px} cy="46" rx="17" ry="4" fill="none" stroke="#e0c090" stroke-width="1.2" opacity="0.7" />
+                <defs>
+                  <radialGradient id="gg-{p.id}" cx="0.35" cy="0.3" r="1">
+                    <stop offset="0%" stop-color="#e8c894" /><stop offset="70%" stop-color="#c9a06a" /><stop offset="100%" stop-color="#6e5432" />
+                  </radialGradient>
+                  <clipPath id="clip-{p.id}"><circle cx={px} cy="46" r="13" /></clipPath>
+                </defs>
               {:else}
                 {@const ring = mineralRing(p.minerals)}
-                <circle cx={px} cy="46" r={4 + p.sizeClass * 1.8} fill={CLIMATE_COLORS[p.climate] ?? '#999'} />
+                {@const look = worldLook(p)}
+                {@const pr = 4 + p.sizeClass * 1.8}
+                <defs>
+                  <radialGradient id="pg-{p.id}" cx="0.35" cy="0.3" r="1.05">
+                    <stop offset="0%" stop-color={look.light} />
+                    <stop offset="55%" stop-color={look.base} />
+                    <stop offset="100%" stop-color={look.dark} />
+                  </radialGradient>
+                  <clipPath id="clip-{p.id}"><circle cx={px} cy="46" r={pr} /></clipPath>
+                </defs>
+                <circle cx={px} cy="46" r={pr} fill="url(#pg-{p.id})" />
+                <g clip-path="url(#clip-{p.id})">
+                  {#if look.pattern === 'seas'}
+                    <!-- continents / seas: irregular blobs, placement varies per world -->
+                    <ellipse cx={px - pr * 0.35 + look.v} cy={46 - pr * 0.2} rx={pr * 0.55} ry={pr * 0.35} fill={look.detail} opacity="0.75" transform="rotate({look.v * 17} {px} 46)" />
+                    <ellipse cx={px + pr * 0.4 - look.v * 0.5} cy={46 + pr * 0.35} rx={pr * 0.4} ry={pr * 0.22} fill={look.detail} opacity="0.65" transform="rotate({-look.v * 11} {px} 46)" />
+                  {:else if look.pattern === 'bands'}
+                    <!-- latitude bands (dune belts, storm streaks) -->
+                    <ellipse cx={px} cy={46 - pr * 0.35} rx={pr * 1.1} ry={pr * 0.16} fill={look.detail} opacity="0.6" transform="rotate({look.v * 4 - 6} {px} 46)" />
+                    <ellipse cx={px} cy={46 + pr * 0.25} rx={pr * 1.1} ry={pr * 0.2} fill={look.detail} opacity="0.5" transform="rotate({look.v * 4 - 6} {px} 46)" />
+                  {:else if look.pattern === 'craters'}
+                    <circle cx={px - pr * 0.3} cy={46 - pr * 0.25 + look.v * 0.6} r={pr * 0.2} fill={look.dark} opacity="0.8" />
+                    <circle cx={px + pr * 0.35} cy={46 + pr * 0.15} r={pr * 0.14} fill={look.dark} opacity="0.7" />
+                    <circle cx={px + pr * 0.05 + look.v * 0.4} cy={46 + pr * 0.45} r={pr * 0.1} fill={look.detail} opacity="0.8" />
+                  {:else if look.pattern === 'ice'}
+                    <ellipse cx={px} cy={46 - pr * 0.55} rx={pr * 0.8} ry={pr * 0.35} fill="#eef6ff" opacity="0.85" />
+                    <ellipse cx={px - pr * 0.2} cy={46 + pr * 0.3} rx={pr * 0.4} ry={pr * 0.18} fill={look.detail} opacity="0.5" />
+                  {/if}
+                  {#if look.cap}
+                    <ellipse cx={px} cy={46 - pr * 0.78} rx={pr * 0.5} ry={pr * 0.2} fill="#f2f8ff" opacity="0.9" />
+                  {/if}
+                  <!-- night-side terminator -->
+                  <circle cx={px + pr * 0.45} cy={46 + pr * 0.4} r={pr * 1.15} fill="#04060e" opacity="0.28" />
+                </g>
                 {#if ring}
                   <circle cx={px} cy="46" r={7 + p.sizeClass * 1.8} fill="none" stroke={ring.stroke} stroke-width={ring.width} stroke-dasharray={ring.dash} />
                 {/if}
@@ -528,6 +621,13 @@
             {p.body === 'planet' ? `${p.climate} · size ${p.sizeClass} · ${prettify(p.minerals)} · ${p.gravity}-g` : prettify(p.body)}
             {#each selected.colonies.filter((c) => gs?.colonies.find((x) => x.id === c.id)?.planetId === p.id) as c (c.id)}
               <b style="color:{playerColor(c.owner)}"> — {c.name}</b>
+              {#if c.owner === me() && c.outpost}
+                <button
+                  data-testid="scrap-outpost-{c.id}"
+                  title="dismantle this outpost for 25 BC salvage (its fuel-range support goes with it)"
+                  onclick={() => session().submit('scrap_outpost', { colonyId: c.id })}
+                >🗑 scrap outpost</button>
+              {/if}
             {/each}
             {#each shipsHere as f (f.ship.id)}
               {#if f.canColonizeHere.includes(p.id)}
@@ -643,6 +743,12 @@
     min-height: 420px;
     display: block;
   }
+  /* zoom-to-fit really FITS: the whole galaxy stays inside the viewport
+     height instead of only matching the width and scrolling vertically */
+  .scroller:not(.zoomed) svg {
+    max-height: calc(100vh - 11rem);
+    margin: 0 auto;
+  }
   .scroller.zoomed {
     overflow: auto;
     max-height: 74vh;
@@ -701,10 +807,9 @@
     stroke-width: 2;
     stroke-dasharray: 4 6;
   }
-  .range {
-    fill: rgba(110, 168, 255, 0.03);
-    stroke: rgba(110, 168, 255, 0.14);
-    stroke-width: 2;
+  .territory {
+    /* group-level opacity: overlapping circles composite to ONE flat region */
+    opacity: 0.09;
     pointer-events: none;
   }
   .route {

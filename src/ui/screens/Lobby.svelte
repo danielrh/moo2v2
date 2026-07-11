@@ -2,6 +2,7 @@
   import { PICK_ROWS, PICK_EXCLUSIVE_GROUPS, RACE_PRESETS, validatePicks, pickById, GOVERNMENTS, type PickRow } from '@engine/data/index';
   import type { GameSettings } from '@protocol/messages';
   import { app, getActive } from '../state.svelte';
+  import { PLAYER_COLORS } from '../colors';
 
   let ready = $state(false);
   let presetId = $state('solari');
@@ -9,6 +10,8 @@
   let customPicks = $state<string[]>(['dictatorship']);
   let raceName = $state('Custom');
   let showDetails = $state(false);
+  /** chosen banner color; null = the classic per-seat default */
+  let bannerColor = $state<string | null>(null);
 
   const roster = $derived.by(() => {
     void app.version;
@@ -111,10 +114,26 @@
   const columnB = tierFieldsets.slice(5);
 
   function pushConfig() {
+    const color = bannerColor ? { color: bannerColor } : {};
     const raceJson = custom
-      ? JSON.stringify({ picks: [...customPicks].sort(), raceName })
-      : JSON.stringify({ presetId });
+      ? JSON.stringify({ picks: [...customPicks].sort(), raceName, ...color })
+      : JSON.stringify({ presetId, ...color });
     getActive()?.session.setRaceConfig(raceJson, ready);
+  }
+  /** the color each seat will play with (their pick, else the seat default) */
+  function seatColor(p: { id: number; raceJson: string | null }): string {
+    try {
+      const c = p.raceJson ? (JSON.parse(p.raceJson) as { color?: string }).color : undefined;
+      if (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)) return c.toLowerCase();
+    } catch {
+      /* fall through to the seat default */
+    }
+    return PLAYER_COLORS[p.id % PLAYER_COLORS.length]!;
+  }
+  const takenColors = $derived(new Set(roster.filter((p) => p.id !== selfId).map((p) => seatColor(p))));
+  function chooseColor(c: string | null) {
+    bannerColor = c;
+    pushConfig();
   }
   function toggleReady() {
     ready = !ready;
@@ -230,6 +249,7 @@
 <ul data-testid="roster">
   {#each roster as p (p.id)}
     <li>
+      <span class="colorchip" style="background:{seatColor(p)}"></span>
       #{p.id} {p.name}
       {p.id === 0 ? '(host)' : ''}
       {describe(p.raceJson)}
@@ -371,6 +391,30 @@
     <input type="radio" data-testid="custom-race" checked={custom} onchange={() => { custom = true; pushConfig(); }} /> Custom race — empire name:
     <input data-testid="empire-name" bind:value={raceName} disabled={!custom} maxlength="20" style="width:9rem" placeholder="name your empire" onchange={pushConfig} />
   </label>
+
+  <div class="colorpick" data-testid="color-pick">
+    <span>Banner color:</span>
+    <button
+      type="button"
+      class="swatch auto"
+      class:active={bannerColor === null}
+      title="automatic (seat color)"
+      onclick={() => chooseColor(null)}
+    >A</button>
+    {#each PLAYER_COLORS as c (c)}
+      <button
+        type="button"
+        class="swatch"
+        class:active={bannerColor === c}
+        class:taken={takenColors.has(c) && bannerColor !== c}
+        style="background:{c}"
+        title={takenColors.has(c) && bannerColor !== c ? `${c} — taken by another player` : c}
+        disabled={takenColors.has(c) && bannerColor !== c}
+        onclick={() => chooseColor(c)}
+        aria-label="banner color {c}"
+      ></button>
+    {/each}
+  </div>
   {#if custom}
     <div class="picks-toolbar">
       <div class="status" aria-live="polite" data-testid="pick-budget" class:bad={!validation.ok}>
@@ -458,6 +502,44 @@
   .dim {
     opacity: 0.6;
     font-size: 0.85rem;
+  }
+  .colorchip {
+    display: inline-block;
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 50%;
+    border: 1px solid #05070f;
+    vertical-align: -1px;
+    margin-right: 0.25rem;
+  }
+  .colorpick {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.5rem 0;
+  }
+  .swatch {
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+  }
+  .swatch.active {
+    border-color: #fff;
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
+  }
+  .swatch.taken {
+    opacity: 0.25;
+    cursor: not-allowed;
+  }
+  .swatch.auto {
+    background: conic-gradient(#4da3ff, #ff6b5e, #5ee08a, #ffd75e, #4da3ff);
+    color: #05070f;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1;
   }
   .modes {
     display: flex;

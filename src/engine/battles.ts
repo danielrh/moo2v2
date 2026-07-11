@@ -9,6 +9,7 @@ import { travelTurns } from './movement';
 import { leaderCombatBonuses } from './leaders';
 import { floorDiv } from './imath';
 import { rngFor } from './rng';
+import { BASE_COMBAT_ID, MONSTER_COMBAT_ID } from './ids';
 import { baseDesign, designStats, knownWeapons, HULLS_BUILDABLE, BASE_HULLS, type ShipDesign } from './shipdesign';
 import { shipStyleOf } from './shipstyles';
 import { ANTARAN_EMPIRE, antaranRaze, factionOf, guardianReward, monstersAt, monsterToCombat } from './npc';
@@ -356,7 +357,7 @@ export function buildBattleInput(state: GameState, battle: PendingBattle): Built
       )
     : undefined;
   if (defColony && defender) {
-    const base = baseToCombat(state, defender, defColony, 1_000_000 + defColony.id);
+    const base = baseToCombat(state, defender, defColony, BASE_COMBAT_ID + defColony.id);
     if (base) {
       ships.push(base);
       baseColonyId = defColony.id;
@@ -397,8 +398,10 @@ export function buildBattleInput(state: GameState, battle: PendingBattle): Built
       defender: battle.defender,
       ships: ships.sort((a, b) => a.shipId - b.shipId),
       bystanders,
+      // both sides default to CHARGE — the old hold_range defender default
+      // made unordered fleets turn tail (bugs.md "change default to charge")
       ordersA: (battle.ordersA as BattleOrders | null) ?? DEFAULT_ORDERS,
-      ordersD: (battle.ordersD as BattleOrders | null) ?? { ...DEFAULT_ORDERS, stance: 'hold_range' },
+      ordersD: (battle.ordersD as BattleOrders | null) ?? DEFAULT_ORDERS,
     },
     baseColonyId,
   };
@@ -420,9 +423,9 @@ export function resolveBattle(state: GameState, battle: PendingBattle, events: T
   // apply ship outcomes
   const destroyedIds = new Set<number>();
   for (const o of result.outcomes) {
-    if (o.shipId >= 2_000_000) {
+    if (o.shipId >= MONSTER_COMBAT_ID) {
       // monster / Antaran unit
-      const monster = state.monsters.find((m) => 2_000_000 + m.id === o.shipId);
+      const monster = state.monsters.find((m) => MONSTER_COMBAT_ID + m.id === o.shipId);
       if (!monster) continue;
       if (o.destroyed) {
         state.monsters = state.monsters.filter((m) => m !== monster);
@@ -436,7 +439,7 @@ export function resolveBattle(state: GameState, battle: PendingBattle, events: T
       }
       continue;
     }
-    if (o.shipId >= 1_000_000) {
+    if (o.shipId >= BASE_COMBAT_ID) {
       // defense base + ground batteries fall together
       if (o.destroyed && built.baseColonyId !== null) {
         const colony = state.colonies.find((c) => c.id === built.baseColonyId);
@@ -478,11 +481,13 @@ export function resolveBattle(state: GameState, battle: PendingBattle, events: T
     }
   }
   // loser's unarmed ships at the star are lost if the winner holds the field —
-  // UNLESS their escorts withdrew alive: a retreating fleet covers its
-  // noncombatants out (so "retreat" really is a way to decline a fight)
+  // UNLESS their escorts withdrew alive (a retreating fleet covers its
+  // noncombatants out) or the winner ordered mercy (spareNoncombatants)
   if (result.winner !== null) {
     const loser = result.winner === 0 ? battle.defender : battle.attacker;
     const loserSide = result.winner === 0 ? 1 : 0;
+    const winnerOrders = result.winner === 0 ? built.input.ordersA : built.input.ordersD;
+    const spared = winnerOrders.spareNoncombatants === true;
     const escortsEscaped = result.outcomes.some(
       (o) => o.side === loserSide && o.retreated && !o.destroyed,
     );
@@ -493,8 +498,9 @@ export function resolveBattle(state: GameState, battle: PendingBattle, events: T
         ship.location.starId === battle.starId &&
         !isWarship(ship)
       ) {
-        if (escortsEscaped) {
-          // fall back with the fleet toward the nearest own colony
+        if (escortsEscaped || spared) {
+          // fall back with the fleet toward the nearest own colony (spared
+          // ships flee too — the winner let them go, not stay and blockade)
           const dest = retreatDestination(state, loser, battle.starId);
           if (dest) {
             ship.location = {
@@ -553,7 +559,7 @@ export function resolveBattle(state: GameState, battle: PendingBattle, events: T
     ticks: result.ticks,
     attackerDamagePct: result.attackerDamagePct,
     defenderDamagePct: result.defenderDamagePct,
-    destroyed: result.outcomes.filter((o) => o.destroyed && o.shipId < 1_000_000).map((o) => o.shipId),
+    destroyed: result.outcomes.filter((o) => o.destroyed && o.shipId < BASE_COMBAT_ID).map((o) => o.shipId),
     ...(bombReport ? { bombardment: bombReport } : {}),
   };
   events.push({ visibleTo: -1, kind: 'battle_resolved', payload: summary });
@@ -612,24 +618,26 @@ function bombard(state: GameState, battle: PendingBattle, events: TurnEvent[]): 
   let remaining = bombDamage;
   while (remaining >= 20) {
     remaining -= 20;
-    if (rng.chancePct(60) || colony.buildings.length === 0) {
-      // kill population: spread across ALL race groups (largest first), and
-      // never bomb the last unit out of existence from orbit
-      if (colonyPopUnits(colony) <= 1) break;
-      const grp = [...colony.groups].sort((a, b) => b.popK - a.popK)[0];
-      if (grp && grp.popK >= 1000) {
-        grp.popK -= 1000;
-        popKilled++;
-      } else {
-        break; // only fractions left anywhere: nothing more to kill
-      }
+    // every 20 points is a hit that lands SOMEWHERE: 60/40 pop/building, but
+    // a roll with nothing on its side falls through to the other (a barrage
+    // over a building-less colony still kills, and vice versa) — the old
+    // early-outs made most of a bombardment fizzle silently
+    const destructible = colony.buildings.filter((b) => b !== 'marine_barracks');
+    // never bomb the last unit out of existence from orbit; groups holding
+    // only fractions of a unit cannot lose a whole one either
+    const biggest = [...colony.groups].sort((a, b) => b.popK - a.popK)[0];
+    const canKillPop = colonyPopUnits(colony) > 1 && biggest !== undefined && biggest.popK >= 1000;
+    const wantsPop = rng.chancePct(60);
+    if (canKillPop && (wantsPop || destructible.length === 0)) {
+      // kill population: spread across ALL race groups (largest first)
+      biggest.popK -= 1000;
+      popKilled++;
+    } else if (destructible.length > 0) {
+      const b = destructible[rng.int(destructible.length)]!;
+      colony.buildings = colony.buildings.filter((x) => x !== b);
+      buildingsDestroyed.push(b);
     } else {
-      const destructible = colony.buildings.filter((b) => b !== 'marine_barracks');
-      if (destructible.length) {
-        const b = destructible[rng.int(destructible.length)]!;
-        colony.buildings = colony.buildings.filter((x) => x !== b);
-        buildingsDestroyed.push(b);
-      }
+      break; // nothing the barrage can still touch
     }
   }
   for (const g of colony.groups) {
