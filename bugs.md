@@ -1,26 +1,32 @@
-- [x] We need a new game mode: fast start. In this mode players can complete turns one after the next without waiting for synchronization.
-The first player's host monitors incoming committed turns from each player. Battles against andomidans or monsters should auto resolve. Since all randomness should be based on a hash of the initial seed plus turn id plus type of event.  Once the first player's simulation host sees players make contact with another empire or their ships encounter each other at a system on a turn, it flashes the screen CONTACT and gives folks a chance to save the file it has computed. This effectively may rewind players. The savegame can be used to start the game in synchoronous mode at the contact turn. If players get more than 10 turns in front of the slowest player, a warning should pop up on their screen so they aren't disappointed if their progress is rewound. We could disallow the fastest player to be more than 10 turns ahead of the slowest person. The key is that it does not synchronize on a turn-by-turn basis.
-If there are other robust ways to ensure fast plays, please make a report of ideas in a text file called ui_speedup_ideas.md We don't want to change the game rules.
+Several regressions marked CRITICAL happened in this recent version. They must have been added in the last 28 hours.
+- [ ] CRITICAL: After the battle the ships were not actually removed from the game and
+- [ ] CRITICAL: After a bombard the output should be destroyed a test case is included bugs/moo2v2-pvd0-turn92.moo after 2 turns of successful battle where the 2 ships defeated the 3 and one was lost then more ships were built. I think any game could show this bug.
+- [ ] CRITICAL Player bombing colonies does not remove population
+- [ ] CRITICAL bullwark looks extra ugly as a ship pick. Please use bugs/bullwark.png as a replacement for the scout/frigate/destroyer/cruiser/battleship/titan and inspiration for all the other related variants to be generated.
+- [ ] Players should be able to choose color when they start
+- [ ] Download and upload ships into ship design
+- [ ] Leaders to look like cards and more stylistic
+- [ ] Research categories to have emojis
+- [ ] 🤖 The bot is playing Bot (seat #1).
+- [ ] Assault shuttles
+- [ ] Don't let ships get stuck at corners 
+- [ ] play when at the last frame should start from frame 0
+- [ ] The automated select-all mechanism across all colonies "Jobs" buttons for research industry or blend: when citizens are moved to research or production, if their food is needed to support the empire with freighters, today those farmers are pulled. Instead the farmers should be left where they are
+- [ ] Why do disconnections happen when the actual internet connections are stable. Is it a bug with lobbylink? This is what I see: ⏳ Patrick (seat #1) is not connected — the game waits for their commit. If this is not solveable then put the big yellow notification in the empires menu only, not blocking the whole main screen.
+- [ ] The synced button is variable width. TURN 23· synced 22: Make that a tool type
+- [ ] Instead of "blend" in the jobs buttons make a button to fix food production so most productive food worlds
+- [ ] Tooltip over freighters to show freighters needed
+- [ ] Display your very own race specials in the empire menu even for the prebuilt races
+- [ ] For the freewheeling mode the save should only save the committed synced turn.
+- [ ] End turn button should be at the very top left so it is in the same place
+- [ ] Map's Zoom to fit should match height
+- [ ] Can fleets have a number of fleets in flight like colonies have number of idle colonies.
+- [ ] The player ship color and homeworld color should be the same. Every player should have a unique color that is consistent everywhere. The inflight ships seem to be different colors.
+- [ ] Unify all the fuel range cirlces to be one unified territory and make it the same color as the player color but muted
+- [ ] A player should be able to not kill non-combatant ships with a checkbox like how bombardment works
+- [ ] Outposts shoudl be able to be scrapped from the map menu
+- [ ] Can each battle replay have a button to hook into the battle simulator next to it and load that exact battle configuration.
+- [ ] In the battle simulator there was a nuclear bomb slot and it ended up being blank in the replay
+- [ ] This hold range does not work well because ships turn tail. Maybe it should be hold position. Change default to charge
+- [ ] The worlds in system view should look nicer like maybe several possible world types or palettes for worlds instead of a flat image.
 
-- [x] At a system we need to be able to select all ships checkboxes
-For some reason freighters are not used to move food Instead: freighter maintenace should cost 0.5 BC when in use to transport food (one per) or colonists (5 per pop) and free when not in use.
-
-- [x] Settlers should take N turns to travel where N is determined by the second to best drive (or nuclear propulsion by default)
-
-- [x] Make tooltip go away after first "💡 drag citizens between jobs or onto another colony · ☑ tick rows for bulk builds & presets"
-
-- [x] Default name of destroyer should be "Destroyer" instead of just a number
-Anti-missile rocket should be 360
-
-- [x] Morale tech should not be on the research list if you're unification
-
-- [x] Andromedons attack should be off by default--it's too devastating for most game
-
-- [x] We should have an alert for the turn colony ship arrived at a colonizable planet in the map view like the research done alert in the research view.
-- [x] Colonies menu should have a notification if any colony is in a default "build" mode instead of actively constructing
-- [x] Double check discovered_bugs.md to make sure all are solved correctly in light of the new feature set
-  (verified 2026-07-10: the audit's regression locks in tests/unit/auditfixes.test.ts all pass on the new
-  engine; the fast-start pump reuses the same accept→fold path as lockstep so the finding-54 turn-hash
-  bookkeeping is untouched; fast buffers live OUTSIDE the log so no seq reuse (finding 56); the new
-  validators are pure reads per the validator-purity contract; freighter upkeep builds on the audit's
-  busyFreighters fix. Full suite: 375+ tests green, determinism/fuzz/soak included.)
