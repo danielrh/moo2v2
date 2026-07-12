@@ -251,7 +251,11 @@ export const racePresetById: ReadonlyMap<string, RacePreset> = byId(RACE_PRESETS
 
 // ---------- starting knowledge ----------
 
-/** Field numbers known at game start per start mode (pre_warp / average). */
+/** Start-mode field tables from the source data. NOTE: since the pre-warp
+ * rework these are a data LOOKUP, not the literal grant — the pre_warp mode
+ * itself starts with ONLY Engineering completed (construction basics);
+ * 'average'/'advanced' union these tables into their head-start supersets
+ * (adapter.ts initGame). */
 export function startingFieldNums(mode: 'pre_warp' | 'average'): readonly number[] {
   const nums = STARTING_FIELD_NUMS[mode];
   if (!nums) throw new Error(`unknown start mode ${mode}`);

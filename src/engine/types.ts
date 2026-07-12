@@ -224,10 +224,14 @@ export interface PendingBattle {
 
 export interface GameStateSettings {
   galaxySize: 'small' | 'medium' | 'large' | 'huge';
-  /** pre_warp: research the basics yourself (no starting colony ship);
-   * average: tech head start + a colony ship; advanced: pre-warp tech plus
-   * Cold Fusion and a big developed empire (identical per player, ~1/3 of the
-   * map colonized in total, half-full worlds, freighters, frontier scouts) */
+  /** pre_warp: classic MOO2 primitive age — only the construction basics are
+   * known (colony base / star base / marine barracks buildable from turn 1);
+   * everything else (electronic computer, lasers, drives, colony ships...) is
+   * researched from scratch; one scout, no colony ship. average (default):
+   * the MOO2 normal opening — tech head start, two scouts + a colony ship;
+   * advanced: the tier-1 basics plus Cold Fusion and a big developed empire
+   * (identical per player, ~1/3 of the map colonized in total, half-full
+   * worlds, freighters, frontier scouts) */
   startMode: 'pre_warp' | 'average' | 'advanced';
   playerCount: number;
   modes: {
@@ -239,6 +243,9 @@ export interface GameStateSettings {
   };
   battleOrdersTimeoutMs: number;
   debugCommands: boolean;
+  /** DEBUG: every empire starts with the whole tech tree researched (only
+   * honored alongside debugCommands). */
+  unlockAllTech?: boolean;
   /** host auto-advances turns up to this turn after the first all-commit (0/absent = off) */
   autoTurnUntil?: number;
   /** mirror galaxy: identical rotated wedges, every player on the map edge */

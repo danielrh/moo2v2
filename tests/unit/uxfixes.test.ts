@@ -37,11 +37,13 @@ function advance(state: GameState): GameState {
 
 describe('tier-1 research grants every application (bug: basic fields should research all 3)', () => {
   it('a non-creative empire completing a tier-1 field learns all of its applications', () => {
-    // pre_warp: the general (grants-all) fields are start-known on "average"
-    // now that average is a strict superset of the pre-warp basics
+    // pre_warp pre-completes only Engineering; the other tier-1 general roots
+    // are immediately researchable (previous === 0) and grant every one of
+    // their applications.
     let state = newGame('pre_warp');
-    const chemistry = FIELD_ROWS.find((f) => f.id === 'cold_fusion')!;
+    const chemistry = FIELD_ROWS.find((f) => f.id === 'chemistry')!;
     expect(fieldGrantsAll(chemistry)).toBe(true);
+    expect(state.empires[0]!.completedFields).not.toContain(chemistry.num);
     // no target application required for a grants-all field
     expect(
       validateCommand(state, {
@@ -52,10 +54,10 @@ describe('tier-1 research grants every application (bug: basic fields should res
       }),
     ).toBeNull();
     applyCommand(state, { turn: state.turn, playerId: 0, kind: 'set_research', payload: { fieldNum: chemistry.num, targetApp: null } });
-    state.empires[0]!.research.accumRP = chemistry.cost; // completes on the next resolution
+    state.empires[0]!.research.accumRP = 10_000; // completes on the next resolution
     state = advance(state);
     const known = state.empires[0]!.knownApps;
-    for (const app of applicationsOfField('cold_fusion')) {
+    for (const app of applicationsOfField('chemistry')) {
       expect(known).toContain(app.id);
     }
   });

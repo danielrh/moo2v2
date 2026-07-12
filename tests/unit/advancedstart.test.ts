@@ -9,8 +9,9 @@ import { describe, expect, it } from 'vitest';
 import { gameEngine } from '@engine/adapter';
 import { hashCanonical } from '@engine/canonical';
 import { colonyMaxPop, colonyOutput, colonyPopUnits } from '@engine/economy';
-import { fieldById } from '@engine/data/index';
+import { fieldById, FIELD_ROWS, APPLICATION_ROWS } from '@engine/data/index';
 import { STAR_COUNTS, starDistance } from '@engine/galaxy';
+import { availableFields, fieldCost } from '@engine/research';
 import { advanceTurn } from '@engine/pipeline';
 import type { GameState, GameStateSettings, Planet } from '@engine/types';
 
@@ -65,22 +66,85 @@ function worldSpecs(s: GameState, starId: number): string {
 }
 
 describe('start modes: the free colony ship', () => {
-  it('pre-warp starts with a scout but NO colony ship', () => {
+  it('pre-warp: one scout, NO colony ship, only the construction basics known', () => {
     const s = newGame('pre_warp');
     for (const owner of [0, 1]) {
       expect(s.ships.filter((x) => x.owner === owner && x.shipKind === 'scout')).toHaveLength(1);
       expect(s.ships.filter((x) => x.owner === owner && x.shipKind === 'colony_ship')).toHaveLength(0);
     }
-    // the way out is research: Cold Fusion is reachable from the start set
-    expect(s.empires[0]!.completedFields).toContain(fieldById.get('advanced_power_plants')?.num ?? 55);
+    // classic MOO2 primitive start: ONLY Engineering is pre-completed — the
+    // colony base is buildable right away, everything else is researched.
+    expect(s.empires[0]!.completedFields).toEqual([fieldById.get('engineering')!.num]);
+    expect(s.empires[0]!.knownApps).toContain('colony_base');
+    expect(s.empires[0]!.knownApps).toContain('star_base');
+    expect(s.empires[0]!.knownApps).not.toContain('electronic_computer');
+    expect(s.empires[0]!.knownApps).not.toContain('laser_cannon');
+    expect(s.empires[0]!.knownApps).not.toContain('colony_ship');
   });
 
-  it('average keeps the classic scout + colony ship opening', () => {
+  it('pre-warp opens with the classic eight research choices at list price', () => {
+    const s = newGame('pre_warp');
+    const empire = s.empires[0]!;
+    const choices = availableFields(empire).map((f) => [f.id, fieldCost(s, empire, f)]);
+    // the exact MOO2 pre-warp research screen (fields sorted by num)
+    expect(choices).toEqual([
+      ['advanced_engineering', 80], // anti-missile rockets, fighter bays, reinforced hull
+      ['advanced_magnetism', 250], // class I shield, mass driver, ECM jammer
+      ['military_tactics', 150], // space academy
+      ['astro_ecology', 80], // hydroponic farm, habitat domes
+      ['chemistry', 50], // nuclear missile, fuel cells, titanium armor
+      ['electronics', 50], // electronic computer
+      ['nuclear_fission', 50], // nuclear drive, nuclear bomb
+      ['physics', 50], // laser cannon, laser rifle, space scanner
+    ]);
+  });
+
+  it('average is the MOO2 normal opening: two scouts + a colony ship', () => {
     const s = newGame('average');
     for (const owner of [0, 1]) {
-      expect(s.ships.filter((x) => x.owner === owner && x.shipKind === 'scout')).toHaveLength(1);
+      expect(s.ships.filter((x) => x.owner === owner && x.shipKind === 'scout')).toHaveLength(2);
       expect(s.ships.filter((x) => x.owner === owner && x.shipKind === 'colony_ship')).toHaveLength(1);
     }
+    // average still begins with the tier-1 basics researched
+    expect(s.empires[0]!.knownApps).toContain('colony_base');
+  });
+});
+
+describe('debug: unlock all tech', () => {
+  const init = (unlockAllTech: boolean, debugCommands: boolean): GameState =>
+    gameEngine.init({
+      seed: SEED,
+      settings: {
+        galaxySize: 'small',
+        startMode: 'pre_warp',
+        playerCount: 2,
+        modes: { creativeVariant: false, pickBidding: false, stickyBuild: false, antarans: false, randomEvents: false },
+        battleOrdersTimeoutMs: 1000,
+        debugCommands,
+        unlockAllTech,
+      },
+      players: [
+        { id: 0, name: 'A', raceJson: JSON.stringify({ presetId: 'solari' }) },
+        { id: 1, name: 'B', raceJson: JSON.stringify({ presetId: 'solari' }) },
+      ],
+      dataVersion: 'test',
+    });
+
+  it('completes every field and knows every application when enabled with debug', () => {
+    const s = init(true, true);
+    for (const e of s.empires) {
+      expect(e.completedFields.length).toBe(FIELD_ROWS.length);
+      const missing = APPLICATION_ROWS.map((a) => a.id).filter((id) => !e.knownApps.includes(id));
+      expect(missing).toEqual([]);
+    }
+  });
+
+  it('is ignored unless debugCommands is also on', () => {
+    const prewarp = [fieldById.get('engineering')!.num];
+    // unlock requested but debug off -> normal pre-warp (engineering only)
+    expect(init(true, false).empires[0]!.completedFields).toEqual(prewarp);
+    // debug on but unlock off -> also normal pre-warp
+    expect(init(false, true).empires[0]!.completedFields).toEqual(prewarp);
   });
 });
 

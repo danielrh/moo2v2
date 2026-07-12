@@ -44,7 +44,11 @@ export function cssToNum(hex: string): number {
 /** hull palette for a (style, player color) pair; NPCs tint far harder */
 export function paletteFor(styleId: string, playerHex: string, npc = false): Palette {
   const art = STYLE_ART[styleId] ?? NPC_ART;
-  const base = mix('#8d96ad', playerHex, npc ? 0.5 : 0.22);
+  // Each style may set its own base metal (chrome, war-steel, …); the default
+  // is the neutral gunmetal. The player color is then blended in so hulls stay
+  // team-readable without losing the style's material identity.
+  const baseMetal = (STYLE_ART[styleId]?.hull) ?? '#8d96ad';
+  const base = mix(baseMetal, playerHex, npc ? 0.5 : 0.22);
   return {
     hull: base,
     shade: scale(base, 0.58),

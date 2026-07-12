@@ -273,15 +273,15 @@
         {#each ['small', 'medium', 'large', 'huge'] as g (g)}<option value={g}>{g}</option>{/each}
       </select>
     </label>
-    <label title="pre-warp: research the basics yourself (no starting colony ship). average: tech head start + a colony ship. advanced: everyone begins with an identical developed empire — the players' regions together cover ~1/3 of the map with identical worlds system-for-system, every planet half full, freighters covering the food runs, and 5 scouts at the frontier.">
+    <label title="pre-warp: the classic MOO2 primitive age — only the construction basics are known (colony base, star base, marine barracks buildable from turn 1); the electronic computer, lasers, drives, fuel cells and colony ships must all be researched; one scout, no colony ship. average (default): the classic MOO2 opening — tier-1 basics plus a tech head start, two scouts + a colony ship, star base built. advanced: everyone begins with an identical developed empire — the players' regions together cover ~1/3 of the map with identical worlds system-for-system, every planet half full, freighters covering the food runs, and 5 scouts at the frontier.">
       Start:
       <select
         data-testid="start-mode"
         value={settings.startMode}
         onchange={(e) => updateSetting('startMode', (e.target as HTMLSelectElement).value as GameSettings['startMode'])}
       >
-        <option value="pre_warp">pre-warp</option>
-        <option value="average">average</option>
+        <option value="pre_warp">pre-warp (research nearly everything)</option>
+        <option value="average">average (classic opening)</option>
         <option value="advanced">advanced (big identical empires)</option>
       </select>
     </label>
@@ -337,6 +337,17 @@
       />
       ⚡ Fast start (async turns until contact)
     </label>
+    {#if settings.debugCommands}
+      <label title="DEBUG: every empire begins with the entire technology tree already researched — every application known, every field completed. For testing only.">
+        <input
+          type="checkbox"
+          data-testid="mode-unlock-all-tech"
+          checked={settings.unlockAllTech ?? false}
+          onchange={(e) => updateSetting('unlockAllTech', (e.target as HTMLInputElement).checked)}
+        />
+        🐞 Start with all tech unlocked
+      </label>
+    {/if}
     {#each MODE_HELP as m (m.key)}
       <label title={m.help}>
         <input

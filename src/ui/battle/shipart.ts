@@ -326,18 +326,26 @@ export const MONSTER_KINDS = [
 export interface StyleArt {
   flame: string; // engine plume color
   glow: string; // window/canopy color
+  /** optional base metal tone; shiptex blends the player color into this.
+   * Lets a style own a material identity (chrome, dark war-steel) instead of
+   * the shared neutral gunmetal. */
+  hull?: string;
 }
 
 export const STYLE_ART: Record<string, StyleArt> = {
   raptor: { flame: '#ffc46b', glow: '#bfe6ff' },
   saucer: { flame: '#7db8ff', glow: '#ffe9b0' },
-  lattice: { flame: '#9dff5e', glow: '#8dffb0' },
+  // lattice = cold chrome hull, a red scanner + red nav lights,
+  // orange thruster glow.
+  lattice: { flame: '#ff6a2a', glow: '#ff2b2b', hull: '#aab2c2' },
   orbital: { flame: '#ffa94d', glow: '#fff3c9' },
   crescent: { flame: '#c9a2ff', glow: '#e6d5ff' },
   gemini: { flame: '#7de8ff', glow: '#bfe6ff' },
   needle: { flame: '#cfe8ff', glow: '#bfe6ff' },
   manta: { flame: '#7dffc8', glow: '#d0ffe8' },
-  bulwark: { flame: '#ff9a4d', glow: '#ffd9a1' },
+  // bulwark = predatory war-hull: dark olive war-steel with
+  // fierce amber weapon glow and hot orange plumes.
+  bulwark: { flame: '#ff5a1e', glow: '#ffb347', hull: '#4a4d3a' },
   halo: { flame: '#a2c9ff', glow: '#cfe0ff' },
 };
 
@@ -462,53 +470,82 @@ const planSaucer: Plan = (g, cls, k, r, variant) => {
   if (k.tier >= 3) g.gun(discX, discR);
 };
 
-/** lattice: greebled machine cubes */
+/** lattice: cold chrome. Warships are forward-swept crescent Raiders
+ * with a red scanning-eye slit; the station is a radial Basestar of swept arms
+ * around a lit red core. Smooth curves (ellipse/carve) replace the old cubes. */
 const planLattice: Plan = (g, cls, k, r, variant) => {
   const L = k.w;
   const HH = (k.h - 1) >> 1;
   if (k.base) {
+    // Basestar: a radial star of gently-curling arms around a red core eye.
     const c = (L - 1) / 2;
-    const s = HH - 1;
-    g.box(c - s, c + s, 0, s, R_HULL); // one perfect cube
+    const cy = g.cy;
+    const arms = 6 + (k.tier >= 4 ? 2 : 0);
+    const R = HH - 0.5;
+    for (let i = 0; i < arms; i++) {
+      const a0 = (i / arms) * Math.PI * 2 + Math.PI / arms;
+      const steps = Math.round(R * 1.4);
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const a = a0 + t * 0.5; // gentle spiral -> flowing, not spiky
+        const px = c + Math.cos(a) * R * t;
+        const py = cy + Math.sin(a) * R * t;
+        const hw = 1.7 * (1 - t * 0.9);
+        for (let j = -Math.round(hw); j <= Math.round(hw); j++) {
+          g.set(Math.round(px - Math.sin(a) * j), Math.round(py + Math.cos(a) * j), R_HULL);
+        }
+      }
+    }
+    g.ellipse(c, HH * 0.45, HH * 0.45, R_HULL); // hub
     g.bevel();
-    for (let x = -s; x <= s; x += 2) g.band(c + x, 0, s, x % 4 === 0 ? R_SHADE : R_HULL);
-    for (let d = 1; d <= s; d += 2) for (let x = -s; x <= s; x++) if ((x + d) % 3 === 0) g.sym(c + x, d, R_TRIM);
-    g.ring(c, 2.2, 1.2, R_GLOW);
-    for (let i = 0; i < 6 + k.tier * 2; i++) g.sym(c - s + r.int(2 * s), r.int(s), r.chance(0.5) ? R_GLOW : R_ACCENT);
-    g.linePair(c - s - 1, 0, c - s - 2, 0, R_TRIM);
-    g.linePair(c + s + 1, 0, c + s + 2, 0, R_TRIM);
-    g.gun(c, s);
+    g.ring(c, HH * 0.45, HH * 0.45 - 1, R_ACCENT); // chrome rim
+    g.ellipse(c, 1.7, 1.6, R_GLOW); // red core eye
+    for (let i = 0; i < arms; i++) {
+      const a = (i / arms) * Math.PI * 2 + Math.PI / arms + 0.5;
+      g.set(Math.round(c + Math.cos(a) * R), Math.round(cy + Math.sin(a) * R), R_GLOW); // arm-tip lights
+    }
+    g.gun(Math.round(c + R * 0.7), 0);
+    g.gun(c, Math.round(R * 0.7));
     return;
   }
-  const long = variant % 2 === 0;
-  const bh = Math.max(2, HH - (long ? 2 : 1));
-  const x0 = 1;
-  const x1 = L - 2;
-  g.box(x0, x1, 0, bh, R_HULL);
-  if (variant >= 2) {
-    // offset secondary block: broken silhouette
-    g.box(Math.round(L * 0.35), Math.round(L * 0.75), bh, Math.min(HH, bh + 2), R_HULL);
+  // --- Raider: chrome forward-swept crescent with a scanning eye ---
+  const wingCx = Math.round(L * 0.5);
+  const wingRx = Math.round(L * 0.44);
+  // full-height wing disc, then carve the rear -> a forward-cupping crescent
+  g.ellipse(wingCx, wingRx, HH, R_HULL);
+  const depth = variant === 1 ? 0.5 : variant === 2 ? 0.72 : 0.6;
+  g.carve(wingCx - Math.round(wingRx * depth), wingRx, HH - 0.5);
+  // central fuselage pod tapering to a pointed nose
+  const bodyRy = Math.max(1, Math.round(HH * 0.5));
+  g.ellipse(Math.round(L * 0.42), Math.round(L * 0.28), bodyRy, R_HULL);
+  g.wedge(Math.round(L * 0.42), L - 1, bodyRy, 0, R_HULL);
+  if (variant === 3 && k.tier >= 2) {
+    // heavy raider: a second inner wing pair
+    g.ellipse(wingCx - 2, Math.round(wingRx * 0.55), Math.max(1, Math.round(HH * 0.6)), R_HULL);
+    g.carve(wingCx - 2 - Math.round(wingRx * 0.4), Math.round(wingRx * 0.55), Math.max(1, Math.round(HH * 0.5)));
   }
-  // carve notches so it's not a brick
-  g.box(x1 - 1, x1, Math.max(1, bh - 1), bh, R_EMPTY);
-  if (k.tier >= 2) g.box(Math.round(L * 0.2), Math.round(L * 0.28), bh, bh, R_EMPTY);
   g.bevel();
-  // circuit greebles: seams + node lights
-  for (let x = x0 + 1; x < x1; x += 3) g.band(x, 0, bh - 1, R_SHADE);
-  for (let x = x0 + 2; x < x1; x += 3) if ((x & 1) === 0) g.sym(x, Math.min(bh - 1, 1 + (x % Math.max(2, bh)))!, R_TRIM);
-  const eyes = 2 + k.tier;
-  for (let i = 0; i < eyes; i++) g.sym(x0 + 2 + r.int(Math.max(1, x1 - x0 - 3)), r.int(bh), r.chance(0.6) ? R_GLOW : R_ACCENT);
-  g.box(x1 - 2, x1, 0, 0, R_ACCENT); // forward emitter strip
-  g.sym(x1, 0, R_GLOW);
-  // antenna spikes
-  g.linePair(Math.round(L * 0.55), bh, Math.round(L * 0.55), Math.min(HH, bh + 2), R_TRIM);
-  if (k.tier >= 4) g.linePair(Math.round(L * 0.3), bh + (variant >= 2 ? 2 : 0), Math.round(L * 0.26), HH, R_TRIM);
-  // a wall of small nozzles across the stern
-  g.eng(x0 - 1, 0);
-  if (k.tier >= 1) g.eng(x0 - 1, Math.max(1, bh - 1));
-  if (k.tier >= 4) g.eng(x0 - 1, 1);
-  g.gunAuto(0);
-  if (k.tier >= 2) g.gunAuto(bh - 1);
+  // luminous forward wing edge in player color + wingtip nav lights
+  for (let d = 1; d <= HH; d++) {
+    for (let x = L - 1; x >= 0; x--) {
+      if (g.get(x, g.cy - d) !== R_EMPTY) {
+        g.sym(x, d, R_ACCENT);
+        break;
+      }
+    }
+  }
+  if (HH >= 2) g.sym(wingCx, HH - 1, R_GLOW);
+  // the scanning eye: a bright red slit across the fuselage near the nose
+  const eyeX = Math.round(L * (variant === 2 ? 0.58 : 0.62));
+  const eyeR = Math.max(1, Math.round(L * 0.12));
+  g.box(eyeX - 1, eyeX + eyeR + 1, 0, 0, R_TRIM); // dark eye socket
+  g.box(eyeX, eyeX + eyeR, 0, 0, R_GLOW); // the glowing slit
+  if (variant === 0 && k.tier >= 3) g.sym(eyeX + 1, 1, R_GLOW); // twin scanner
+  // twin rear thrusters
+  g.eng(0, Math.max(1, Math.round(HH * 0.4)));
+  if (k.tier >= 2) g.eng(1, 0);
+  g.gun(L - 1, 0);
+  if (k.tier >= 2 && HH >= 2) g.gunAuto(HH - 1);
 };
 
 /** orbital: near-future trusses, tanks and radiators */
@@ -1049,27 +1086,62 @@ const planBulwark: Plan = (g, cls, k, r, variant) => {
         if (g.get(x, spine + 2) === R_HULL) g.set(x, spine + 2, R_GLOW);
       }
     }
+    // --- predatory war-hull finish (every variant): a hot weapon muzzle, a
+    //     pair of menacing eyes astride the command spine, and a player-color
+    //     war-stripe blazed along the dorsal leading edge. Recolor-only, so no
+    //     stray pixels escape the hand-drawn silhouette. ---
+    const gx = g.guns[0]?.x ?? g.w - 1;
+    const gy = g.guns[0]?.y ?? spine;
+    if (g.get(gx, gy) !== R_EMPTY) g.set(gx, gy, R_GLOW);
+    const ex = Math.round(g.w * 0.62);
+    for (const dy of [1, 2]) {
+      if (g.get(ex, spine - dy) === R_HULL) g.set(ex, spine - dy, R_GLOW);
+      if (g.get(ex, spine + dy) === R_HULL) g.set(ex, spine + dy, R_GLOW);
+    }
+    for (let x = Math.round(g.w * 0.2); x < Math.round(g.w * 0.9); x++) {
+      for (let y = 0; y < g.h; y++) {
+        const v = g.get(x, y);
+        if (v === R_EMPTY) continue;
+        if (v === R_LIGHT) g.set(x, y, R_ACCENT); // dorsal edge -> war-stripe
+        break;
+      }
+    }
     return;
   }
-  // stations keep the brutalist citadel keep, restyled with the sheet's cues:
-  // olive slab + pale window band + red bastion edges
+  // Predatory citadel: a lit armored core cupped by great curling talon-arms.
+  // Flowing curves like the other stations, but hooked and fanged — the
+  // war-hull's menace, not a brutalist box.
   const L = k.w;
   const HH = (k.h - 1) >> 1;
   const c = (L - 1) / 2;
-  const s = HH - 1;
-  g.box(c - s, c + s, 0, s - 1, R_HULL); // the keep
-  g.box(c - s + 2, c + s - 2, 0, s, R_HULL); // parapet overhang
+  const cy = g.cy;
+  const R = HH - 0.5;
+  const arms = 4 + (k.tier >= 5 ? 1 : 0);
+  for (let i = 0; i < arms; i++) {
+    const a0 = (i / arms) * Math.PI * 2 + Math.PI / arms;
+    const steps = Math.round(R * 1.5);
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      const a = a0 + t * 0.95; // strong curl -> hooked talon
+      const px = c + Math.cos(a) * R * t;
+      const py = cy + Math.sin(a) * R * t;
+      const hw = 2.4 * (1 - t * 0.8);
+      for (let j = -Math.round(hw); j <= Math.round(hw); j++) {
+        g.set(Math.round(px - Math.sin(a) * j), Math.round(py + Math.cos(a) * j), R_HULL);
+      }
+    }
+  }
+  g.ellipse(c, HH * 0.55, HH * 0.55, R_HULL); // armored core lens
   g.bevel();
-  g.box(c - s + 1, c + s - 1, s - 3, s - 3, R_TRIM);
-  g.box(c - 3, c + 3, 0, 0, R_GLOW); // lit command band (matches the hull spine stripe)
-  g.box(c - 2, c + 2, 1, 1, R_LIGHT);
-  g.box(c - s, c - s, 0, s - 1, R_ACCENT);
-  g.box(c + s, c + s, 0, s - 1, R_ACCENT);
-  // corner gun bastions
-  g.discPair(c - s + 1, s - 1, 1, R_SHADE);
-  g.discPair(c + s - 1, s - 1, 1, R_SHADE);
-  g.gun(c + s - 1, s - 1);
-  g.gun(c - s + 1, s - 1);
+  g.ring(c, HH * 0.55, HH * 0.55 - 1.2, R_ACCENT); // war rim
+  g.ellipse(c, 2, 1.8, R_GLOW); // hot menacing eye
+  for (let i = 0; i < arms; i++) {
+    const a = (i / arms) * Math.PI * 2 + Math.PI / arms + 0.95;
+    const px = Math.round(c + Math.cos(a) * R);
+    const py = Math.round(cy + Math.sin(a) * R);
+    g.set(px, py, R_GLOW); // glowing weapon pod at each talon hook
+    g.gun(px, py - cy);
+  }
 };
 
 /** halo: annular ring ships */

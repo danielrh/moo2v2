@@ -32,9 +32,14 @@ export function fieldGrantsAll(field: FieldRow): boolean {
 /** Seeded per-game difficulty: every field's real cost is its base cost times a
  * multiplier in [100%, 200%], fixed by the game seed — identical for every
  * player (nobody gets "lucky" on a category), different between games.
- * Tier-1 basics stay at list price so the opening is predictable. */
+ * The OPENING SET stays at list price so the classic opening is predictable:
+ * the general tier-1 roots plus everything on a pre-warp game's first
+ * research screen (all previous===0 roots and Engineering's children — the
+ * classic 80/50/50/150/50/80/50/250 eight). */
+const ENGINEERING_NUM = fieldById.get('engineering')?.num ?? -1;
 export function fieldCostMultiplierPct(state: GameState, field: FieldRow): number {
   if (fieldGrantsAll(field) || field.id.startsWith('advf_')) return 100;
+  if (field.previous === 0 || field.previous === ENGINEERING_NUM) return 100;
   return 100 + rngFor(state.seed, 'field_cost', field.num).int(101);
 }
 

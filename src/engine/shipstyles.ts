@@ -16,13 +16,13 @@ export interface ShipStyleInfo {
 export const SHIP_STYLES: readonly ShipStyleInfo[] = [
   { id: 'raptor', name: 'Raptor', blurb: 'swept-wing wedge darts — knife-edged interceptor lines' },
   { id: 'saucer', name: 'Meridian', blurb: 'circular primary hulls with outrigger drive nacelles' },
-  { id: 'lattice', name: 'Lattice', blurb: 'blocky machine collectives — greebled cubes and grids' },
+  { id: 'lattice', name: 'Lattice', blurb: 'machine raiders — chrome crescents' },
   { id: 'orbital', name: 'Orbital', blurb: 'near-future spaceframes — trusses, tanks and radiators' },
   { id: 'crescent', name: 'Crescent', blurb: 'flowing blade hulls — curved scimitars and fins' },
   { id: 'gemini', name: 'Gemini', blurb: 'twin-pod catamarans — paired hulls on a cross spar' },
   { id: 'needle', name: 'Needle', blurb: 'spinal lances — long thin spikes with cross fins' },
   { id: 'manta', name: 'Manta', blurb: 'smooth biomorphic rays — rounded lifting bodies' },
-  { id: 'bulwark', name: 'Bulwark', blurb: 'brutalist armored slabs — citadel monitors' },
+  { id: 'bulwark', name: 'Bulwark', blurb: 'predatory war-hulls — fanged, glowing armored raptors' },
   { id: 'halo', name: 'Halo', blurb: 'annular ring ships — hulls built around a halo' },
 ];
 

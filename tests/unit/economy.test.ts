@@ -264,7 +264,7 @@ describe('engine adapter basics', () => {
     const s2 = gameEngine.init(start);
     expect(gameEngine.hash(s1)).toBe(gameEngine.hash(s2));
     expect(s1.colonies.length).toBe(2);
-    expect(s1.ships.length).toBe(4); // scout + colony ship each
+    expect(s1.ships.length).toBe(6); // average opening: 2 scouts + 1 colony ship each
     expect(s1.empires[0]!.knownApps.length).toBeGreaterThan(10);
     // serialization round-trip
     expect(gameEngine.hash(gameEngine.deserialize(gameEngine.serialize(s1)))).toBe(gameEngine.hash(s1));

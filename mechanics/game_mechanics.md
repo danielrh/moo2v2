@@ -649,6 +649,41 @@ Public parameter data indicates these starting field ids:
 | Pre-warp | 29, 28, 55, 57, 22 |
 | Average | 4, 56, 23, 31, 9, 10, 18, 7 |
 
+**Implementation note (this variant).** Pre-warp completes ONLY Engineering
+(field 29), not the table's five: colony base, star base and marine barracks
+are buildable from turn 1, and everything else — electronic computer, lasers,
+drives, fuel cells, armor, bombs, missiles, colony ships — is researched from
+scratch. That puts exactly the classic eight fields on a pre-warp game's
+first research screen, at list price (the seeded field-cost difficulty
+multiplier exempts the whole opening set — every `previous === 0` root and
+Engineering's children):
+
+| RP | Field | Grants |
+|---|---|---|
+| 80 | Advanced Engineering | anti-missile rockets, fighter bays, reinforced hull |
+| 50 | Nuclear Fission | nuclear drive, nuclear bomb |
+| 50 | Chemistry | nuclear missile, standard fuel cells, extended fuel tanks, titanium armor |
+| 150 | Military Tactics | space academy |
+| 50 | Electronics | electronic computer |
+| 80 | Astro Ecology | hydroponic farm, habitat domes |
+| 50 | Physics | laser cannon, laser rifle, space scanner |
+| 250 | Advanced Magnetism | class I shield, mass driver, ECM jammer |
+
+(One deliberate data difference vs. classic MOO2: freighters live in Cold
+Fusion here — with the colony/outpost/transport ships — not in Nuclear
+Fission.) Ships still fly and can be designed before those techs land because
+the nuclear drive, standard fuel cells (4 pc range) and titanium armor are
+hardcoded baselines (`movement.ts`, `shipdesign.ts`) and every empire keeps a
+pre-built starter frigate. That starter "Patrol Frigate" is the one deliberate
+knowledge exception: it mounts 2 laser cannons before physics is researched
+(the pre-built kit skips the weapon-knowledge gate) — new player designs
+cannot take lasers, a targeting computer, or any other unresearched component.
+Average/advanced are unchanged and still begin with the five tier-1 roots
+above: they reuse field ids 29,28,55,57,22 as a *data* lookup to build their
+superset of the engineering-only pre-warp mode grant. Default start mode is
+**average** (the MOO2 normal opening: two scouts + a colony ship; pre-warp
+gets one scout and no colony ship).
+
 ## Technology field table
 
 Columns:

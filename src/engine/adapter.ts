@@ -6,6 +6,7 @@ import {
   applicationsOfField,
   fieldById,
   fieldByNum,
+  FIELD_ROWS,
   racePresetById,
   startingFieldNums,
   validatePicks,
@@ -96,18 +97,38 @@ export function initGame(start: EngineGameStart): GameState {
     winType: null,
   };
 
-  // starting knowledge: all applications of the start-mode fields + basics.
-  // "average" is a HEAD START over pre-warp, so it must be a superset — the
-  // generated table alone omits the tier-1 roots (colony_base, star_base,
-  // lasers...), leaving an average empire knowing less basics than pre-warp.
-  // "advanced" plays the default (pre-warp) tech age plus Cold Fusion: the
-  // big developed empires need colony ships and freighters from day one.
-  const startFieldNums =
-    start.settings.startMode === 'average'
+  // starting knowledge per start mode. DEBUG "unlock all" (only alongside
+  // debugCommands) short-circuits everything: every field completed, every
+  // application known.
+  //
+  // pre_warp is the classic MOO2 primitive age: ONLY Engineering is
+  // pre-completed — colony base, star base and marine barracks are buildable
+  // from turn 1, and EVERYTHING else (electronic computer, lasers, drives,
+  // fuel cells, armor, colony ships...) is researched from scratch. That
+  // leaves exactly the classic eight fields on the first research screen:
+  // advanced engineering 80, nuclear fission 50, chemistry 50, military
+  // tactics 150, electronics 50, astro ecology 80, physics 50, advanced
+  // magnetism 250 (list price — research.ts exempts the opening set from the
+  // seeded difficulty multiplier). Ships still fly and can be designed thanks
+  // to the hardcoded nuclear-drive + fuel-cell + titanium baselines
+  // (movement.ts / shipdesign.ts) and everyone keeps the pre-built starter
+  // frigate.
+  //
+  // "average"/"advanced" are HEAD STARTS: already-developed empires that
+  // begin with the full tier-1 root tier plus their extra fields. Their
+  // supersets union in the DATA lookup startingFieldNums('pre_warp') (the 5
+  // roots, unchanged in the tables) — intentionally MORE than the
+  // engineering-only pre_warp *mode* grant above. "advanced" adds Cold Fusion
+  // (colony/outpost/transport ships, freighters) its big empires need from
+  // day one.
+  const unlockAll = start.settings.debugCommands && start.settings.unlockAllTech === true;
+  const startFieldNums = unlockAll
+    ? FIELD_ROWS.map((f) => f.num)
+    : start.settings.startMode === 'average'
       ? [...new Set([...startingFieldNums('pre_warp'), ...startingFieldNums('average')])]
       : start.settings.startMode === 'advanced'
         ? [...new Set([...startingFieldNums('pre_warp'), fieldById.get('cold_fusion')!.num])]
-        : startingFieldNums('pre_warp');
+        : [fieldById.get('engineering')!.num]; // pre_warp: construction basics only
   const startApps = new Set<string>(ALWAYS_KNOWN_ITEMS);
   for (const num of startFieldNums) {
     const field = fieldByNum.get(num);
@@ -202,21 +223,24 @@ export function initGame(start: EngineGameStart): GameState {
       };
       state.colonies.push(colony);
       empire.exploredStars = [star.id];
-      // classic opening: a scout for everyone…
-      state.ships.push({
-        id: state.nextId++,
-        owner: empire.id,
-        shipKind: 'scout',
-        designId: null,
-        location: { kind: 'star', starId: star.id },
-        cargoPopUnits: 0,
-        cargoRace: empire.id,
-        dmgStructure: 0,
-        dmgArmor: 0,
-      });
-      // …but the free colony ship is the "average" head start only: a
-      // pre-warp empire researches Cold Fusion before it can settle out
-      // (bugs.md: the early start must not begin with a colony ship)
+      // classic opening: the "average" (default) start is the MOO2 normal
+      // opening — two scouts and a colony ship; the harder pre-warp start gets
+      // a single scout and must research Cold Fusion before it can settle out
+      // (bugs.md: the early start must not begin with a colony ship).
+      const scoutCount = start.settings.startMode === 'average' ? 2 : 1;
+      for (let s = 0; s < scoutCount; s++) {
+        state.ships.push({
+          id: state.nextId++,
+          owner: empire.id,
+          shipKind: 'scout',
+          designId: null,
+          location: { kind: 'star', starId: star.id },
+          cargoPopUnits: 0,
+          cargoRace: empire.id,
+          dmgStructure: 0,
+          dmgArmor: 0,
+        });
+      }
       if (start.settings.startMode === 'average') {
         state.ships.push({
           id: state.nextId++,

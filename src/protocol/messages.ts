@@ -24,8 +24,11 @@ export interface PlayerRoster {
 
 export interface GameSettings {
   galaxySize: 'small' | 'medium' | 'large' | 'huge';
-  /** pre_warp: research the basics (no starting colony ship); average: tech
-   * head start + colony ship; advanced: big identical developed empires */
+  /** pre_warp: only the construction basics known (colony base / star base /
+   * marine barracks) — everything else (computers, lasers, drives...) is
+   * researched from scratch; one scout, no colony ship; average (default):
+   * MOO2 normal opening — tech head start, 2 scouts + a colony ship;
+   * advanced: big identical developed empires */
   startMode: 'pre_warp' | 'average' | 'advanced';
   playerCount: number;
   modes: {
@@ -39,6 +42,9 @@ export interface GameSettings {
   battleOrdersTimeoutMs: number;
   /** enable logged debug commands (testing) */
   debugCommands: boolean;
+  /** DEBUG: every empire starts with the entire tech tree researched. Only
+   * honored when debugCommands is on (the Lobby gates the checkbox on it). */
+  unlockAllTech?: boolean;
   /** DEPRECATED (kept so old saves parse): the old fast-forward-to-turn-N
    * behavior. Ignored by current hosts — see autoTurnSeconds. */
   autoTurnUntil?: number;
@@ -145,7 +151,7 @@ export type ProtocolMessage = ClientToHost | HostToClient;
 
 export const DEFAULT_SETTINGS: GameSettings = {
   galaxySize: 'medium',
-  startMode: 'pre_warp', // early tech age by default: research the basics yourself
+  startMode: 'average', // MOO2 normal opening: tech head start, 2 scouts + a colony ship
   playerCount: 2,
   modes: {
     creativeVariant: false,
@@ -158,6 +164,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   },
   battleOrdersTimeoutMs: 60_000,
   debugCommands: false,
+  unlockAllTech: false,
   autoTurnUntil: 0,
   autoTurnSeconds: 0,
   pickPoints: 10,
