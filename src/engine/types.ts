@@ -120,6 +120,10 @@ export interface EmpireDesign {
   specials: string[];
   weapons: Array<{ weapon: string; count: number; mods: string[]; arc?: 'F' | 'FX' | 'R' | '360' }>;
   obsolete: boolean;
+  /** engine-maintained default design of its hull class: refitted with the
+   * best known components whenever research improves the fit (pipeline
+   * s11_defaultDesignRefresh). Never set on player-saved designs. */
+  auto?: boolean;
   /** cosmetic: which model variant of the hull class this design uses within
    * the empire's ship style (absent = derived from design id) */
   modelIdx?: number;

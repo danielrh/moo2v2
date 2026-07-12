@@ -20,6 +20,7 @@ import { seedMonsters } from './npc';
 import { rngFor } from './rng';
 import { empireContactPairs } from './selectors';
 import { advanceTurn, resolveCombat } from './pipeline';
+import { availableHulls, defaultDesign } from './shipdesign';
 import { resolveTraits, type RaceTraits } from './race';
 import type { Colony, GameState, GameStateSettings, PendingBattle, TurnEvent } from './types';
 
@@ -170,19 +171,21 @@ export function initGame(start: EngineGameStart): GameState {
   }
   state.empires.sort((a, b) => a.id - b.id);
 
-  // starter warship design: a laser frigate everyone can build on day one
-  // (deliberate: fitWeapon doesn't gate on knowledge for this starter kit)
+  // starter warship designs: one engine-maintained DEFAULT per available
+  // hull class (the frigate is the classic "Patrol Frigate"), fitted with
+  // the best known components and auto-refreshed as research lands
+  // (pipeline s11_defaultDesignRefresh). A pre-warp empire's empty arsenal
+  // falls back to the knowledge-free starter laser (deliberate: fitWeapon
+  // doesn't gate on knowledge for this starter kit).
   for (const empire of state.empires) {
-    empire.designs.push({
-      id: state.nextId++,
-      name: 'Patrol Frigate',
-      hull: 'frigate',
-      computer: empire.knownApps.includes('electronic_computer') ? 1 : 0,
-      shield: empire.knownApps.includes('class_i_shield') ? 1 : 0,
-      specials: [],
-      weapons: [{ weapon: 'laser_cannon', count: 2, mods: [] }],
-      obsolete: false,
-    });
+    for (const hull of availableHulls(empire)) {
+      empire.designs.push({
+        id: state.nextId++,
+        ...defaultDesign(state, empire, hull),
+        obsolete: false,
+        auto: true,
+      });
+    }
   }
 
   if (start.settings.startMode === 'advanced') {

@@ -59,6 +59,8 @@ export interface ShipDesign {
   specials: string[];
   weapons: DesignWeapon[];
   obsolete: boolean;
+  /** engine-maintained default design of its hull class (see types.ts) */
+  auto?: boolean;
 }
 
 // ---------- tech tiers available to an empire ----------
@@ -418,27 +420,29 @@ export function designStats(state: GameState, empire: Empire, design: Omit<ShipD
   };
 }
 
-/** Deterministic auto-design for defensive bases (star_base etc.).
+/** Deterministic best-known fit for a hull: best computer and shield tier
+ * plus the best beam/missile mix the space takes (armor and drive already
+ * auto-equip, C1).
  *
  * Space-aware: the best-damage weapon is only worth mounting in numbers that
  * FIT the hull — 6 death rays on a star base (1610/400 space) made
  * designStats error out and the whole platform silently vanish from every
  * defense battle the moment the Guardian's prize was claimed. Counts shrink
  * until the design fits; a weapon that cannot fit even once falls through to
- * the next-best. A pre-warp empire with no researched weapons still mans its
- * battlestations with the starter-kit laser (scouts and the Patrol Frigate
- * already get it knowledge-free). */
-export function baseDesign(state: GameState, empire: Empire, baseHull: string): Omit<ShipDesign, 'id' | 'obsolete'> {
+ * the next-best. An empire with no researched weapons (pre-warp) still
+ * mounts the starter-kit laser (scouts and the Patrol Frigate already get it
+ * knowledge-free). */
+function autoFitDesign(state: GameState, empire: Empire, hullId: string, name: string): Omit<ShipDesign, 'id' | 'obsolete'> {
   const beams = knownWeapons(empire)
     .filter((w) => w.classId === 0 && w.techId !== 0)
     .sort((a, b) => b.tacticalDamage.max - a.tacticalDamage.max);
   const missiles = knownWeapons(empire)
     .filter((w) => w.classId === 1)
     .sort((a, b) => b.tacticalDamage.max - a.tacticalDamage.max);
-  const hull = hullById.get(baseHull)!;
+  const hull = hullById.get(hullId)!;
   const base = {
-    name: baseHull,
-    hull: baseHull,
+    name,
+    hull: hullId,
     computer: bestComputer(empire),
     shield: bestShield(empire),
     specials: [] as string[],
@@ -446,8 +450,11 @@ export function baseDesign(state: GameState, empire: Empire, baseHull: string): 
   const fits = (weapons: DesignWeapon[]): boolean =>
     typeof designStats(state, empire, { ...base, weapons }) !== 'string';
   const weapons: DesignWeapon[] = [];
-  /** mount as many of the best-fitting candidate as the remaining space takes */
+  /** mount as many of the best-fitting candidate as the remaining space takes
+   * (want 0 = this hull class carries none of the category, e.g. frigates
+   * and destroyers have no missile racks) */
   const mount = (candidates: WeaponRow[], want: number): void => {
+    if (want <= 0) return;
     for (const row of candidates) {
       for (let count = Math.max(1, want); count >= 1; count--) {
         const attempt = [...weapons, { weapon: row.id, count, mods: [] }];
@@ -461,10 +468,45 @@ export function baseDesign(state: GameState, empire: Empire, baseHull: string): 
   mount(beams, hull.strategic.beam * 2);
   mount(missiles, hull.strategic.missile * 2);
   if (weapons.length === 0) {
-    // empty arsenal (pre-warp): the station gets the knowledge-free starter
-    // laser instead of standing in orbit unable to participate in battles
+    // empty arsenal (pre-warp): the knowledge-free starter laser instead of
+    // an unarmed hull that cannot participate in battles
     const laser = weaponById.get('laser_cannon');
     if (laser) mount([laser], hull.strategic.beam * 2);
   }
   return { ...base, weapons };
+}
+
+/** Deterministic auto-design for defensive bases (star_base etc.). */
+export function baseDesign(state: GameState, empire: Empire, baseHull: string): Omit<ShipDesign, 'id' | 'obsolete'> {
+  return autoFitDesign(state, empire, baseHull, baseHull);
+}
+
+/** Display names for the engine-maintained default design of each hull class
+ * (the frigate keeps its classic starter name). */
+export const DEFAULT_DESIGN_NAMES: Record<string, string> = {
+  frigate: 'Patrol Frigate',
+  destroyer: 'Destroyer',
+  cruiser: 'Cruiser',
+  battleship: 'Battleship',
+  titan: 'Titan',
+  doomstar: 'Doom Star',
+};
+
+/** The engine-maintained default design for a mobile hull class: the best
+ * known computer, shield and beam/missile mix. Recomputed by the pipeline
+ * whenever research (or espionage/trade) improves the fit. */
+export function defaultDesign(state: GameState, empire: Empire, hullId: string): Omit<ShipDesign, 'id' | 'obsolete'> {
+  return autoFitDesign(state, empire, hullId, DEFAULT_DESIGN_NAMES[hullId] ?? hullId);
+}
+
+/** Canonical fingerprint of what a design is FITTED with (id/name/model are
+ * ignored) — the refresh step replaces an auto design only when this changes. */
+export function designLoadoutKey(d: Pick<ShipDesign, 'hull' | 'computer' | 'shield' | 'specials' | 'weapons'>): string {
+  return JSON.stringify([
+    d.hull,
+    d.computer,
+    d.shield,
+    [...d.specials].sort(),
+    d.weapons.map((w) => [w.weapon, w.count, [...w.mods].sort(), w.arc ?? 'F']),
+  ]);
 }

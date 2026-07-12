@@ -88,6 +88,9 @@
       case 'event_plague': return `plague at ${colonyOf(p['colonyId'])}`;
       case 'proposal_failed': return `agreement between ${nameOf(p['a'])} and ${nameOf(p['b'])} fell through: ${p['reason']}`;
       case 'ship_stranded_retreat': return `a stranded ship beyond fuel range is falling back to ${starOf(p['to'])}`;
+      case 'design_updated': return p['replaced'] === null
+        ? `new default ${String(p['hull']).replaceAll('_', ' ')} design available: ${p['name']}`
+        : `⚙ default design "${p['name']}" refitted with our latest technology (new builds use it; refit older ships at a starbase)`;
       case 'natives_joined': return `natives joined ${colonyOf(p['colonyId'])} — they will work the farms (${p['units']} pop)`;
       case 'splinter_joined': return `a splinter colony rejoined our society at ${colonyOf(p['colonyId'])} (+${p['units']} pop)`;
       default: return `${kind} ${JSON.stringify(p)}`;

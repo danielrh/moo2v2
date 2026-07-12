@@ -69,11 +69,22 @@
     void empire?.designs.length;
     if (nameAuto) name = autoName(hull);
   });
-  let computer = $state(0);
-  let shield = $state(0);
+  // the editor opens pre-filled with the best fit known WHEN IT OPENS (a
+  // deliberate snapshot, not reactive — the engine keeps the buildable
+  // default designs themselves refreshed as research lands)
+  const fitAtOpen = ((): { computer: number; shield: number; beam: string } => {
+    const e = session().getPlanned()?.empires.find((x) => x.id === session().playerId) ?? null;
+    if (!e) return { computer: 0, shield: 0, beam: 'laser_cannon' };
+    const beams = knownWeapons(e)
+      .filter((w) => w.classId === 0 && w.techId !== 0)
+      .sort((a, b) => b.tacticalDamage.max - a.tacticalDamage.max);
+    return { computer: bestComputer(e), shield: bestShield(e), beam: beams[0]?.id ?? 'laser_cannon' };
+  })();
+  let computer = $state(fitAtOpen.computer);
+  let shield = $state(fitAtOpen.shield);
   let specials = $state<string[]>([]);
   let weapons = $state<Array<{ weapon: string; count: number; mods: string[]; arc: WeaponArc }>>([
-    { weapon: 'laser_cannon', count: 2, mods: [], arc: 'F' },
+    { weapon: fitAtOpen.beam, count: 2, mods: [], arc: 'F' },
   ]);
   /** cosmetic model variant within the hull class (scroll with ◀ ▶) */
   let modelIdx = $state(0);

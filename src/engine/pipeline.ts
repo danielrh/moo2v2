@@ -13,6 +13,7 @@ import { antaranUpkeep, hostileMonsterAt, randomEventsUpkeep } from './npc';
 import { allocId } from './ids';
 import { itemCost, parseDesignItem, parseRefitItem } from './items';
 import { commandPoints, inRange, supportStars } from './movement';
+import { availableHulls, defaultDesign, designLoadoutKey } from './shipdesign';
 import { ceilDiv } from './imath';
 import { applyTerraformStep, terraformCost, unsettledPlanetsInSystem } from './terraform';
 import { busyFreighters, colonyMaxPop, colonyOutput, colonyPopUnits, farmingViable, freeFreighters, groupGrowthK, traitsOf } from './economy';
@@ -80,8 +81,56 @@ function finishTurn(state: GameState, events: TurnEvent[]): void {
   antaranUpkeep(state, events); // S11 raid cadence + withdrawals
   randomEventsUpkeep(state, events); // S11 option-gated events
   diplomacyUpkeep(state, events); // S11 treaties, proposals, council
+  s11_defaultDesignRefresh(state, events); // default designs track the new tech
   s12_victory(state, events);
   s13_endTurn(state);
+}
+
+// ---------- S11: default designs track research ----------
+
+/** Engine-maintained default warship designs (design.auto): one per available
+ * hull class, refitted with the best known computer, shield and beam/missile
+ * mix whenever this turn's research (or espionage steal, or a tech trade)
+ * improved the fit. Runs AFTER every app-granting step so all of them are
+ * covered. The old version is obsoleted — ships already in space keep flying
+ * their old fit; upgrades cost a refit, never arrive free — and queued builds
+ * and refits migrate to the refreshed design so no production is dropped.
+ * Obsoleting an auto design by command just means it comes back refreshed
+ * here; player-saved designs are never touched. */
+function s11_defaultDesignRefresh(state: GameState, events: TurnEvent[]): void {
+  for (const empire of state.empires) {
+    if (empire.eliminated) continue;
+    for (const hull of availableHulls(empire)) {
+      const desired = defaultDesign(state, empire, hull);
+      const current = empire.designs.find((d) => d.auto && !d.obsolete && d.hull === hull);
+      if (current && designLoadoutKey(current) === designLoadoutKey(desired)) continue;
+      const design = {
+        id: allocId(state, empire.id),
+        ...desired,
+        // a refresh keeps the name the player knows the class by
+        ...(current ? { name: current.name } : {}),
+        obsolete: false,
+        auto: true,
+      };
+      empire.designs.push(design);
+      if (current) {
+        current.obsolete = true;
+        for (const colony of state.colonies) {
+          if (colony.owner !== empire.id) continue;
+          for (const q of colony.queue) {
+            if (q.item === `design:${current.id}`) q.item = `design:${design.id}`;
+            const refit = parseRefitItem(q.item);
+            if (refit !== null && refit.designId === current.id) q.item = `refit:${refit.shipId}:${design.id}`;
+          }
+        }
+      }
+      events.push({
+        visibleTo: empire.id,
+        kind: 'design_updated',
+        payload: { hull, designId: design.id, name: design.name, replaced: current?.id ?? null },
+      });
+    }
+  }
 }
 
 // ---------- S10: stranded ships limp home ----------

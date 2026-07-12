@@ -211,7 +211,11 @@ describe('#10: invasion civilian losses land on 1-unit groups', () => {
     resolveInvasions(state, events);
     const ground = events.find((e) => e.kind === 'ground_battle')!;
     const reported = ground.payload['civilianLosses'] as number;
-    const unitsLeft = colony.groups.reduce((s, g) => s + Math.floor(g.popK / 1000), 0);
+    // when the invasion succeeds, the surviving troops settle as colony
+    // population — exclude them so only original civilians are counted
+    const rounds = ground.payload['rounds'] as Array<{ t: number; m: number }>;
+    const settled = ground.payload['captured'] ? rounds[rounds.length - 1]!.t : 0;
+    const unitsLeft = colony.groups.reduce((s, g) => s + Math.floor(g.popK / 1000), 0) - settled;
     expect(3 - unitsLeft).toBe(reported); // deaths reported = deaths applied
     expect(unitsLeft).toBeGreaterThanOrEqual(1); // the colony keeps its last unit
   });

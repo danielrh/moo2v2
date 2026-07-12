@@ -584,7 +584,8 @@ const validateSaveDesign: Validator = (state, cmd) => {
   const empire = empireOf(state, cmd.playerId);
   if (typeof p?.name !== 'string' || !p.name.trim() || p.name.length > 30) return 'bad design name';
   if (p.modelIdx !== undefined && (!Number.isSafeInteger(p.modelIdx) || p.modelIdx < 0 || p.modelIdx > 31)) return 'bad model variant';
-  if (empire.designs.filter((d) => !d.obsolete).length >= 12) return 'design limit reached (obsolete one first)';
+  // engine-maintained defaults (design.auto) don't consume player slots
+  if (empire.designs.filter((d) => !d.obsolete && !d.auto).length >= 12) return 'design limit reached (obsolete one first)';
   // players may only design MOBILE hulls they have researched. designStats
   // deliberately exempts base hulls from the availability check (baseDesign
   // auto-designs stations with them) — without this gate a modified client
