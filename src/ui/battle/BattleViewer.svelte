@@ -263,7 +263,39 @@
       if (!pf) continue;
       for (let si = 0; si < pf.shots.length; si++) {
         const shot = pf.shots[si]!;
-        if (shot.classId !== 0) continue; // guided munitions render from frame.projectiles
+        if (shot.classId !== 0) {
+          // guided munitions render their FLIGHT from frame.projectiles; this
+          // shot event is the impact instant. Without an arrival effect a
+          // missile flew in and simply vanished — no shield fizzle, no hull
+          // flash, and an ECM-evaded munition looked identical to a hit.
+          if (shot.to < 0) continue;
+          const impactAge = (back + frac) / FIZZLE_TICKS;
+          if (impactAge > 1) continue;
+          const toV2 = views.get(shot.to);
+          const atShip = pf.ships.find((x) => x.id === shot.to);
+          if (!toV2 || !atShip) continue;
+          const nowShip = frames[fi]!.ships.find((x) => x.id === shot.to);
+          const pose2 = nowShip && nowShip.alive ? shipPose(fi, frac, nowShip) : shipPose(sf, 0, atShip);
+          const launcher = pf.ships.find((x) => x.id === shot.from);
+          const bearing2 = launcher ? Math.atan2(launcher.y - atShip.y, launcher.x - atShip.x) : Math.PI;
+          const ex = pose2.x + Math.cos(bearing2) * toV2.radius * 0.55;
+          const ey = pose2.y + Math.sin(bearing2) * toV2.radius * 0.55;
+          const tint = shot.classId === 1 ? (MISSILE_TINT[shot.weaponId] ?? 0xffb066) : shot.classId === 2 ? (TORPEDO_TINT[shot.weaponId] ?? 0xd07aff) : 0xffe9b0;
+          if (!shot.hit) {
+            // evaded/zapped at the last instant: a small fizzle pop, clearly
+            // different from a detonation on the hull
+            drawPdPop(glowG, ex, ey, Math.max(0, impactAge));
+          } else {
+            const soaked2 = shot.sh ?? 0;
+            if (soaked2 > 0) {
+              drawShieldHit(glowG, pose2.x, pose2.y, toV2.radius, bearing2, Math.max(0, impactAge), Math.min(1, soaked2 / 22), 0x6fc0ff, shot.from * 41 + si, shot.tick);
+            }
+            if (shot.dmg > soaked2 && impactAge < 0.6) {
+              drawImpact(glowG, ex, ey, tint, 2 + Math.min(7, (shot.dmg - soaked2) / 5), shot.kill === true, shot.tick, shot.to * 13 + si);
+            }
+          }
+          continue;
+        }
         const fromV = views.get(shot.from);
         const from = pf.ships.find((x) => x.id === shot.from);
         // point defense intercept: tracer burst to the downed projectile

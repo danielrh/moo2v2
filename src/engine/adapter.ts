@@ -12,7 +12,7 @@ import {
   validatePicks,
   ALWAYS_KNOWN_ITEMS,
 } from './data/index';
-import { applyCommand, validateCommand, type EngineCommand } from './commands';
+import { applyCommand, applyFoundingSpecials, validateCommand, type EngineCommand } from './commands';
 import { generateGalaxy, starDistance } from './galaxy';
 import { colonyMaxPop, colonyOutput, farmingViable, maxPopulation } from './economy';
 import { ceilDiv, floorDiv } from './imath';
@@ -111,8 +111,9 @@ export function initGame(start: EngineGameStart): GameState {
   // magnetism 250 (listed prices — actual discovery lands on the hidden
   // per-game line in (listed, 2×listed], research.ts). Ships still fly and
   // can be designed thanks to the hardcoded nuclear-drive + fuel-cell +
-  // titanium baselines (movement.ts / shipdesign.ts) and everyone keeps the
-  // pre-built starter frigate.
+  // titanium baselines (movement.ts / shipdesign.ts) and everyone gets the
+  // pre-built starter Patrol Frigate DESIGN (no frigate ship is spawned —
+  // the opening fleet is the scout(s) + colony ship listed below).
   //
   // "average"/"advanced" are HEAD STARTS: already-developed empires that
   // begin with the full tier-1 root tier plus their extra fields. Their
@@ -400,11 +401,9 @@ function advancedStart(state: GameState, homePlanets: number[], traits: RaceTrai
           g.farmers = Math.min(units, ceilDiv(units, 2));
           g.workers = units - g.farmers;
         }
-        // founding salvages the wreck exactly like the colonize command does
-        if (planet.special === 'space_debris') {
-          empire.bc += 50;
-          planet.special = null;
-        }
+        // founding consumes one-time specials exactly like the colonize
+        // command (debris salvage, splinter colonists, native integration)
+        applyFoundingSpecials(state, planet, colony);
       }
       if (!empire.exploredStars.includes(starId)) empire.exploredStars.push(starId);
     }
@@ -674,10 +673,14 @@ function bigEmpireStart(state: GameState): void {
       outpost: false,
     };
     state.colonies.push(colony);
-    // 1/3 to 1/2 of capacity, split into fed jobs
+    // 1/3 to 1/2 of capacity, split into fed jobs — but farmers ONLY where
+    // farming actually works: seeding ceil(units/2) farmers on barren mining
+    // worlds produced zero food and starved the whole empire from turn 1
+    // (the start state even violated validateSetJobs's own farmer rule)
     const cap = colonyMaxPop(state, colony);
     const units = Math.max(1, Math.floor((cap * (33 + rng.int(18))) / 100));
-    const farmers = Math.min(units, Math.ceil(units / 2));
+    const viable = farmingViable(state, colony);
+    const farmers = viable ? Math.min(units, Math.ceil(units / 2)) : 0;
     colony.groups[0] = {
       race: owner,
       popK: units * 1000,
@@ -686,10 +689,48 @@ function bigEmpireStart(state: GameState): void {
       scientists: 0,
       unrest: false,
     };
+    // founding consumes one-time specials exactly like the colonize command
+    applyFoundingSpecials(state, planet, colony);
     const emp = state.empires.find((e) => e.id === owner)!;
     if (!emp.exploredStars.includes(star.id)) emp.exploredStars.push(star.id);
     count.set(owner, (count.get(owner) ?? 0) + 1);
   }
   for (const e of empires) e.exploredStars.sort((a, b) => a - b);
   state.colonies.sort((a, b) => a.id - b.id);
+
+  // feed each empire like advancedStart does: promote workers to farmers on
+  // the best farm worlds until the empire-wide food net is non-negative, and
+  // grant a freighter pool that covers whatever deficit remains — half-farmed
+  // bubbles with zero freighters starved from the first upkeep
+  for (const empire of empires) {
+    const mine = state.colonies.filter((c) => c.owner === empire.id && !c.outpost);
+    const empireNet = () => mine.reduce((sum, c) => sum + colonyOutput(state, c).foodNet, 0);
+    let guard = 0;
+    while (empireNet() < 0 && guard++ < 1000) {
+      let best: { colony: Colony; gain: number } | null = null;
+      for (const c of mine) {
+        const g = c.groups[0];
+        if (!g || g.workers < 1 || !farmingViable(state, c)) continue;
+        const before = colonyOutput(state, c).foodNet;
+        g.workers--;
+        g.farmers++;
+        const after = colonyOutput(state, c).foodNet;
+        g.workers++;
+        g.farmers--;
+        const gain = after - before;
+        if (gain > 0 && (!best || gain > best.gain || (gain === best.gain && c.id < best.colony.id))) {
+          best = { colony: c, gain };
+        }
+      }
+      if (!best) break; // nothing left to convert: freighters cover the rest
+      best.colony.groups[0]!.workers--;
+      best.colony.groups[0]!.farmers++;
+    }
+    let deficit = 0;
+    for (const c of mine) {
+      const net = colonyOutput(state, c).foodNet;
+      if (net < 0) deficit += -net;
+    }
+    empire.freighters = ceilDiv(deficit, 5) * 5; // whole fleets, never short
+  }
 }

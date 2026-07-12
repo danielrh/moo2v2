@@ -262,14 +262,20 @@ function rotatePoint(cx: number, cy: number, dx: number, dy: number, rot: readon
 type PlanetSpec = Omit<Planet, 'id' | 'starId'>;
 
 /** Documented planet specials (planet_specials.md): gem/gold deposits pay BC
- * to an established colony, space debris converts to 50 BC on settling, and
- * rare wild artifact worlds boost science (and draw monster keepers). */
-function rollSpecial(rng: Rng): string | null {
+ * to an established colony, space debris converts to 50 BC on settling, rare
+ * wild artifact worlds boost science (and draw monster keepers), natives
+ * join the first colony as farm-only population, and a splinter colony
+ * rejoins whoever settles the world. Exactly ONE rng draw regardless of the
+ * branch taken, so the generation stream stays aligned. */
+function rollSpecial(rng: Rng, climate: Climate): string | null {
   const r = rng.int(100);
   if (r < 3) return 'gold_deposits';
   if (r < 5) return 'gem_deposits';
   if (r < 7) return 'space_debris';
   if (r < 8) return 'ancient_artifacts';
+  // natives need a world where farms can grow at all
+  if (r < 10) return ['hostile', 'energized', 'barren'].includes(climate) ? null : 'natives';
+  if (r < 11) return 'splinter_colony';
   return null;
 }
 
@@ -285,14 +291,15 @@ function rollPlanetSpecs(rng: Rng, color: StarColor, minBodies = 0): PlanetSpec[
     const orbit = orbits[k]!;
     const body = weighted(rng, BODY_WEIGHTS);
     const sizeClass = 1 + weighted(rng, SIZE_WEIGHTS.map((wgt, i) => [i, wgt] as [number, number]));
+    const climate: Climate = body === 'planet' ? weighted(rng, CLIMATE_WEIGHTS[orbitBand(orbit)]) : 'barren';
     specs.push({
       orbit,
       body,
       sizeClass: body === 'planet' ? sizeClass : 3,
-      climate: body === 'planet' ? weighted(rng, CLIMATE_WEIGHTS[orbitBand(orbit)]) : 'barren',
+      climate,
       minerals: weighted(rng, MINERAL_WEIGHTS[color]),
       gravity: rollGravity(rng, body === 'planet' ? sizeClass : 3),
-      special: body === 'planet' ? rollSpecial(rng) : null,
+      special: body === 'planet' ? rollSpecial(rng, climate) : null,
       homeworldOf: null,
       terraformSteps: 0,
     });
@@ -380,13 +387,27 @@ function ensureHomeConnectivity(
       );
       if (served) continue;
       // never generate a star inside another's minimum separation (stacked
-      // discs on the map): try the point, then small perpendicular nudges
-      const spot = [
+      // discs on the map): try the point, perpendicular nudges (1x and 2x),
+      // then nudges along the segment. When even those all collide, place at
+      // the candidate with the LARGEST clearance instead of the raw point —
+      // the old raw-point fallback was the last source of stacked stars.
+      const sx = best.d > 0 ? roundDiv((best.b.x - best.a.x) * MIN_STAR_DIST, best.d) : MIN_STAR_DIST;
+      const sy = best.d > 0 ? roundDiv((best.b.y - best.a.y) * MIN_STAR_DIST, best.d) : 0;
+      const candidates: Array<[number, number]> = [
         [bx, by],
         [bx + ox, by + oy],
         [bx - ox, by - oy],
-      ].find(([x, y]) => !stars.some((s) => (s.x - x!) * (s.x - x!) + (s.y - y!) * (s.y - y!) < MIN_STAR_DIST * MIN_STAR_DIST));
-      addBridge(spot?.[0] ?? bx, spot?.[1] ?? by);
+        [bx + 2 * ox, by + 2 * oy],
+        [bx - 2 * ox, by - 2 * oy],
+        [bx + sx, by + sy],
+        [bx - sx, by - sy],
+      ];
+      const clearance = ([x, y]: [number, number]) =>
+        stars.reduce((m, s) => Math.min(m, (s.x - x) * (s.x - x) + (s.y - y) * (s.y - y)), Infinity);
+      const spot =
+        candidates.find(([x, y]) => !stars.some((s) => (s.x - x) * (s.x - x) + (s.y - y) * (s.y - y) < MIN_STAR_DIST * MIN_STAR_DIST)) ??
+        candidates.reduce((a, b) => (clearance(a) >= clearance(b) ? a : b));
+      addBridge(spot[0], spot[1]);
     }
   }
 }
@@ -706,9 +727,10 @@ function generateMirrorGalaxy(
       const specs = rollPlanetSpecs(rng, 'red', 1);
       for (const rot of rots) {
         const { x: px, y: py } = rotatePoint(cx, cy, odx, ody, rot);
-        // skip a copy that would stack on an existing star (tight overlaps
-        // only happen near the hub where another copy already serves)
-        if (stars.some((s) => (s.x - px) * (s.x - px) + (s.y - py) * (s.y - py) <= 30 * 30)) continue;
+        // skip a copy that would violate MIN_STAR_DIST: whatever star it
+        // would stack on already serves that spot as a refuel hop (hop range
+        // is 400cp, far beyond the 150cp separation), so connectivity holds
+        if (stars.some((s) => (s.x - px) * (s.x - px) + (s.y - py) * (s.y - py) < MIN_STAR_DIST * MIN_STAR_DIST)) continue;
         const star: Star = { id: nextId++, name: starName(rng, taken, namePool), x: px, y: py, color: 'red', wormholeTo: null, sym: -1 };
         stars.push(star);
         for (const spec of specs) planets.push({ id: nextId++, starId: star.id, ...spec });

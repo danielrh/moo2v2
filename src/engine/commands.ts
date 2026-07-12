@@ -13,16 +13,18 @@ import {
   PICK_EXCLUSIVE_GROUPS,
 } from './data/index';
 import { areAtWar, relationKey, setRelation } from './battles';
+import { anyEmpireContact, metEmpireIds } from './contact';
 import { buyCost, colonyMaxPop, colonyPopUnits as popUnitsOf, empireOf, farmingViable, freeFreighters, traitsOf } from './economy';
 import { allocId, allocWorldId } from './ids';
-import { canQueue, itemCost } from './items';
+import { canQueue, itemCost, parseRefitItem } from './items';
 import { inRange, settlerTravelTurns, shipStar, supportStars, travelTurns } from './movement';
 import { starDistance } from './galaxy';
 import { appPickableBy, availableFields, fieldGrantsAll } from './research';
-import { designStats, knownWeapons } from './shipdesign';
+import { availableHulls, designStats, knownWeapons } from './shipdesign';
 import { isShipStyle } from './shipstyles';
 import type { BattleOrders, Stance, TargetPriority } from './combat';
-import type { Colony, GameState, PopGroup, Ship, Star, TurnEvent } from './types';
+import { NATIVE_RACE } from './types';
+import type { Colony, GameState, Planet, PopGroup, Ship, Star, TurnEvent } from './types';
 
 export interface EngineCommand {
   turn: number;
@@ -80,7 +82,11 @@ const validateSetJobs: Validator = (state, cmd) => {
     if (g.farmers + g.workers + g.scientists !== units) {
       return `jobs must total ${units} for race ${g.race}`;
     }
-    if (g.farmers > 0 && !farmingViable(state, c)) {
+    // natives only ever farm (planet_specials.md); their idle-farming on a
+    // spoiled world is fine — the viability guard is for the owner's citizens
+    if (g.race === NATIVE_RACE) {
+      if (g.workers > 0 || g.scientists > 0) return 'natives only work the farms';
+    } else if (g.farmers > 0 && !farmingViable(state, c)) {
       return 'nothing grows here — farmers would produce no food on this world';
     }
   }
@@ -285,24 +291,23 @@ const validateMove: Validator = (state, cmd) => {
     const origin = moveOrigin(state, ship);
     if (origin.id === dest.id && ship.location.kind === 'star') return `ship ${ship.id} already there`;
   }
-  if (!inRange(state, cmd.playerId, dest)) {
-    // wormholes carry ships regardless of fuel range (outposts on the far
-    // side can then extend the network)
-    for (const ship of ships) {
-      if (moveOrigin(state, ship).wormholeTo !== dest.id) {
-        return `${dest.name} is out of fuel range`;
-      }
-    }
-  }
-  // a fleet stranded OUTSIDE the supply network can only limp back toward it,
-  // not warp laterally to any star adjacent to the network
+  // per-ship fuel gate. A ship whose ORIGIN is inside the supply network flies
+  // anywhere the network reaches (classic rule). A fleet stranded OUTSIDE the
+  // network can only limp back TOWARD it — the old code required the
+  // destination to be in network range first, which made the stranded clause
+  // unreachable and let stranded ships warp anywhere adjacent to the network.
+  const support = supportStars(state, cmd.playerId);
+  const toNet = (s: Star) => support.reduce((m, sup) => Math.min(m, starDistance(sup, s)), Infinity);
   for (const ship of ships) {
     const origin = moveOrigin(state, ship);
+    // wormholes carry ships regardless of fuel range (outposts on the far
+    // side can then extend the network)
     if (origin.wormholeTo === dest.id) continue;
-    if (inRange(state, cmd.playerId, origin)) continue;
-    const support = supportStars(state, cmd.playerId);
+    if (inRange(state, cmd.playerId, origin)) {
+      if (!inRange(state, cmd.playerId, dest)) return `${dest.name} is out of fuel range`;
+      continue;
+    }
     if (support.length === 0) continue; // no network at all: free movement
-    const toNet = (s: Star) => support.reduce((m, sup) => Math.min(m, starDistance(sup, s)), Infinity);
     if (toNet(dest) >= toNet(origin)) {
       return 'out of fuel: stranded ships can only move back toward supply range';
     }
@@ -363,7 +368,53 @@ function validateSettle(state: GameState, cmd: EngineCommand, wantKind: 'colony_
   return null;
 }
 
-const applyColonize: Applier = (state, cmd) => {
+/** One-time planet specials consumed when a real colony is FOUNDED there
+ * (colonize command, colony_base completion, developed starts): space-debris
+ * salvage, a splinter colony rejoining, and native integration
+ * (planet_specials.md). Shared so every founding path behaves identically. */
+export function applyFoundingSpecials(
+  state: GameState,
+  planet: Planet,
+  colony: Colony,
+  events?: TurnEvent[],
+): void {
+  if (planet.special === 'space_debris') {
+    // the wreckage is salvaged on arrival (one-time +50 BC)
+    empireOf(state, colony.owner).bc += 50;
+    planet.special = null;
+  }
+  if (planet.special === 'splinter_colony') {
+    // a colony that once broke off from the settlers' society rejoins: +3
+    // population units of the owner's race (clamped to the world's ceiling),
+    // working the mills on day one
+    const units = Math.min(3, Math.max(0, colonyMaxPop(state, colony) - popUnitsOf(colony)));
+    if (units > 0) {
+      const own = colony.groups.find((g) => g.race === colony.owner);
+      if (own) {
+        own.popK += units * 1000;
+        own.workers += units;
+      } else {
+        colony.groups.push({ race: colony.owner, popK: units * 1000, farmers: 0, workers: units, scientists: 0, unrest: false });
+        colony.groups.sort((a, b) => a.race - b.race);
+      }
+      events?.push({ visibleTo: colony.owner, kind: 'splinter_joined', payload: { colonyId: colony.id, units } });
+    }
+    planet.special = null;
+  }
+  if (planet.special === 'natives') {
+    // humanoid natives integrate into the colony: they only ever farm, gain
+    // no racial bonuses, and never leave the planet (NATIVE_RACE group rules)
+    const units = Math.min(2, Math.max(0, colonyMaxPop(state, colony) - popUnitsOf(colony)));
+    if (units > 0) {
+      colony.groups.push({ race: NATIVE_RACE, popK: units * 1000, farmers: units, workers: 0, scientists: 0, unrest: false });
+      colony.groups.sort((a, b) => a.race - b.race);
+      events?.push({ visibleTo: colony.owner, kind: 'natives_joined', payload: { colonyId: colony.id, units } });
+    }
+    planet.special = null;
+  }
+}
+
+const applyColonize: Applier = (state, cmd, events) => {
   const p = cmd.payload as ColonizePayload;
   const ship = state.ships.find((s) => s.id === p.shipId)!;
   const planet = state.planets.find((x) => x.id === p.planetId)!;
@@ -393,11 +444,7 @@ const applyColonize: Applier = (state, cmd) => {
     settled.groups[0]!.farmers = 0;
     settled.groups[0]!.workers = 1;
   }
-  // space debris: the wreckage is salvaged on arrival (one-time +50 BC)
-  if (planet.special === 'space_debris') {
-    empireOf(state, cmd.playerId).bc += 50;
-    planet.special = null;
-  }
+  applyFoundingSpecials(state, planet, settled, events);
   state.colonies.sort((a, b) => a.id - b.id);
 };
 
@@ -538,6 +585,13 @@ const validateSaveDesign: Validator = (state, cmd) => {
   if (typeof p?.name !== 'string' || !p.name.trim() || p.name.length > 30) return 'bad design name';
   if (p.modelIdx !== undefined && (!Number.isSafeInteger(p.modelIdx) || p.modelIdx < 0 || p.modelIdx > 31)) return 'bad model variant';
   if (empire.designs.filter((d) => !d.obsolete).length >= 12) return 'design limit reached (obsolete one first)';
+  // players may only design MOBILE hulls they have researched. designStats
+  // deliberately exempts base hulls from the availability check (baseDesign
+  // auto-designs stations with them) — without this gate a modified client
+  // could field tech-free, zero-command-point star-fortress "ships" on turn 1
+  if (typeof p.hull !== 'string' || !availableHulls(empire).includes(p.hull)) {
+    return `${String(p?.hull)} hull not yet available`;
+  }
   // payloads arrive as raw network JSON: field types are hostile until proven
   if (p.specials !== undefined && !Array.isArray(p.specials)) return 'bad specials';
   if (p.weapons !== undefined && !Array.isArray(p.weapons)) return 'bad weapons';
@@ -595,10 +649,14 @@ const applyObsoleteDesign: Applier = (state, cmd) => {
   const empire = empireOf(state, cmd.playerId);
   const d = empire.designs.find((x) => x.id === p.designId)!;
   d.obsolete = true;
-  // drop it from any build queues
+  // drop it from any build queues — both new builds AND refits toward it
+  // (canQueue refuses new refits to an obsolete design; queued ones must not
+  // slip through and complete)
   for (const c of state.colonies) {
     if (c.owner !== cmd.playerId) continue;
-    c.queue = c.queue.filter((q) => q.item !== `design:${p.designId}`);
+    c.queue = c.queue.filter(
+      (q) => q.item !== `design:${p.designId}` && parseRefitItem(q.item)?.designId !== p.designId,
+    );
   }
 };
 
@@ -755,6 +813,10 @@ const validateSpyOrders: Validator = (state, cmd) => {
   if (p.target !== null) {
     if (p.target === cmd.playerId) return 'cannot spy on yourself';
     if (!state.empires.some((e) => e.id === p.target && !e.eliminated)) return `no empire ${p.target}`;
+    // you can only infiltrate an empire you have MET — espionage against
+    // strangers would mutate their state without ever tripping the fast-start
+    // contact wire (the invariant that lets pre-contact turns resolve async)
+    if (!metEmpireIds(state, cmd.playerId).has(p.target)) return 'you have not met that empire';
   }
   if (p.mode !== 'steal' && p.mode !== 'sabotage') return 'bad mode';
   return null;
@@ -779,6 +841,13 @@ const validatePropose: Validator = (state, cmd) => {
   if (!state.empires.some((e) => e.id === p?.to && !e.eliminated)) return `no empire ${p?.to}`;
   if (p.to === cmd.playerId) return 'cannot propose to yourself';
   if (!PROPOSAL_KINDS.includes(p.kind)) return 'bad proposal kind';
+  // rider fields are typed for EVERY kind, not just the kinds that read them:
+  // applyPropose stores them verbatim into hashed state, so a fractional/NaN
+  // giveBc smuggled on e.g. a trade proposal would poison every peer's
+  // canonical hash (the applier also kind-gates them — belt and braces)
+  if (p.giveBc !== undefined && (!Number.isSafeInteger(p.giveBc) || p.giveBc < 0)) return 'bad gift amount';
+  if (p.giveApp !== undefined && p.giveApp !== null && typeof p.giveApp !== 'string') return 'bad offered tech';
+  if (p.wantApp !== undefined && p.wantApp !== null && typeof p.wantApp !== 'string') return 'bad requested tech';
   const rel = peekRelation(state, cmd.playerId, p.to);
   if (p.kind === 'peace' && rel.status !== 'war') return 'not at war';
   if (['non_aggression', 'alliance', 'trade', 'research'].includes(p.kind) && rel.status === 'war') {
@@ -809,14 +878,16 @@ const validatePropose: Validator = (state, cmd) => {
 
 const applyPropose: Applier = (state, cmd) => {
   const p = cmd.payload as { to: number; kind: ProposalKind; giveBc?: number; giveApp?: string; wantApp?: string };
+  // total applier: rider fields are stored ONLY for the kinds that read them —
+  // stray payload fields on other kinds must never reach hashed state
   state.proposals.push({
     id: allocId(state, cmd.playerId),
     from: cmd.playerId,
     to: p.to,
     kind: p.kind,
-    giveBc: p.giveBc ?? 0,
-    giveApp: p.giveApp ?? null,
-    wantApp: p.wantApp ?? null,
+    giveBc: p.kind === 'gift_bc' ? (p.giveBc ?? 0) : 0,
+    giveApp: p.kind === 'tech_exchange' ? (p.giveApp ?? null) : null,
+    wantApp: p.kind === 'tech_exchange' ? (p.wantApp ?? null) : null,
     expiresTurn: state.turn + 5,
   });
 };
@@ -864,7 +935,14 @@ const validateHireLeader: Validator = (state, cmd) => {
   if (offer.expiresTurn <= state.turn) return 'offer expired';
   const row = leaderById.get(p.leaderId);
   if (!row) return `unknown leader ${p.leaderId}`;
-  if (state.empires.some((e) => e.leaders.some((l) => l.leaderId === p.leaderId))) return 'already hired';
+  // pre-contact the leader market is per-empire (leadersUpkeep): another
+  // stranger's hire must not invalidate mine, or empires would couple before
+  // they ever meet (fast-start invariant). Once ANY contact exists the pool
+  // is global again and a leader can serve only one empire.
+  const hiredElsewhere = anyEmpireContact(state)
+    ? state.empires.some((e) => e.leaders.some((l) => l.leaderId === p.leaderId))
+    : empireOf(state, cmd.playerId).leaders.some((l) => l.leaderId === p.leaderId);
+  if (hiredElsewhere) return 'already hired';
   const empire = empireOf(state, cmd.playerId);
   if (countKind(empire, row.kind) >= MAX_LEADERS_PER_KIND) return `no free ${row.kind} leader slot`;
   if (empire.bc < offer.priceBc) return `need ${offer.priceBc} BC`;
@@ -878,8 +956,12 @@ const applyHireLeader: Applier = (state, cmd) => {
   empire.bc -= offer.priceBc;
   empire.leaders.push({ leaderId: p.leaderId, level: 1, xp: 0, colonyId: null });
   empire.leaders.sort((a, b) => (a.leaderId < b.leaderId ? -1 : 1));
-  // the hire consumes every open offer for this leader (any empire)
-  state.leaderOffers = state.leaderOffers.filter((o) => o.leaderId !== p.leaderId);
+  // post-contact the hire consumes every open offer for this leader (any
+  // empire); pre-contact only my own offer — strangers' offer books must not
+  // move because of my commands (fast-start invariant)
+  state.leaderOffers = anyEmpireContact(state)
+    ? state.leaderOffers.filter((o) => o.leaderId !== p.leaderId)
+    : state.leaderOffers.filter((o) => !(o.leaderId === p.leaderId && o.empireId === cmd.playerId));
 };
 
 const validateDismissLeader: Validator = (state, cmd) => {
@@ -991,6 +1073,7 @@ const validateMoveColonists: Validator = (state, cmd) => {
   if (to.outpost) return 'outposts cannot take colonists';
   if (from.id === to.id) return 'already there';
   if (!Number.isSafeInteger(p.count) || p.count < 1) return 'bad count';
+  if (p.race === NATIVE_RACE) return 'natives never leave their world';
   const fromStarId = state.planets.find((x) => x.id === from.planetId)!.starId;
   const toStarId = state.planets.find((x) => x.id === to.planetId)!.starId;
   if (fromStarId !== toStarId) {
@@ -1256,6 +1339,12 @@ const validateVote: Validator = (state, cmd) => {
   if (p.candidate !== -1 && !state.council.pending.candidates.includes(p.candidate)) {
     return 'not a candidate';
   }
+  // you may abstain (-1) or back yourself, but voting FOR a candidate you have
+  // never met makes no sense (and pre-contact fast-mode previews could not
+  // even agree on who the candidates are)
+  if (p.candidate !== -1 && p.candidate !== cmd.playerId && !metEmpireIds(state, cmd.playerId).has(p.candidate)) {
+    return 'you have not met that candidate';
+  }
   return null;
 };
 
@@ -1266,8 +1355,30 @@ const applyVote: Applier = (state, cmd) => {
 
 // ---------- debug commands (settings-gated, still deterministic + logged) ----------
 
-const validateDebug: Validator = (state) =>
-  state.settings.debugCommands ? null : 'debug commands disabled';
+/** Debug payloads are still hostile network JSON: a fractional amount/popK
+ * would poison the canonical hash exactly like any other command. */
+const validateDebug: Validator = (state, cmd) => {
+  if (!state.settings.debugCommands) return 'debug commands disabled';
+  const p = cmd.payload as Record<string, unknown>;
+  switch (cmd.kind) {
+    case 'debug_add_bc':
+      if (!Number.isSafeInteger(p?.['amount']) || Math.abs(p['amount'] as number) > 1_000_000) return 'bad amount';
+      return null;
+    case 'debug_set_pop': {
+      const popK = p?.['popK'];
+      if (!Number.isSafeInteger(popK) || (popK as number) < 0 || (popK as number) > 100_000) return 'bad popK';
+      return null;
+    }
+    case 'debug_spawn_ships':
+      if (!Number.isSafeInteger(p?.['count']) || (p['count'] as number) < 1 || (p['count'] as number) > 20) return 'bad count';
+      if (!Number.isSafeInteger(p?.['starId']) || !Number.isSafeInteger(p?.['designId'])) return 'bad ids';
+      return null;
+    case 'debug_grant_app':
+      return typeof p?.['appId'] === 'string' && p['appId'].length <= 64 ? null : 'bad appId';
+    default:
+      return null;
+  }
+};
 
 const applyDebugGrantApp: Applier = (state, cmd) => {
   const p = cmd.payload as { appId: string };
@@ -1360,8 +1471,16 @@ function normalizeJobsForGroup(g: PopGroup): void {
     assigned--;
   }
   while (assigned < units) {
-    g.workers++;
+    // natives only ever farm; everyone else picks up tools first
+    if (g.race === NATIVE_RACE) g.farmers++;
+    else g.workers++;
     assigned++;
+  }
+  // natives shed INTO farming, never out of it
+  if (g.race === NATIVE_RACE && (g.workers > 0 || g.scientists > 0)) {
+    g.farmers += g.workers + g.scientists;
+    g.workers = 0;
+    g.scientists = 0;
   }
 }
 

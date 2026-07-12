@@ -208,17 +208,31 @@ export class GameSession<S> {
     return { clientId };
   }
 
-  retract(clientId: string): void {
-    // local-only convenience before the host accepts; if already accepted the
-    // acceptance wins (there is no unsubmit in the log). Fast phase: only the
-    // still-open preview turn may retract — earlier turns are history the
-    // host will replay.
-    const open = this.fastTurn();
-    this.fastCmds = this.fastCmds.filter((p) => p.clientId !== clientId || p.turn !== open);
-    this.pending = this.pending.filter((p) => p.clientId !== clientId);
+  // NOTE: there is deliberately NO retract(): a submitted command is already
+  // on the wire (and in the fast phase already buffered by the host for a
+  // future turn) — removing the local copy would only create a phantom order
+  // that still executes authoritatively. Un-submitting would need a real
+  // host-side unsubmit message; add that first if the UI ever wants undo.
+
+  /** Drop all local game state for a from-scratch refold (desync recovery, or
+   * discovering the room hosts a different game than the one we resumed).
+   * keepGameId: desyncs stay within the same game (persistence keeps healing
+   * the same rows); a foreign-game reset must also forget the game identity
+   * so nothing is persisted until the true game_start re-establishes it. */
+  private hardReset(keepGameId: boolean): void {
+    this.authState = null;
+    this.lastSeq = -1;
+    this.startedFlag = false;
+    this.pending = [];
+    this.fastCmds = [];
+    this.fastEndedThrough = -1;
+    this.fastBlindThrough = -1;
+    this.stashedEvents = [];
+    this.plannedCache = null;
+    this.fastCache = null;
     this.plannedDirty = true;
     this.fastDirty = true;
-    this.bump({ type: 'state' });
+    if (!keepGameId) this.gameId = null;
   }
 
   commitTurn(): void {
@@ -364,6 +378,16 @@ export class GameSession<S> {
           this.playerId = msg.seat;
           this.plannedDirty = true;
         }
+        // the room hosts a DIFFERENT game than the one this tab auto-resumed
+        // (a what-if branch was loaded, or an older save re-hosted): folding
+        // the host's tail onto our unrelated state grafted foreign commands
+        // into the wrong stored log. Drop everything and refold from scratch.
+        if (msg.started && msg.gameId && this.gameId && msg.gameId !== this.gameId) {
+          this.hardReset(false);
+          this.requestResync(); // haveSeq is -1 now: the host sends the full log
+          this.bump({ type: 'state' });
+          return;
+        }
         // fast phase: a restarted host lost its buffers — re-send our
         // committed-through mark and every not-yet-sequenced buffered order
         // (the host dedupes by clientId, so a mere reconnect is harmless)
@@ -437,9 +461,7 @@ export class GameSession<S> {
       }
       case 'desync_notice': {
         // authoritative recovery: drop local state and refetch everything
-        this.authState = null;
-        this.lastSeq = -1;
-        this.startedFlag = false;
+        this.hardReset(true);
         this.bump({ type: 'desync', turn: msg.turn });
         this.requestResync();
         return;
@@ -591,25 +613,33 @@ export class GameSession<S> {
   private async ensureGameRow(start: GameStartPayload): Promise<void> {
     if (!this.store || !this.gameId) return;
     const existing = await this.store.getGame(this.gameId);
-    if (existing) {
-      if (existing.seed === start.seed) return; // resume of the same game
-      await this.store.deleteGame(this.gameId);
+    if (!existing || existing.seed !== start.seed) {
+      if (existing) await this.store.deleteGame(this.gameId);
+      await this.store.createGame(
+        {
+          gameId: this.gameId,
+          engineVersion: this.engineVersion,
+          dataVersion: this.dataVersion,
+          protocolVersion: PROTOCOL_VERSION,
+          settings: start.settings as unknown,
+          seed: start.seed,
+          localPlayerId: this.playerId,
+          lobbyServer: this.lobbyServer,
+          roomCode: this.roomCode,
+        },
+        start.players.map((p) => ({ id: p.id, name: p.name })),
+      );
+      await this.store.setGameStatus(this.gameId, 'active');
     }
-    await this.store.createGame(
-      {
-        gameId: this.gameId,
-        engineVersion: this.engineVersion,
-        dataVersion: this.dataVersion,
-        protocolVersion: PROTOCOL_VERSION,
-        settings: start.settings as unknown,
-        seed: start.seed,
-        localPlayerId: this.playerId,
-        lobbyServer: this.lobbyServer,
-        roomCode: this.roomCode,
-      },
-      start.players.map((p) => ({ id: p.id, name: p.name })),
-    );
-    await this.store.setGameStatus(this.gameId, 'active');
+    // any OTHER 'active' game recorded for this room (the stale branch we
+    // just reset away from) must not shadow the resume lookup on reload
+    if (this.store.listGames) {
+      for (const g of await this.store.listGames()) {
+        if (g.room_code === this.roomCode && g.game_id !== this.gameId && g.status === 'active') {
+          await this.store.setGameStatus(g.game_id, 'abandoned');
+        }
+      }
+    }
   }
 
   private persist(fn: () => Promise<unknown>): void {

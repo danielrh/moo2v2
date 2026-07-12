@@ -79,6 +79,10 @@ export function createHostedGame<S>(opts: {
     lobbyServer: identity.lobbyServer,
     ...(resume ? { resume } : {}),
   });
+  // turn-advancing commands reach durable storage BEFORE any remote peer sees
+  // them: a host crash in the old broadcast→persist window resumed a turn
+  // behind its clients and silently forked the table
+  host.setPersistBarrier(() => session.flush());
   return { host, session };
 }
 

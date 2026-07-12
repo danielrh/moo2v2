@@ -176,11 +176,21 @@ export function canQueue(state: GameState, colony: Colony, itemId: string): stri
     const blocked = canTerraform(planet, queuedSteps);
     if (blocked) return blocked;
   }
-  if (itemId === 'gaia_transformation' && planet.climate !== 'terran') {
-    return 'habitat transformation requires a terran world';
+  if (itemId === 'gaia_transformation') {
+    if (planet.climate !== 'terran') return 'habitat transformation requires a terran world';
+    // one transformation finishes the job: a duplicate queue entry would burn
+    // its full cost on a world that is already gaia by the time it completes
+    if (colony.queue.some((q) => q.item === 'gaia_transformation')) {
+      return 'a habitat transformation is already queued';
+    }
   }
-  if (itemId === 'colony_base' && unsettledPlanetsInSystem(state, planet.starId).length === 0) {
-    return 'no unsettled planet in this system';
+  if (itemId === 'colony_base') {
+    const open = unsettledPlanetsInSystem(state, planet.starId).length;
+    if (open === 0) return 'no unsettled planet in this system';
+    // like terraforming, project the queue: more bases than open planets
+    // would complete into nothing and burn their production
+    const queued = colony.queue.filter((q) => q.item === 'colony_base').length;
+    if (queued >= open) return `only ${open} unsettled planet(s) in this system`;
   }
   if (itemId === 'spy') {
     const queued = colony.queue.filter((q) => q.item === 'spy').length;

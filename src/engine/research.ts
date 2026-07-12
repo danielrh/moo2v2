@@ -172,8 +172,20 @@ export function applyResearch(
 ): void {
   const r = empire.research;
 
-  // creative-variant purchases take priority; at most one completes per turn
+  // creative-variant purchases take priority; at most one completes per turn.
+  // Purchases complete at the LISTED price (a purchase, not a discovery — the
+  // hidden line applies to field research only).
   if (r.extraQueue.length > 0) {
+    // an app acquired meanwhile (stolen, traded) must not burn its price on a
+    // no-op grant: drop already-known heads without consuming any RP
+    while (r.extraQueue.length > 0 && empire.knownApps.includes(r.extraQueue[0]!)) {
+      r.extraQueue.shift();
+    }
+    if (r.extraQueue.length === 0) {
+      r.extraAccumRP = 0;
+      r.accumRP += rp;
+      return;
+    }
     r.extraAccumRP += rp;
     const head = r.extraQueue[0]!;
     const app = APPLICATION_ROWS.find((a) => a.id === head);

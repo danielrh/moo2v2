@@ -198,11 +198,16 @@ describe('advanced start', () => {
     expect(total).toBeLessThanOrEqual(Math.ceil(stars * 0.4));
   });
 
-  it('every colonized planet is half full', () => {
+  it('every colonized planet is at least half full (founding specials may add a few)', () => {
     const s = newGame('advanced');
     for (const c of s.colonies) {
       const cap = colonyMaxPop(s, c);
-      expect(colonyPopUnits(c), `colony ${c.name}`).toBe(Math.max(1, Math.floor(cap / 2)));
+      const half = Math.max(1, Math.floor(cap / 2));
+      const units = colonyPopUnits(c);
+      // natives (+2) / splinter colonies (+3) join at founding, capped at max
+      expect(units, `colony ${c.name}`).toBeGreaterThanOrEqual(half);
+      expect(units, `colony ${c.name}`).toBeLessThanOrEqual(Math.max(half + 3, Math.min(cap, half + 3)));
+      expect(units, `colony ${c.name}`).toBeLessThanOrEqual(Math.max(half, cap));
     }
   });
 

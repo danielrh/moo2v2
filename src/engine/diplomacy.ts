@@ -4,6 +4,7 @@
 // votes wins a diplomatic victory).
 
 import { relationKey, setRelation } from './battles';
+import { anyEmpireContact } from './contact';
 import { colonyPopUnits } from './economy';
 import { allocId } from './ids';
 import { floorDiv } from './imath';
@@ -141,6 +142,9 @@ export function executeSurrender(state: GameState, from: Empire, to: Empire, eve
   from.eliminated = true;
   // the union inherits no wars from the old empire; existing relations of `to` stand
   state.proposals = state.proposals.filter((p) => p.from !== from.id && p.to !== from.id);
+  // no loose ends: standing leader offers to the dissolved court expire too
+  // (resign and S12 elimination already scrub these)
+  state.leaderOffers = state.leaderOffers.filter((o) => o.empireId !== from.id);
   events.push({ visibleTo: -1, kind: 'surrender', payload: { from: from.id, to: to.id } });
 }
 
@@ -177,13 +181,23 @@ export function diplomacyUpkeep(state: GameState, events: TurnEvent[]): void {
   // proposals expire
   state.proposals = state.proposals.filter((p) => p.expiresTurn > state.turn);
 
-  // council scheduling + tally
+  // council scheduling + tally. The council only convenes once ANY two live
+  // empires have met: strangers cannot summon each other to a vote, a
+  // diplomatic victory must not end a game between players who never saw each
+  // other, and pre-contact fast-mode previews could not even agree on the
+  // candidates. While everyone is still a stranger the date slides forward.
   if (state.council.pending) {
     const alive = state.empires.filter((e) => !e.eliminated);
     const votesCast = Object.keys(state.council.pending.votes).length;
     if (votesCast >= alive.length || state.turn >= state.council.nextVoteTurn + 3) {
       tallyCouncil(state, events);
     }
+  } else if (
+    state.turn >= state.council.nextVoteTurn &&
+    state.empires.filter((e) => !e.eliminated).length > 1 &&
+    !anyEmpireContact(state)
+  ) {
+    state.council.nextVoteTurn = state.turn + 5; // nobody has met: reconvene later
   } else if (state.turn >= state.council.nextVoteTurn && state.empires.filter((e) => !e.eliminated).length > 1) {
     const ranked = state.empires
       .filter((e) => !e.eliminated)

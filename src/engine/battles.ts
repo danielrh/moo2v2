@@ -12,18 +12,20 @@ import { rngFor } from './rng';
 import { BASE_COMBAT_ID, MONSTER_COMBAT_ID } from './ids';
 import { baseDesign, designStats, knownWeapons, HULLS_BUILDABLE, BASE_HULLS, type ShipDesign } from './shipdesign';
 import { shipStyleOf } from './shipstyles';
-import { ANTARAN_EMPIRE, antaranRaze, factionOf, guardianReward, monstersAt, monsterToCombat } from './npc';
+import { ANTARAN_EMPIRE, antaranRaze, factionOf, guardianReward, monstersAt, monsterToCombat, MONSTER_SPECS } from './npc';
 import type { Colony, Empire, GameState, PendingBattle, Ship, TurnEvent } from './types';
 
 export function relationKey(a: number, b: number): [number, number] {
   return a < b ? [a, b] : [b, a];
 }
 
-/** Nearest own (non-outpost) colony star to fall back to after a battle, with
- * a distance-honest ETA. state.colonies is id-sorted, so a naive find() would
- * "retreat" every fleet to the homeworld in exactly one turn — free strategic
- * fast-travel. */
-function retreatDestination(
+/** Nearest own (non-outpost) colony star to fall back to after a battle (or
+ * when stranded out of fuel range), with a distance-honest ETA. Returns null
+ * when the ship is ALREADY at one of its own colony stars ("it is already at
+ * a nearest colony" — no move) or when the empire has no colonies to run to.
+ * state.colonies is id-sorted, so a naive find() would "retreat" every fleet
+ * to the homeworld in exactly one turn — free strategic fast-travel. */
+export function retreatDestination(
   state: GameState,
   ownerId: number,
   fromStarId: number,
@@ -35,7 +37,8 @@ function retreatDestination(
   for (const c of state.colonies) {
     if (c.owner !== ownerId || c.outpost) continue;
     const p = state.planets.find((pl) => pl.id === c.planetId);
-    if (!p || p.starId === fromStarId) continue;
+    if (!p) continue;
+    if (p.starId === fromStarId) return null; // already at the nearest colony: stay
     const star = state.stars.find((st) => st.id === p.starId);
     if (!star) continue;
     const d = starDistance(from, star);
@@ -280,15 +283,28 @@ function baseToCombat(state: GameState, empire: Empire, colony: Colony, syntheti
   const hullId = baseBuilding ? (baseBuilding === 'battlestation' ? 'battlestation' : baseBuilding) : 'star_base';
   const design = baseDesign(state, empire, hullId);
   if (!baseBuilding) design.weapons = []; // no orbital platform of its own
-  // colony defense buildings bolt extra mounts onto the defense
+  // colony defense buildings bolt extra mounts onto the defense — fitted to
+  // the space that is actually left (an over-space design would silently
+  // remove the ENTIRE platform from the battle)
   const arsenal = knownWeapons(empire);
+  const fitsHere = (weapons: typeof design.weapons): boolean =>
+    typeof designStats(state, empire, { ...design, weapons }) !== 'string';
+  const bolt = (weapon: string, want: number, mods: string[]): void => {
+    for (let count = want; count >= 1; count--) {
+      const attempt = [...design.weapons, { weapon, count, mods: [...mods] }];
+      if (fitsHere(attempt)) {
+        design.weapons.push({ weapon, count, mods: [...mods] });
+        return;
+      }
+    }
+  };
   if (colony.buildings.includes('missile_base')) {
     const missile = arsenal.filter((w) => w.classId === 1).sort((a, b) => b.tacticalDamage.max - a.tacticalDamage.max)[0];
-    if (missile) design.weapons.push({ weapon: missile.id, count: 4, mods: [] });
+    if (missile) bolt(missile.id, 4, []);
   }
   if (colony.buildings.includes('ground_batteries')) {
     const beam = arsenal.filter((w) => w.classId === 0 && w.techId !== 0 && w.availableMods.includes('hv')).sort((a, b) => b.tacticalDamage.max - a.tacticalDamage.max)[0];
-    if (beam) design.weapons.push({ weapon: beam.id, count: 6, mods: ['hv'] });
+    if (beam) bolt(beam.id, 6, ['hv']);
   }
   if (design.weapons.length === 0) return null;
   const stats = designStats(state, empire, { ...design, weapons: design.weapons });
@@ -429,13 +445,18 @@ export function resolveBattle(state: GameState, battle: PendingBattle, events: T
       if (!monster) continue;
       if (o.destroyed) {
         state.monsters = state.monsters.filter((m) => m !== monster);
-        events.push({ visibleTo: -1, kind: 'monster_slain', payload: { kind: monster.kind, starId: monster.starId } });
+        // the slayer gets the news; broadcasting named an unmet empire's
+        // battle site to everyone (fast-phase information leak)
+        const victor = battle.attacker >= 0 ? battle.attacker : battle.defender;
+        events.push({ visibleTo: victor, kind: 'monster_slain', payload: { kind: monster.kind, starId: monster.starId } });
         if (monster.kind === 'guardian') {
-          const victor = battle.attacker >= 0 ? battle.attacker : battle.defender;
           guardianReward(state, victor, events);
         }
       } else {
         monster.dmgStructure = Math.max(0, o.structureMax - o.structureLeft);
+        // armor damage persists between passes exactly like ships' does
+        const specArmor = MONSTER_SPECS[monster.kind].armor;
+        monster.dmgArmor = Math.max(0, specArmor - o.armorLeft);
       }
       continue;
     }
@@ -562,7 +583,17 @@ export function resolveBattle(state: GameState, battle: PendingBattle, events: T
     destroyed: result.outcomes.filter((o) => o.destroyed && o.shipId < BASE_COMBAT_ID).map((o) => o.shipId),
     ...(bombReport ? { bombardment: bombReport } : {}),
   };
-  events.push({ visibleTo: -1, kind: 'battle_resolved', payload: summary });
+  // PvP battle summaries are galactic news (both sides have obviously met);
+  // NPC battle summaries go to the human participant only — broadcasting them
+  // revealed an unmet empire's fleet ids, losses, and location to everyone.
+  const npcBattle = battle.attacker < 0 || battle.defender < 0;
+  if (npcBattle) {
+    for (const viewer of [battle.attacker, battle.defender].filter((id) => id >= 0)) {
+      events.push({ visibleTo: viewer, kind: 'battle_resolved', payload: summary });
+    }
+  } else {
+    events.push({ visibleTo: -1, kind: 'battle_resolved', payload: summary });
+  }
   // full input + seed label: the viewer re-runs the identical sim as playback.
   // Only the PARTICIPANTS get the replay — spectators would otherwise see
   // both fleets' full compositions for free.

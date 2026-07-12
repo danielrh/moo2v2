@@ -4,7 +4,7 @@
 // Phase 3 implements S0-S6 + S12/S13; encounters/combat (S7-S10) and empire
 // upkeep systems (S11) arrive in Phases 4-6.
 
-import { detectBattles, resolveBattle } from './battles';
+import { detectBattles, resolveBattle, retreatDestination } from './battles';
 import { diplomacyUpkeep } from './diplomacy';
 import { resolveEspionage } from './espionage';
 import { assimilate, isBlockaded, resolveInvasions } from './ground';
@@ -12,11 +12,12 @@ import { leaderEmpireBonuses, leadersUpkeep } from './leaders';
 import { antaranUpkeep, hostileMonsterAt, randomEventsUpkeep } from './npc';
 import { allocId } from './ids';
 import { itemCost, parseDesignItem, parseRefitItem } from './items';
-import { commandPoints } from './movement';
+import { commandPoints, fuelRangeCp, supportStars } from './movement';
+import { starDistance } from './galaxy';
 import { ceilDiv } from './imath';
 import { applyTerraformStep, terraformCost, unsettledPlanetsInSystem } from './terraform';
 import { busyFreighters, colonyMaxPop, colonyOutput, colonyPopUnits, farmingViable, freeFreighters, groupGrowthK, traitsOf } from './economy';
-import { normalizeJobsForGroup } from './commands';
+import { applyFoundingSpecials, normalizeJobsForGroup } from './commands';
 import { rngFor } from './rng';
 import { applyResearch } from './research';
 import type { Colony, GameState, TurnEvent } from './types';
@@ -71,6 +72,7 @@ export function resolveCombat(state: GameState): AdvanceResult {
 
 function finishTurn(state: GameState, events: TurnEvent[]): void {
   resolveInvasions(state, events); // S10 ground operations
+  s10_strandedRetreat(state, events); // ships beyond fuel range limp home
   s10_shipUpkeep(state, events);
   s11_diplomacyUpkeep(state); // peace handshakes
   assimilate(state, events); // S11 conquered populations settle in
@@ -81,6 +83,44 @@ function finishTurn(state: GameState, events: TurnEvent[]): void {
   diplomacyUpkeep(state, events); // S11 treaties, proposals, council
   s12_victory(state, events);
   s13_endTurn(state);
+}
+
+// ---------- S10: stranded ships limp home ----------
+
+/** Any ship sitting at a star BEYOND its empire's fuel range — it arrived on
+ * a wormhole/valid order and the network then shrank (colony lost, outpost
+ * scrapped), or it was moved before range tightened — automatically retreats
+ * toward the nearest own colony. It fights first (battles resolve before
+ * this step), then withdraws; a ship already at one of its own colony stars
+ * is in range by definition and never moves. Ships whose empire has no
+ * colony to run to hold position. */
+function s10_strandedRetreat(state: GameState, events: TurnEvent[]): void {
+  for (const empire of state.empires) {
+    if (empire.eliminated) continue;
+    const range = fuelRangeCp(empire);
+    const support = supportStars(state, empire.id);
+    if (support.length === 0) continue; // no network at all: nowhere to be stranded FROM
+    for (const ship of state.ships) {
+      if (ship.owner !== empire.id || ship.location.kind !== 'star') continue;
+      const star = state.stars.find((s) => s.id === (ship.location as { starId: number }).starId);
+      if (!star) continue;
+      if (support.some((sup) => starDistance(sup, star) <= range)) continue; // in range
+      const dest = retreatDestination(state, empire.id, star.id);
+      if (!dest) continue; // no colony to run to: hold position
+      ship.location = {
+        kind: 'transit',
+        from: star.id,
+        to: dest.starId,
+        departedTurn: state.turn,
+        arrivalTurn: dest.arrivalTurn,
+      };
+      events.push({
+        visibleTo: empire.id,
+        kind: 'ship_stranded_retreat',
+        payload: { shipId: ship.id, from: star.id, to: dest.starId, arrivalTurn: dest.arrivalTurn },
+      });
+    }
+  }
 }
 
 // ---------- S10-lite: ship repair + command point upkeep ----------
@@ -160,9 +200,13 @@ function s1_population(state: GameState, events: TurnEvent[]): void {
       normalizeJobsForGroup(g);
     }
     colony.groups = colony.groups.filter((g) => g.popK > 0);
-    // a colony can never linger at 0 whole units: when starvation leaves only
-    // fractions of a colonist, the settlement is gone too
-    if (colonyPopUnits(colony) === 0) colony.groups = [];
+    // a colony can never linger below one whole unit of TOTAL population.
+    // The total matters, not any single group: a two-race colony starved to
+    // 750K + 790K still holds its "last colonist" (the starvation floor above
+    // keeps the sum >= 1000K) — culling because no SINGLE group held a whole
+    // unit wiped exactly the multi-race colonies the guard was meant to save.
+    const totalPopK = colony.groups.reduce((s, g) => s + g.popK, 0);
+    if (totalPopK < 1000) colony.groups = [];
     if (colony.groups.length === 0) {
       events.push({ visibleTo: colony.owner, kind: 'colony_died', payload: { colonyId: colony.id } });
     }
@@ -319,12 +363,22 @@ function completeItem(state: GameState, colony: Colony, item: string, events: Tu
     if (planet.climate === 'terran') {
       planet.climate = 'gaia';
       events.push({ visibleTo: colony.owner, kind: 'terraformed', payload: { colonyId: colony.id, climate: 'gaia' } });
+    } else {
+      // the world already transformed (duplicate queue entry): refund instead
+      // of silently burning ~500 PP — same rule as topped-out terraforming
+      colony.storedProd += itemCost(state, colony.owner, 'gaia_transformation', colony) ?? 0;
     }
     return;
   }
   if (item === 'colony_base') {
     const open = unsettledPlanetsInSystem(state, planet.starId);
     const target = open[0];
+    if (!target) {
+      // the system filled up before this base launched (duplicate entry or a
+      // rival settled first): refund the production instead of burning it
+      colony.storedProd += itemCost(state, colony.owner, 'colony_base', colony) ?? 0;
+      return;
+    }
     if (target) {
       const star = state.stars.find((st) => st.id === planet.starId)!;
       const romans = ['I', 'II', 'III', 'IV', 'V'];
@@ -350,6 +404,9 @@ function completeItem(state: GameState, colony: Colony, item: string, events: Tu
         settled.groups[0]!.farmers = 0;
         settled.groups[0]!.workers = 1;
       }
+      // founding consumes one-time specials exactly like the colonize command
+      // (space-debris salvage, splinter colonists, native integration)
+      applyFoundingSpecials(state, target, settled, events);
       state.colonies.sort((a, b) => a.id - b.id);
       events.push({ visibleTo: colony.owner, kind: 'colony_founded', payload: { planetId: target.id, viaBase: true } });
     }

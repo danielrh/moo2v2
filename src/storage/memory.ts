@@ -108,9 +108,16 @@ export class MemoryGameStore implements GameStoreLike {
     if (!records.length) return;
     const g = this.need(gameId);
     for (const r of records) {
-      if (g.commands.some((c) => c.seq === r.seq)) throw new Error(`duplicate seq ${r.seq}`);
-      // canonical round-trip mirrors the SQLite store's TEXT column exactly
-      g.commands.push({ ...r, payload: JSON.parse(canonicalStringify(r.payload)) as unknown });
+      // canonical round-trip mirrors the SQLite store's TEXT column exactly.
+      // Idempotent last-writer-wins upsert, matching repo.ts: after a host
+      // crash-and-resume the same seq can be reissued for a different command,
+      // and the desync recovery refolds the healthy branch through here — a
+      // throw would leave the memory-only tab's stored log on the dead branch
+      // and its Save button exporting an unverifiable file.
+      const row = { ...r, payload: JSON.parse(canonicalStringify(r.payload)) as unknown };
+      const i = g.commands.findIndex((c) => c.seq === r.seq);
+      if (i >= 0) g.commands[i] = row;
+      else g.commands.push(row);
     }
     g.commands.sort((a, b) => a.seq - b.seq);
     const last = records[records.length - 1]!;

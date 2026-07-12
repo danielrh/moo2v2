@@ -50,6 +50,15 @@ identity is folded into another application's effect (battle suits into armors,
 `interceptor_bays` into `fighter_bays`, etc.). Run `node scripts/gen-data.mjs`
 to see the current list; treat additions as regressions.
 
+Two weapon rows in this ledger deserve an explicit note because they LOOK like
+missing content: `spatial_compressor` is Antaran-only per
+`mechanics/unresearchable.md` (deliberately ungrantable), and
+`stellar_converter` is the planet-destroyer split off from the
+starlight-projector name collision above — it has combat behavior (classId-5
+direct fire) but deliberately no application row, so it is unmountable by
+players unless a future curated application grants it. Both are decisions, not
+omissions (discovered_bugs.md 2026-07-12 #23).
+
 ## Field-subject derivation
 
 Fields carry no subject column; subjects are derived by walking each subject's

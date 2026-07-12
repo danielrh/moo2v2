@@ -13,6 +13,9 @@
 // - each attempt risks 25% exposure -> spy lost + incident event
 
 import { clamp, floorDiv } from './imath';
+import { metEmpireIds } from './contact';
+import { relationOf } from './diplomacy';
+import { isKnownApplicationId } from './items';
 import { empireAccum } from './effects';
 import { traitsOf } from './economy';
 import { leaderEmpireBonuses } from './leaders';
@@ -61,6 +64,13 @@ export function resolveEspionage(state: GameState, events: TurnEvent[]): void {
       empire.spies.target = null;
       continue;
     }
+    // validateSpyOrders now requires a MET target; a stale order from an
+    // older save must not let spies act on an empire never met (that would
+    // mutate a stranger's state without tripping the fast-start contact wire)
+    if (!metEmpireIds(state, empire.id).has(target.id)) {
+      empire.spies.target = null;
+      continue;
+    }
     const defendingSpies = target.spies.target === null ? target.spies.count : 0;
     const chance = clamp(15 + offenseOf(state, empire) - defenseOf(state, target) - 4 * defendingSpies, 2, 60);
     const rng = rngFor(state.seed, state.turn, 'spy', empire.id);
@@ -69,6 +79,7 @@ export function resolveEspionage(state: GameState, events: TurnEvent[]): void {
     const assassin = leaderEmpireBonuses(target).assassinPct;
     if (assassin > 0 && empire.spies.count > 0 && rng.chancePct(assassin)) {
       empire.spies.count--;
+      relationOf(state, empire.id, target.id); // the victim knows who sent them
       events.push({ visibleTo: empire.id, kind: 'spy_lost', payload: { target: target.id, assassinated: true } });
       events.push({ visibleTo: target.id, kind: 'spy_assassinated', payload: { from: empire.id } });
       if (empire.spies.count <= 0) continue;
@@ -80,7 +91,10 @@ export function resolveEspionage(state: GameState, events: TurnEvent[]): void {
     for (let i = 0; i < attempts && empire.spies.count > 0; i++) {
       if (rng.chancePct(chance)) {
         if (empire.spies.mode === 'steal') {
-          const stealable = target.knownApps.filter((a) => !empire.knownApps.includes(a));
+          // only REAL applications can be stolen — knownApps also carries
+          // synthetic hyper_advanced_* markers and unique grants (death_ray)
+          // that must not exfiltrate through a spy ring
+          const stealable = target.knownApps.filter((a) => !empire.knownApps.includes(a) && isKnownApplicationId(a));
           if (stealable.length) {
             const app = stealable[rng.int(stealable.length)]!;
             grantApp(empire, app);
@@ -103,6 +117,9 @@ export function resolveEspionage(state: GameState, events: TurnEvent[]): void {
       }
       if (rng.chancePct(25)) {
         empire.spies.count--;
+        // a caught spy is DEALINGS: the victim now knows who sent them, which
+        // establishes contact (metEmpireIds counts relations entries)
+        relationOf(state, empire.id, target.id);
         events.push({ visibleTo: empire.id, kind: 'spy_lost', payload: { target: target.id } });
         events.push({ visibleTo: target.id, kind: 'spy_caught', payload: { from: empire.id } });
         if (empire.spies.count <= 0) break;

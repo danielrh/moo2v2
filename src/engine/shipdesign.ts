@@ -140,7 +140,10 @@ export function knownWeapons(empire: Empire): WeaponRow[] {
       if (w && !out.includes(w)) out.push(w);
     }
   }
-  return out.sort((a, b) => a.id.localeCompare(b.id));
+  // charcode order, NOT localeCompare: the user's locale must never influence
+  // engine ordering (Czech collation reorders 'ch' ids; this list feeds the
+  // deterministic base-arsenal picks in battles.ts)
+  return out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 // ---------- miniaturization (C5) ----------
@@ -381,22 +384,53 @@ export function designStats(state: GameState, empire: Empire, design: Omit<ShipD
   };
 }
 
-/** Deterministic auto-design for defensive bases (star_base etc.). */
+/** Deterministic auto-design for defensive bases (star_base etc.).
+ *
+ * Space-aware: the best-damage weapon is only worth mounting in numbers that
+ * FIT the hull — 6 death rays on a star base (1610/400 space) made
+ * designStats error out and the whole platform silently vanish from every
+ * defense battle the moment the Guardian's prize was claimed. Counts shrink
+ * until the design fits; a weapon that cannot fit even once falls through to
+ * the next-best. A pre-warp empire with no researched weapons still mans its
+ * battlestations with the starter-kit laser (scouts and the Patrol Frigate
+ * already get it knowledge-free). */
 export function baseDesign(state: GameState, empire: Empire, baseHull: string): Omit<ShipDesign, 'id' | 'obsolete'> {
-  const beams = knownWeapons(empire).filter((w) => w.classId === 0 && w.techId !== 0);
-  const missiles = knownWeapons(empire).filter((w) => w.classId === 1);
+  const beams = knownWeapons(empire)
+    .filter((w) => w.classId === 0 && w.techId !== 0)
+    .sort((a, b) => b.tacticalDamage.max - a.tacticalDamage.max);
+  const missiles = knownWeapons(empire)
+    .filter((w) => w.classId === 1)
+    .sort((a, b) => b.tacticalDamage.max - a.tacticalDamage.max);
   const hull = hullById.get(baseHull)!;
-  const best = beams.sort((a, b) => b.tacticalDamage.max - a.tacticalDamage.max)[0];
-  const bestMissile = missiles.sort((a, b) => b.tacticalDamage.max - a.tacticalDamage.max)[0];
-  const weapons: DesignWeapon[] = [];
-  if (best) weapons.push({ weapon: best.id, count: hull.strategic.beam * 2, mods: [] });
-  if (bestMissile) weapons.push({ weapon: bestMissile.id, count: hull.strategic.missile * 2, mods: [] });
-  return {
+  const base = {
     name: baseHull,
     hull: baseHull,
     computer: bestComputer(empire),
     shield: bestShield(empire),
-    specials: [],
-    weapons,
+    specials: [] as string[],
   };
+  const fits = (weapons: DesignWeapon[]): boolean =>
+    typeof designStats(state, empire, { ...base, weapons }) !== 'string';
+  const weapons: DesignWeapon[] = [];
+  /** mount as many of the best-fitting candidate as the remaining space takes */
+  const mount = (candidates: WeaponRow[], want: number): void => {
+    for (const row of candidates) {
+      for (let count = Math.max(1, want); count >= 1; count--) {
+        const attempt = [...weapons, { weapon: row.id, count, mods: [] }];
+        if (fits(attempt)) {
+          weapons.push({ weapon: row.id, count, mods: [] });
+          return;
+        }
+      }
+    }
+  };
+  mount(beams, hull.strategic.beam * 2);
+  mount(missiles, hull.strategic.missile * 2);
+  if (weapons.length === 0) {
+    // empty arsenal (pre-warp): the station gets the knowledge-free starter
+    // laser instead of standing in orbit unable to participate in battles
+    const laser = weaponById.get('laser_cannon');
+    if (laser) mount([laser], hull.strategic.beam * 2);
+  }
+  return { ...base, weapons };
 }

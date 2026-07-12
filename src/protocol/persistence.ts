@@ -28,6 +28,9 @@ export interface SessionStore {
     players: Array<{ id: number; name: string }>,
   ): Promise<void>;
   setGameStatus(gameId: string, status: 'setup' | 'active' | 'finished' | 'abandoned'): Promise<void>;
+  /** optional (GameStore provides it): lets the session retire stale 'active'
+   * rows for its room when the live room turns out to host a different game */
+  listGames?(): Promise<Array<{ game_id: string; room_code: string; status: string }>>;
   appendCommands(gameId: string, records: SessionCommandRecord[]): Promise<void>;
   saveTurnHash(gameId: string, turn: number, stateHash: string): Promise<void>;
   saveSnapshot(gameId: string, turn: number, seq: number, stateJson: string, stateHash: string): Promise<void>;

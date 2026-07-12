@@ -21,6 +21,11 @@ export const MAX_TICKS = 400;
 /** master pace knob: percent of base rate-of-fire (tuned by the balance harness
  * to land equal-tech passes in the 20-40% fleet-damage envelope) */
 export const COMBAT_PACE = 250;
+/** A ship that survives this many ticks in evade_retreat warps out wherever it
+ * stands (MOO2-style disengage countdown). Reaching a field edge still works
+ * sooner; without this, ships flipped to retreat mid-brawl had to outrun the
+ * whole enemy fleet stern-first and 0/34 probe retreaters ever escaped. */
+export const RETREAT_WARP_TICKS = 25;
 
 export type Stance = 'charge' | 'hold_range' | 'standoff' | 'evade_retreat' | 'formation' | 'passthrough';
 export type TargetPriority = 'nearest' | 'biggest' | 'smallest' | 'warships' | 'bases' | 'deadliest';
@@ -244,6 +249,8 @@ interface Sim {
   sysDrive: boolean;
   sysComputer: boolean;
   sysShield: boolean;
+  /** consecutive ticks spent disengaging (evade_retreat warp-out countdown) */
+  retreatTicks: number;
 }
 
 /** chance (%) that a structure hit knocks out a random ship system */
@@ -307,6 +314,7 @@ export function runBattle(
     sysDrive: false,
     sysComputer: false,
     sysShield: false,
+    retreatTicks: 0,
   }));
   // ECM: personal jammers, plus fleet-wide wide-area jammers
   const fleetJam = [false, false];
@@ -360,7 +368,10 @@ export function runBattle(
       for (const s of sims) if (s.init.side === side && s.alive) hp += s.structure + s.armor;
       if (initialHp[side]! > 0 && hp * 100 < initialHp[side]! * orders.retreatThresholdPct) {
         for (const s of sims) {
-          if (s.init.side === side && active(s) && !s.init.isBase) s.stance = 'evade_retreat';
+          // a warp-dissipater-pinned side cannot leave: flipping to
+          // evade_retreat just made ships grind the field edge until dead —
+          // pinned means keep fighting
+          if (s.init.side === side && active(s) && !s.init.isBase && !noRetreat[side]) s.stance = 'evade_retreat';
         }
       }
     }
@@ -423,6 +434,30 @@ export function runBattle(
         desiredY = ddy;
         travel = sign === 1 ? Math.min(speed, Math.max(0, d - stopAt)) : speed;
       };
+      // back away from (tx,ty) without grinding into a wall: when the field
+      // edge blocks the line of withdrawal, strafe ALONG the edge; when
+      // cornered, punch out toward open field. Shared by standoff AND
+      // formation — the fix originally went into standoff only and formation
+      // lines kept parking themselves in corners.
+      const backAwayFrom = (tx: number, ty: number) => {
+        const nearLeft = s.x <= 40 * FP && tx > s.x;
+        const nearRight = s.x >= FIELD_W - 40 * FP && tx < s.x;
+        const nearTop = s.y <= 40 * FP && ty > s.y;
+        const nearBottom = s.y >= FIELD_H - 40 * FP && ty < s.y;
+        const inCorner = (s.x <= 40 * FP || s.x >= FIELD_W - 40 * FP) && (s.y <= 40 * FP || s.y >= FIELD_H - 40 * FP);
+        if (inCorner) {
+          // cornered: the old strafe pointed BACK INTO the corner and ships
+          // parked there forever — punch out toward open field
+          steer(FIELD_W / 2, FIELD_H / 2, 1);
+        } else if (nearLeft || nearRight) {
+          // strafe vertically toward the side with more room
+          steer(s.x, s.y <= FIELD_H / 2 ? s.y + FIELD_H : s.y - FIELD_H, 1);
+        } else if (nearTop || nearBottom) {
+          steer(s.x <= FIELD_W / 2 ? s.x + FIELD_W : s.x - FIELD_W, s.y, 1);
+        } else {
+          steer(tx, ty, -1);
+        }
+      };
       switch (s.stance) {
         case 'charge':
           if (target && active(target)) steer(target.x, target.y, 1, BRAWL);
@@ -439,7 +474,7 @@ export function runBattle(
           travel = speed;
           const nearest = target && active(target) ? idist(Math.abs(target.x - s.x), Math.abs(target.y - s.y)) : Infinity;
           if (nearest > 210 * FP) steer(s.x + dir * FIELD_W, s.homeY, 1); // advance in lane
-          else if (nearest < 140 * FP && target) steer(target.x, target.y, -1);
+          else if (nearest < 140 * FP && target) backAwayFrom(target.x, target.y);
           else travel = 0; // hold the line and fire
           break;
         }
@@ -458,32 +493,34 @@ export function runBattle(
         case 'standoff': {
           if (target && active(target)) {
             const d = idist(Math.abs(target.x - s.x), Math.abs(target.y - s.y));
+            // backing away means turning tail: no reverse thrust, no return
+            // fire. Against a FASTER pursuer that is a pure stern-chase death
+            // spiral (probes: 60-75% of ticks spent facing away, zero shots)
+            // — if we cannot actually keep the range open, stand and swing
+            // the bow onto the target instead.
+            const canOutrun = s.init.speed > (target.sysDrive ? 0 : target.init.speed);
             if (d > 430 * FP) steer(target.x, target.y, 1);
-            else if (d < 360 * FP) {
-              // back away — but when the field edge blocks the line of
-              // withdrawal, strafe ALONG the edge instead of grinding into it
-              const nearLeft = s.x <= 40 * FP && target.x > s.x;
-              const nearRight = s.x >= FIELD_W - 40 * FP && target.x < s.x;
-              const nearTop = s.y <= 40 * FP && target.y > s.y;
-              const nearBottom = s.y >= FIELD_H - 40 * FP && target.y < s.y;
-              const inCorner = (s.x <= 40 * FP || s.x >= FIELD_W - 40 * FP) && (s.y <= 40 * FP || s.y >= FIELD_H - 40 * FP);
-              if (inCorner) {
-                // cornered: the old strafe pointed BACK INTO the corner and
-                // ships parked there forever — punch out toward open field
-                steer(FIELD_W / 2, FIELD_H / 2, 1);
-              } else if (nearLeft || nearRight) {
-                // strafe vertically toward the side with more room
-                steer(s.x, s.y <= FIELD_H / 2 ? s.y + FIELD_H : s.y - FIELD_H, 1);
-              } else if (nearTop || nearBottom) {
-                steer(s.x <= FIELD_W / 2 ? s.x + FIELD_W : s.x - FIELD_W, s.y, 1);
-              } else {
-                steer(target.x, target.y, -1);
-              }
+            else if (d < 360 * FP && canOutrun) {
+              backAwayFrom(target.x, target.y);
+            } else if (d < 360 * FP) {
+              desiredX = target.x - s.x; // stand fast, bow on target, fight
+              desiredY = target.y - s.y;
+              travel = 0;
             } else travel = 0;
           } else travel = 0;
           break;
         }
         case 'evade_retreat': {
+          if (noRetreat[s.init.side]) {
+            // pinned by a warp dissipater: there IS no way out — grinding the
+            // field edge until dead helps nobody. Stand and fight like hold.
+            if (target && active(target)) {
+              desiredX = target.x - s.x;
+              desiredY = target.y - s.y;
+            }
+            travel = 0;
+            break;
+          }
           // run for the NEAREST edge — a fleeing ship may leave the field
           // from any side, so nobody gets cornered (bug fix)
           const dl = s.x;
@@ -526,6 +563,16 @@ export function runBattle(
         s.crossed = true;
       }
       s.x = clamp(s.x, 2 * FP, FIELD_W - 2 * FP);
+    }
+
+    // --- disengage countdown: a retreater that survives long enough warps out
+    // wherever it stands (reaching an edge above still works sooner). A
+    // dissipater-pinned side cannot warp, and neither can a fried drive. ---
+    for (const s of sims) {
+      if (!active(s) || s.stance !== 'evade_retreat' || s.init.isBase) continue;
+      if (noRetreat[s.init.side] || s.sysDrive || s.init.speed === 0) continue;
+      s.retreatTicks++;
+      if (s.retreatTicks >= RETREAT_WARP_TICKS) s.retreated = true;
     }
 
     // --- projectiles fly ---

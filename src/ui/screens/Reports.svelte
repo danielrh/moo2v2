@@ -86,6 +86,10 @@
       case 'event_pirates': return `pirates raided ${nameOf(p['empireId'])}'s freighters`;
       case 'event_meteor': return `meteor strike destroyed a ${p['building']} at ${colonyOf(p['colonyId'])}`;
       case 'event_plague': return `plague at ${colonyOf(p['colonyId'])}`;
+      case 'proposal_failed': return `agreement between ${nameOf(p['a'])} and ${nameOf(p['b'])} fell through: ${p['reason']}`;
+      case 'ship_stranded_retreat': return `a stranded ship beyond fuel range is falling back to ${starOf(p['to'])}`;
+      case 'natives_joined': return `natives joined ${colonyOf(p['colonyId'])} — they will work the farms (${p['units']} pop)`;
+      case 'splinter_joined': return `a splinter colony rejoined our society at ${colonyOf(p['colonyId'])} (+${p['units']} pop)`;
       default: return `${kind} ${JSON.stringify(p)}`;
     }
   }

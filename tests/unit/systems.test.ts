@@ -60,6 +60,8 @@ describe('spies', () => {
     const state = newGame();
     const a = state.empires[0]!;
     const b = state.empires[1]!;
+    // espionage requires a MET target; a relations entry counts as contact
+    state.relations.push({ a: 0, b: 1, status: 'peace', peaceOfferedBy: [], treaties: { nap: false, alliance: false, trade: false, research: false } });
     a.spies = { count: 10, target: 1, mode: 'steal' };
     b.knownApps = [...new Set([...b.knownApps, 'neutron_blaster'])].sort();
     a.knownApps = a.knownApps.filter((x) => x !== 'neutron_blaster');

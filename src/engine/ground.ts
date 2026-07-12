@@ -97,15 +97,21 @@ export function resolveInvasions(state: GameState, events: TurnEvent[]): void {
         ? roundsLog
         : roundsLog.filter((_, i) => i % Math.ceil(roundsLog.length / 60) === 0 || i === roundsLog.length - 1);
 
-    // apply civilian losses to groups (largest first, keep at least 1 unit total)
-    let toKill = Math.min(civilianLosses, Math.max(0, colonyPopUnits(colony) - 1));
+    // apply civilian losses to groups (largest first). The colony as a WHOLE
+    // keeps at least one unit (the cap below); a single group may be wiped
+    // out entirely — the old per-group `> 1000` floor made multi-race
+    // colonies of 1-unit groups immune to civilian deaths while the battle
+    // report still claimed casualties.
+    const toKillStart = Math.min(civilianLosses, Math.max(0, colonyPopUnits(colony) - 1));
+    let toKill = toKillStart;
     const sortedGroups = [...colony.groups].sort((a, b) => b.popK - a.popK || a.race - b.race);
     for (const g of sortedGroups) {
-      while (toKill > 0 && g.popK > 1000) {
+      while (toKill > 0 && g.popK >= 1000 && colonyPopUnits(colony) > 1) {
         g.popK -= 1000;
         toKill--;
       }
     }
+    civilianLosses = toKillStart - toKill; // report what actually happened
     colony.groups = colony.groups.filter((g) => g.popK > 0);
     for (const g of colony.groups) normalizeJobsForGroup(g);
 

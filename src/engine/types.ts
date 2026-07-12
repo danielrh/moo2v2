@@ -52,9 +52,14 @@ export interface Planet {
 
 export type Job = 'farmers' | 'workers' | 'scientists';
 
+/** PopGroup.race for planetary natives (planet_specials.md): farm-only
+ * population that never gains the owner's racial bonuses and never leaves
+ * its world (no colonist moves, no transports). */
+export const NATIVE_RACE = -1;
+
 /** Population group: colonists of one origin living on a colony. */
 export interface PopGroup {
-  /** empireId of the race, or -1 natives, -2 androids (later phases) */
+  /** empireId of the race, or -1 natives (NATIVE_RACE), -2 androids (later phases) */
   race: number;
   popK: number; // thousands; 1 colonist unit = 1000k
   /** assigned jobs, in whole colonist units */
@@ -298,6 +303,9 @@ export interface MonsterUnit {
     | 'antaran_fortress';
   starId: number;
   dmgStructure: number;
+  /** armor damage carried between fights (optional-additive: absent in older
+   * saves = undamaged armor) */
+  dmgArmor?: number;
   /** Antaran raid bookkeeping: where + when the party attacked */
   raidStar?: number;
   /** the empire the raid was aimed at (the raze must not land on whichever

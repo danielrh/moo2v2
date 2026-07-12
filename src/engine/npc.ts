@@ -17,11 +17,12 @@
 //     lucky races are never the victim of the bad ones.
 
 import { HOP_RANGE_CP, starDistance } from './galaxy';
+import { anyEmpireContact } from './contact';
 import { allocWorldId, MONSTER_COMBAT_ID } from './ids';
 import { rngFor } from './rng';
 import { NEXT_TERRAFORM } from './terraform';
 import { grantApp } from './research';
-import { colonyPopUnits, traitsOf } from './economy';
+import { colonyMaxPop, colonyPopUnits, traitsOf } from './economy';
 import type { CombatShipInit, CombatWeapon } from './combat';
 import type { GameState, MonsterUnit, Planet, TurnEvent } from './types';
 
@@ -138,7 +139,9 @@ export function monsterToCombat(m: MonsterUnit, side: 0 | 1): CombatShipInit {
     shieldFlat: spec.shieldFlat,
     weapons: spec.weapons.map((w) => ({ ...w, mods: [...w.mods], arc: '360' as const })), // beasts strike all around
     startingStructure: Math.max(1, spec.structure - m.dmgStructure),
-    startingArmor: spec.armor,
+    // armor damage persists between fights like ships' does (multi-turn
+    // sieges of the Guardian / Antaran fortress must not reset each pass)
+    startingArmor: Math.max(0, spec.armor - (m.dmgArmor ?? 0)),
     specials: [...spec.specials],
   };
 }
@@ -209,8 +212,14 @@ export function seedMonsters(state: GameState): void {
     const p = state.planets.find((x) => x.id === c.planetId);
     if (p) homeStars.add(p.starId);
   }
-  // Orion: the star farthest from every homeworld (never a connectivity bridge)
-  let orion: { starId: number; score: number } | null = null;
+  // Orion: the star farthest from every homeworld (never a connectivity
+  // bridge) — but Orion is GUARDED, so the candidate must pass the same
+  // hop-graph check as every keeper. The unvalidated farthest star was a cut
+  // vertex in ~3% of maps: one player started severed from the rest AND,
+  // because the baseline graph was then broken, every later keeper roll
+  // failed too, leaving those games monster-free. Walk candidates by
+  // descending distance and take the first that keeps the graph whole.
+  const candidates: Array<{ starId: number; score: number }> = [];
   for (const star of state.stars) {
     if (homeStars.has(star.id) || star.color === 'black_hole' || star.sym === -1) continue;
     let nearest = Infinity;
@@ -219,10 +228,12 @@ export function seedMonsters(state: GameState): void {
       const d = (star.x - h.x) * (star.x - h.x) + (star.y - h.y) * (star.y - h.y);
       nearest = Math.min(nearest, d);
     }
-    if (!orion || nearest > orion.score) orion = { starId: star.id, score: nearest };
+    candidates.push({ starId: star.id, score: nearest });
   }
+  candidates.sort((a, b) => b.score - a.score || a.starId - b.starId);
+  const orion = candidates.find((c) => monsterPlacementOk(state, homeStars, new Set([c.starId]))) ?? candidates[0];
   if (orion) {
-    placeOrion(state, state.stars.find((s) => s.id === orion!.starId)!);
+    placeOrion(state, state.stars.find((s) => s.id === orion.starId)!);
   }
   // guarded systems (bridges exempt — they carry the guaranteed path between
   // players): prize systems (ultra-rich / gaia / terran / specials) draw a
@@ -323,19 +334,27 @@ export const ANTARAN_FIRST_RAID = 25;
 export function antaranUpkeep(state: GameState, events: TurnEvent[]): void {
   if (!state.settings.modes.antarans) return;
   // raiders withdraw after their attack turn resolves (battles run before S11)
-  const before = state.monsters.length;
-  state.monsters = state.monsters.filter((m) => {
-    if (factionOf(m) !== ANTARAN_EMPIRE) return true;
-    if (m.raidTurn === undefined) return true; // assault garrison: battles.ts cleans up
-    return state.turn < m.raidTurn;
-  });
-  if (state.monsters.length !== before) {
-    events.push({ visibleTo: -1, kind: 'antarans_withdraw', payload: {} });
+  const withdrawn = state.monsters.filter(
+    (m) => factionOf(m) === ANTARAN_EMPIRE && m.raidTurn !== undefined && state.turn >= m.raidTurn,
+  );
+  state.monsters = state.monsters.filter((m) => !withdrawn.includes(m));
+  // the raid's TARGET hears about the withdrawal; broadcasting it (or the
+  // raid) would leak an unmet empire's colony intel to everyone
+  for (const targetId of [...new Set(withdrawn.map((m) => m.raidTargetEmpire ?? -1))].sort((a, b) => a - b)) {
+    events.push({ visibleTo: targetId, kind: 'antarans_withdraw', payload: {} });
   }
   if (state.turn < state.antarans.nextRaidTurn) return;
   // target: largest empire's most populous colony
   const alive = state.empires.filter((e) => !e.eliminated);
   if (!alive.length) return;
+  // raids target the LARGEST empire — a global comparison. While no two
+  // empires have met (fast-start async phase) that would couple every
+  // player's fate to the others' hidden growth, so the raid date slides
+  // until first contact. Solo games count as in-contact and raid normally.
+  if (!anyEmpireContact(state)) {
+    state.antarans.nextRaidTurn = state.turn + 5;
+    return;
+  }
   const rng = rngFor(state.seed, state.turn, 'antarans');
   const pops = alive
     .map((e) => ({ e, pop: state.colonies.filter((c) => c.owner === e.id).reduce((s, c) => s + colonyPopUnits(c), 0) }))
@@ -356,7 +375,7 @@ export function antaranUpkeep(state: GameState, events: TurnEvent[]): void {
   }
   state.monsters.sort((a, b) => a.id - b.id);
   state.antarans.nextRaidTurn = state.turn + 25 + rng.int(16);
-  events.push({ visibleTo: -1, kind: 'antaran_raid', payload: { starId: planet.starId, empireId: target.id, ships: party.length } });
+  events.push({ visibleTo: target.id, kind: 'antaran_raid', payload: { starId: planet.starId, empireId: target.id, ships: party.length } });
 }
 
 /** After the Antarans win a raid battle they raze half the colony (A1). */
@@ -380,7 +399,7 @@ export function antaranRaze(state: GameState, colonyId: number, events: TurnEven
       else g.farmers--;
     }
   }
-  events.push({ visibleTo: -1, kind: 'colony_razed', payload: { colonyId } });
+  events.push({ visibleTo: colony.owner, kind: 'colony_razed', payload: { colonyId } });
 }
 
 // ---------- random events (E1) ----------
@@ -400,18 +419,21 @@ export function randomEventsUpkeep(state: GameState, events: TurnEvent[]): void 
   const colony = colonies.length ? colonies[rng.int(colonies.length)] : undefined;
 
   switch (kind) {
+    // events are visible to the AFFECTED empire only: broadcasting them leaked
+    // unmet empires' colony ids / mineral upgrades / treasuries to everyone
     case 0: {
       const bc = 100 + rng.int(201);
       empire.bc += bc;
-      events.push({ visibleTo: -1, kind: 'event_donation', payload: { empireId: empire.id, bc } });
+      events.push({ visibleTo: empire.id, kind: 'event_donation', payload: { empireId: empire.id, bc } });
       break;
     }
     case 1: {
       if (colony) {
         const g = colony.groups[0];
-        if (g) {
+        // the boom respects the world's population ceiling
+        if (g && colonyPopUnits(colony) < colonyMaxPop(state, colony)) {
           g.popK += 1000;
-          events.push({ visibleTo: -1, kind: 'event_boom', payload: { empireId: empire.id, colonyId: colony.id } });
+          events.push({ visibleTo: empire.id, kind: 'event_boom', payload: { empireId: empire.id, colonyId: colony.id } });
         }
       }
       break;
@@ -423,7 +445,7 @@ export function randomEventsUpkeep(state: GameState, events: TurnEvent[]): void 
         const i = order.indexOf(planet.minerals);
         if (i < order.length - 1) {
           planet.minerals = order[i + 1]!;
-          events.push({ visibleTo: -1, kind: 'event_minerals', payload: { empireId: empire.id, colonyId: colony.id, minerals: planet.minerals } });
+          events.push({ visibleTo: empire.id, kind: 'event_minerals', payload: { empireId: empire.id, colonyId: colony.id, minerals: planet.minerals } });
         }
       }
       break;
@@ -434,7 +456,7 @@ export function randomEventsUpkeep(state: GameState, events: TurnEvent[]): void 
         const next = NEXT_TERRAFORM[planet.climate];
         if (next) {
           planet.climate = next;
-          events.push({ visibleTo: -1, kind: 'event_climate', payload: { empireId: empire.id, colonyId: colony.id, climate: next } });
+          events.push({ visibleTo: empire.id, kind: 'event_climate', payload: { empireId: empire.id, colonyId: colony.id, climate: next } });
         }
       }
       break;
@@ -443,13 +465,13 @@ export function randomEventsUpkeep(state: GameState, events: TurnEvent[]): void 
       // a depression cannot PAY OUT to an empire already in debt
       const loss = Math.max(0, Math.floor(empire.bc / 5));
       empire.bc -= loss;
-      events.push({ visibleTo: -1, kind: 'event_depression', payload: { empireId: empire.id, bc: loss } });
+      events.push({ visibleTo: empire.id, kind: 'event_depression', payload: { empireId: empire.id, bc: loss } });
       break;
     }
     case 5: {
       if (empire.freighters > 0) {
         empire.freighters = Math.max(0, empire.freighters - 5);
-        events.push({ visibleTo: -1, kind: 'event_pirates', payload: { empireId: empire.id } });
+        events.push({ visibleTo: empire.id, kind: 'event_pirates', payload: { empireId: empire.id } });
       }
       break;
     }
@@ -459,7 +481,7 @@ export function randomEventsUpkeep(state: GameState, events: TurnEvent[]): void 
         if (destructible.length) {
           const b = destructible[rng.int(destructible.length)]!;
           colony.buildings = colony.buildings.filter((x) => x !== b);
-          events.push({ visibleTo: -1, kind: 'event_meteor', payload: { empireId: empire.id, colonyId: colony.id, building: b } });
+          events.push({ visibleTo: empire.id, kind: 'event_meteor', payload: { empireId: empire.id, colonyId: colony.id, building: b } });
         }
       }
       break;
@@ -475,7 +497,7 @@ export function randomEventsUpkeep(state: GameState, events: TurnEvent[]): void 
             else if (g.workers > 0) g.workers--;
             else g.farmers--;
           }
-          events.push({ visibleTo: -1, kind: 'event_plague', payload: { empireId: empire.id, colonyId: colony.id } });
+          events.push({ visibleTo: empire.id, kind: 'event_plague', payload: { empireId: empire.id, colonyId: colony.id } });
         }
       }
       break;
@@ -492,5 +514,5 @@ export function guardianReward(state: GameState, victorId: number, events: TurnE
   if (!state.empires.some((e) => e.leaders.some((l) => l.leaderId === 'loknar'))) {
     state.leaderOffers.push({ empireId: victorId, leaderId: 'loknar', priceBc: 100, expiresTurn: state.turn + 10 });
   }
-  events.push({ visibleTo: -1, kind: 'guardian_defeated', payload: { empireId: victorId } });
+  events.push({ visibleTo: victorId, kind: 'guardian_defeated', payload: { empireId: victorId } });
 }

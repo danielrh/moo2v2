@@ -10,6 +10,7 @@ import { isBlockaded } from './ground';
 import { ceilDiv, floorDiv, roundDiv } from './imath';
 import { isqrt } from './isqrt';
 import { gravitySteps, resolveTraits, type RaceTraits } from './race';
+import { NATIVE_RACE } from './types';
 import type { Climate, Colony, Empire, GameState, Minerals, Planet, PopGroup } from './types';
 
 // ---------- lookup helpers ----------
@@ -471,8 +472,14 @@ export function explainOutput(state: GameState, colony: Colony): OutputExplain {
   return out;
 }
 
-/** Traits for non-owner pop groups (natives etc.). Phase 6 refines this. */
+/** Baseline traits for planetary natives: no racial bonuses at all
+ * (planet_specials.md — "the natives do not gain racial bonuses of your
+ * race"). Government is irrelevant at group level. */
+const NEUTRAL_TRAITS: RaceTraits = resolveTraits(['dictatorship']);
+
+/** Traits for non-owner pop groups (conquered races, natives). */
 function groupTraits(state: GameState, race: number, fallback: RaceTraits): RaceTraits {
+  if (race === NATIVE_RACE) return NEUTRAL_TRAITS;
   if (race >= 0) {
     const e = state.empires.find((x) => x.id === race);
     if (e) return traitsOf(e);

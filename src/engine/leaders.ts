@@ -13,6 +13,7 @@ import {
   type LeaderRow,
   type LeaderSkillId,
 } from './data/leaders';
+import { anyEmpireContact } from './contact';
 import type { Modifier } from './effects';
 import { floorDiv } from './imath';
 import { resolveTraits } from './race';
@@ -155,7 +156,9 @@ export function leaderCombatBonuses(empire: Empire): LeaderCombatBonuses {
     beamAttack: skillTotal(empire, 'weaponry', 'ship'),
     beamDefense: skillTotal(empire, 'helmsman', 'ship'),
     dmgMaxPct: skillTotal(empire, 'ordnance', 'ship'),
-    speedPct: skillTotal(empire, 'tactics'),
+    // like every other combat skill, tactics applies from SHIP officers only
+    // (L2); a colony administrator with tactics contributes nothing in battle
+    speedPct: skillTotal(empire, 'tactics', 'ship'),
     fighterDmgPct: skillTotal(empire, 'fighter_pilot', 'ship'),
   };
 }
@@ -185,11 +188,25 @@ export function countKind(empire: Empire, kind: 'colony' | 'ship'): number {
 export const OFFER_TTL = 8;
 export const OFFER_BASE_CHANCE = 8; // %/turn with an open slot
 
-/** S11: expire offers, generate new offers, pay salaries, award XP. */
+/** S11: expire offers, generate new offers, pay salaries, award XP.
+ *
+ * PRE-CONTACT the leader market is per-empire: strangers' hires neither
+ * cancel an empire's standing offers nor shrink its candidate pool — an
+ * empire's offer stream must be a pure function of the seed and its OWN state
+ * (the fast-start invariant: while no two empires have met, nothing one
+ * player does may change another's world). The same unique leader can
+ * therefore serve two empires that hired them before anyone met; that is
+ * accepted and harmless (skills are per-empire). Once ANY contact exists the
+ * classic global market applies. */
 export function leadersUpkeep(state: GameState, events: TurnEvent[]): void {
+  const globalMarket = anyEmpireContact(state);
+  const takenFor = (empireId: number, leaderId: string): boolean =>
+    globalMarket
+      ? hiredAnywhere(state, leaderId)
+      : (state.empires.find((e) => e.id === empireId)?.leaders.some((l) => l.leaderId === leaderId) ?? false);
   // expire old offers + offers for since-hired leaders
   state.leaderOffers = state.leaderOffers.filter(
-    (o) => o.expiresTurn > state.turn && !hiredAnywhere(state, o.leaderId),
+    (o) => o.expiresTurn > state.turn && !takenFor(o.empireId, o.leaderId),
   );
 
   for (const empire of state.empires) {
@@ -218,7 +235,11 @@ export function leadersUpkeep(state: GameState, events: TurnEvent[]): void {
         const pool = LEADERS.filter(
           (l) =>
             openKinds.includes(l.kind) &&
-            !hiredAnywhere(state, l.id) &&
+            // Loknar is the Guardian's bounty (guardianReward), never a
+            // walk-in — the game's biggest PvE prize must not turn up in the
+            // ordinary offer stream for list price
+            l.id !== 'loknar' &&
+            !takenFor(empire.id, l.id) &&
             !state.leaderOffers.some((o) => o.empireId === empire.id && o.leaderId === l.id),
         );
         if (pool.length > 0) {

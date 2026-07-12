@@ -13,6 +13,7 @@ import { hostileMonsterAt } from './npc';
 import { appPickableBy, availableFields, fieldGrantsAll, fieldListedCost, researchEtaTurns, researchOddsPct } from './research';
 import { starDistance } from './galaxy';
 import { ceilDiv } from './imath';
+import { NATIVE_RACE } from './types';
 import type { Colony, Empire, GameState, Planet, Ship, Star } from './types';
 
 export interface ColonyRow {
@@ -166,7 +167,10 @@ export function colonyRow(state: GameState, colony: Colony, projectedFoodLack?: 
     })(),
     groups: colony.groups.map((g) => ({
       race: g.race,
-      raceName: state.empires.find((e) => e.id === g.race)?.raceName ?? `race ${g.race}`,
+      raceName:
+        g.race === NATIVE_RACE
+          ? 'Natives'
+          : (state.empires.find((e) => e.id === g.race)?.raceName ?? `race ${g.race}`),
       units: Math.floor(g.popK / 1000),
       farmers: g.farmers,
       workers: g.workers,
@@ -722,62 +726,10 @@ export function fleetRows(state: GameState, empireId: number): FleetRow[] {
   return rows;
 }
 
-/** Race discovery: empires you have actually met — you explored a star holding
- * one of their colonies, your forces share a star with theirs, or you already
- * have dealings (relations entry, proposal, or their spies caught yours…). */
-export function metEmpireIds(state: GameState, empireId: number): Set<number> {
-  const met = new Set<number>([empireId]);
-  const me = state.empires.find((e) => e.id === empireId);
-  if (!me) return met;
-  const explored = new Set(me.exploredStars);
-  const starOfPlanet = new Map(state.planets.map((p) => [p.id, p.starId]));
-  for (const c of state.colonies) {
-    if (c.owner === empireId) continue;
-    const starId = starOfPlanet.get(c.planetId);
-    if (starId !== undefined && explored.has(starId)) met.add(c.owner);
-  }
-  const myStars = new Set<number>();
-  for (const s of state.ships) {
-    if (s.owner === empireId && s.location.kind === 'star') myStars.add(s.location.starId);
-  }
-  for (const c of state.colonies) {
-    if (c.owner !== empireId) continue;
-    const starId = starOfPlanet.get(c.planetId);
-    if (starId !== undefined) myStars.add(starId);
-  }
-  for (const s of state.ships) {
-    if (s.owner !== empireId && s.owner >= 0 && s.location.kind === 'star' && myStars.has(s.location.starId)) {
-      met.add(s.owner);
-    }
-  }
-  for (const r of state.relations) {
-    if (r.a === empireId) met.add(r.b);
-    if (r.b === empireId) met.add(r.a);
-  }
-  for (const p of state.proposals) {
-    if (p.to === empireId) met.add(p.from);
-    if (p.from === empireId) met.add(p.to);
-  }
-  return met;
-}
-
-/** Pairs of live empires that have met, in either direction (one side seeing
- * the other's colony counts). This is fast-start's contact tripwire: while it
- * is empty the empires cannot interact, so turns may resolve asynchronously. */
-export function empireContactPairs(state: GameState): Array<[number, number]> {
-  const alive = state.empires.filter((e) => !e.eliminated).map((e) => e.id);
-  const met = new Map<number, Set<number>>();
-  for (const id of alive) met.set(id, metEmpireIds(state, id));
-  const pairs: Array<[number, number]> = [];
-  for (let i = 0; i < alive.length; i++) {
-    for (let j = i + 1; j < alive.length; j++) {
-      const a = alive[i]!;
-      const b = alive[j]!;
-      if (met.get(a)!.has(b) || met.get(b)!.has(a)) pairs.push([a, b]);
-    }
-  }
-  return pairs;
-}
+// Contact/discovery lives in the leaf module contact.ts (so command validators
+// and upkeep systems can gate on it without import cycles); re-exported here
+// for existing callers.
+export { metEmpireIds, empireContactPairs, anyEmpireContact } from './contact';
 
 export interface MoveOption {
   starId: number;

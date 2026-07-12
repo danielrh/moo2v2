@@ -88,9 +88,13 @@ describe('MemoryGameStore (bug: multiple tabs disrupt the save file)', () => {
     };
     await mem.createGame(meta, [{ id: 0, name: 'A' }]);
     await mem.appendCommands('g-1', [{ seq: 0, turn: 0, playerId: -1, kind: 'game_start', payload: { a: 1 } }]);
-    await expect(
-      mem.appendCommands('g-1', [{ seq: 0, turn: 0, playerId: -1, kind: 'dup', payload: {} }]),
-    ).rejects.toThrow(/duplicate/);
+    // reissued seqs are last-writer-wins upserts, mirroring the sqlite store:
+    // desync recovery refolds the healthy branch through here and a throw
+    // stranded the memory-only tab's stored log on the dead branch
+    await mem.appendCommands('g-1', [{ seq: 0, turn: 0, playerId: -1, kind: 'game_start', payload: { a: 2 } }]);
+    const rewritten = await mem.readCommands('g-1');
+    expect(rewritten).toHaveLength(1);
+    expect(rewritten[0]!.payload).toEqual({ a: 2 });
     await mem.saveTurnHash('g-1', 1, 'h1');
     await mem.appendTurnEvents('g-1', 1, [{ idx: 0, visibleTo: -1, kind: 'x', payload: {} }]);
     await mem.appendChat('g-1', { id: 0, turn: 1, from: 0, to: -1, text: 'hi', sentAt: 'now' });

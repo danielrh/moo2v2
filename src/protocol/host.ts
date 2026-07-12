@@ -6,6 +6,7 @@
 
 import type { EngineAdapter, GameStartPayload } from './engineAdapter';
 import { findContested, resolveAuction, type AuctionOutcome } from './auction';
+import { gameIdFromSeed } from './session';
 import { LocalHostLink } from './link';
 import {
   FAST_MAX_AHEAD,
@@ -45,7 +46,10 @@ export class HostCore<S> {
   readonly localLink: LocalHostLink;
   private readonly transport: NetTransport;
   private readonly engine: EngineAdapter<S>;
-  private readonly gameId: string;
+  /** derived from the seed at game_start (fresh hosts are constructed with ''
+   * — the welcome must still carry the real id so a rejoining client can
+   * detect that its auto-resumed local game is NOT the game in this room) */
+  private gameId: string;
   private settings: GameSettings;
   private readonly engineVersion: string;
   private readonly dataVersion: string;
@@ -77,6 +81,11 @@ export class HostCore<S> {
   // layer's conflict handling silently dropped every post-restart message
   private chatSeq = Date.now();
   private turnHashes = new Map<number, string>();
+  /** ordered broadcast queue (drainOutbox); barrier-gated for turn commands */
+  private outbox: Array<{ cmd: LogCommand; clientId?: string; submitter?: number }> = [];
+  private draining = false;
+  private closed = false;
+  private persistBarrier: (() => Promise<void>) | null = null;
   private unsubs: Array<() => void> = [];
   private battleTimer: ReturnType<typeof setTimeout> | null = null;
   private battleOrdersTimeoutMs = 60_000;
@@ -156,6 +165,7 @@ export class HostCore<S> {
   }
 
   close(): void {
+    this.closed = true;
     for (const u of this.unsubs) u();
     if (this.battleTimer) clearTimeout(this.battleTimer);
     if (this.autoTurnTimer) clearTimeout(this.autoTurnTimer);
@@ -344,6 +354,19 @@ export class HostCore<S> {
     });
     if (this.started && msg.haveSeq < this.lastSeq) {
       this.sendResync(seatId, msg.haveSeq);
+    } else if (this.started && msg.haveSeq > this.lastSeq) {
+      // the client's local record is AHEAD of ours — a crash lost our tail
+      // (reissued seqs), or its tab auto-resumed a stale/foreign branch for
+      // this room. Silence here used to freeze that player forever (commits
+      // dropped, every order rejected, no recovery); a desync notice makes
+      // the session drop its state and refold our full log.
+      this.sendTo(seatId, { t: 'desync_notice', turn: this.currentTurn(), expected: '' });
+    } else if (!this.started && msg.haveSeq >= 0) {
+      // an UNSTARTED room, yet the client resumed a local record for it: that
+      // record is stale by definition (this lobby's game does not exist yet).
+      // Reset now, or the eventual game_start (seq 0) would be dropped as a
+      // "duplicate" of the stale log and the client would never fold it.
+      this.sendTo(seatId, { t: 'desync_notice', turn: 0, expected: '' });
     }
     this.broadcastLobby();
     if (this.started) {
@@ -477,6 +500,7 @@ export class HostCore<S> {
       const start = cmd.payload as GameStartPayload;
       this.state = this.engine.init(start);
       this.settings = start.settings;
+      this.gameId = gameIdFromSeed(start.seed); // authoritative for welcomes
       // Seat roster is part of game_start so a resumed host (fresh HostCore
       // folding the persisted log) still broadcasts to every player.
       for (const p of start.players) {
@@ -512,16 +536,60 @@ export class HostCore<S> {
   private accept(partial: Omit<LogCommand, 'seq'>, clientId?: string, submitter?: number): void {
     const cmd: LogCommand = { ...partial, seq: this.lastSeq + 1 };
     this.fold(cmd);
-    for (const id of this.seats.keys()) {
-      // clientId only meaningful for the submitter's optimistic dedupe
-      this.sendTo(id, { t: 'cmd_accept', cmd, ...(id === submitter && clientId ? { clientId } : {}) });
-    }
+    // broadcasts drain through an ordered outbox: the host's own session (seat
+    // 0) ingests first — enqueueing the write — and for TURN-ADVANCING
+    // commands the drain awaits the persist barrier before any remote peer
+    // sees the command. A crash between broadcast and persist used to resume
+    // the host a turn behind its clients (reissued seqs, silent fork).
+    this.outbox.push({ cmd, clientId, submitter });
+    void this.drainOutbox();
     this.checkBattlePhase();
     // fast phase: any accepted command can create first contact (e.g. a
     // colonize at a star the other empire explored)
     if (this.fastEnabled() && !this.contactAnnounced && cmd.kind !== 'game_start') {
       this.maybeAnnounceContact();
     }
+  }
+
+  /** Ordered command broadcast with a persistence barrier for the commands
+   * whose loss forks the table (turn boundaries + game_start). */
+  private async drainOutbox(): Promise<void> {
+    if (this.draining) return;
+    this.draining = true;
+    try {
+      while (this.outbox.length > 0 && !this.closed) {
+        const { cmd, clientId, submitter } = this.outbox.shift()!;
+        const accept = (id: number): HostToClient => ({
+          t: 'cmd_accept',
+          cmd,
+          ...(id === submitter && clientId ? { clientId } : {}),
+        });
+        const seatIds = [...this.seats.keys()];
+        // the host's own seat first: its session ingest enqueues persistence
+        for (const id of seatIds) {
+          if (id === 0) this.sendTo(id, accept(id));
+        }
+        if (this.persistBarrier && (cmd.kind === 'advance_turn' || cmd.kind === 'resolve_combat' || cmd.kind === 'game_start')) {
+          try {
+            await this.persistBarrier();
+          } catch {
+            // persistence failures are surfaced by the session's own chain;
+            // the broadcast must not stall behind a broken store
+          }
+        }
+        for (const id of seatIds) {
+          if (id !== 0) this.sendTo(id, accept(id));
+        }
+      }
+    } finally {
+      this.draining = false;
+    }
+  }
+
+  /** Wired by setup.ts to the host session's flush(): resolves once every
+   * accepted command so far has reached durable storage. */
+  setPersistBarrier(barrier: () => Promise<void>): void {
+    this.persistBarrier = barrier;
   }
 
   /** battle_orders sub-phase driver: when resolution paused for orders, emit
@@ -815,6 +883,13 @@ export class HostCore<S> {
   }
 
   private onHashReport(from: number, msg: Extract<ClientToHost, { t: 'hash_report' }>): void {
+    // a report for a turn we have not completed means the client runs a
+    // different (longer) history — the fork tripwire the freeze bugs lacked.
+    // In-sync clients always report turn-1 of a boundary we folded FIRST.
+    if (this.state && msg.turn >= this.currentTurn()) {
+      this.sendTo(from, { t: 'desync_notice', turn: msg.turn, expected: '' });
+      return;
+    }
     const expected = this.turnHashes.get(msg.turn);
     if (expected && expected !== msg.hash) {
       this.sendTo(from, { t: 'desync_notice', turn: msg.turn, expected });

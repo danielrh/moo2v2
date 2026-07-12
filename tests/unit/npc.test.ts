@@ -116,6 +116,9 @@ describe('Antarans', () => {
   it('raids spawn at the largest empire and withdraw after their attack', () => {
     const state = newGame();
     state.antarans.nextRaidTurn = state.turn;
+    // raids wait for first contact (pre-contact empires stay isolated); a
+    // relations entry counts as contact
+    state.relations.push({ a: 0, b: 1, status: 'peace', peaceOfferedBy: [], treaties: { nap: false, alliance: false, trade: false, research: false } });
     const events: TurnEvent[] = [];
     antaranUpkeep(state, events);
     const raiders = state.monsters.filter((m) => factionOf(m) === ANTARAN_EMPIRE);

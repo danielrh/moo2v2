@@ -116,9 +116,9 @@ export const EFFECTS: Record<string, EffectSpec> = {
   marine_barracks: { kind: 'building', handler: 'economy' }, // morale fix; ground garrison Phase 6
   armor_barracks: { kind: 'building', handler: 'economy' },
   anti_missile_rocket: { kind: 'weapon', handler: 'combat' },
-  fighter_bays: { kind: 'weapon', stub: 'carrier ops omitted by the combat redesign (permanent design decision)' },
-  heavy_fighter_bays: { kind: 'weapon', stub: 'carrier ops omitted by the combat redesign (permanent design decision)' },
-  bomber_bays: { kind: 'weapon', stub: 'carrier ops omitted by the combat redesign (permanent design decision)' },
+  fighter_bays: { kind: 'weapon', handler: 'combat' }, // interceptors + bombers mount via CRAFT_BY_BAY (shipdesign.ts) and fly as classId-4 strike craft
+  heavy_fighter_bays: { kind: 'weapon', handler: 'combat' }, // heavy fighters, same strike-craft path
+  bomber_bays: { kind: 'weapon', stub: 'bombers already ride fighter_bays (CRAFT_BY_BAY); this separate application does nothing' },
   reinforced_hull: { kind: 'ship_special', handler: 'shipdesign' },
   automated_factory: { kind: 'building', modifiers: [col('prod_flat', 5), col('prod_coeff', 1)] },
   missile_base: { kind: 'building', handler: 'combat' }, // +4 best missiles on the defense platform (battles.ts)
@@ -159,7 +159,7 @@ export const EFFECTS: Record<string, EffectSpec> = {
   wide_area_jammer: { kind: 'ship_special', handler: 'combat' }, // 40% fleet-wide missile evasion
   anti_grav_harness: { kind: 'ground_unit', stub: 'ground combat (Phase 6)' },
   inertial_stabilizer: { kind: 'ship_special', handler: 'shipdesign' },
-  gyro_destabilizer: { kind: 'weapon', stub: 'special weapon class (Phase 6 combat specials)' },
+  gyro_destabilizer: { kind: 'weapon', handler: 'combat' }, // fires as a direct-fire special (generic damage; signature spin effect Phase 6)
   stellar_safety_shield: { kind: 'building', handler: 'terraform' }, // hostile world lives as barren (terraform.ts); bombard shield (battles.ts)
   planetary_stellar_safety_shield: { kind: 'building', stub: 'colony shield vs bombardment (Phase 6)' },
   flux_shield: { kind: 'building', stub: 'colony shield vs bombardment (Phase 6)' },
@@ -168,7 +168,7 @@ export const EFFECTS: Record<string, EffectSpec> = {
   stealth_field: { kind: 'ship_special', modifiers: [emp('stealth', 10)], stub: 'fleet concealment (Phase 6 intel)' },
   stealth_suit: { kind: 'empire_tech', modifiers: [emp('spy_offense', 10)] },
   personal_shield: { kind: 'ground_unit', stub: 'ground combat (Phase 6)' },
-  pulsar: { kind: 'weapon', stub: 'special weapon class (Phase 6 combat specials)' },
+  pulsar: { kind: 'weapon', handler: 'combat' }, // fires as a direct-fire special (generic damage; signature area burst Phase 6)
   warp_interdictor: { kind: 'building', stub: 'slows hostile FTL nearby (Phase 6 movement)' },
   lightning_field: { kind: 'ship_special', handler: 'combat' }, // 50% incoming missiles destroyed
   hard_shields: { kind: 'ship_special', handler: 'combat' }, // +3 flat, immune to shield-piercing
@@ -206,7 +206,7 @@ export const EFFECTS: Record<string, EffectSpec> = {
   tractor_beam: { kind: 'weapon', stub: 'special weapon class (Phase 6 combat specials)' },
   gravity_generator: { kind: 'building', handler: 'economy' },
   jump_gate: { kind: 'empire_tech', stub: 'gate-boosted travel between own systems (Phase 6)' },
-  plasma_web: { kind: 'weapon', stub: 'special weapon class (Phase 6 combat specials)' },
+  plasma_web: { kind: 'weapon', handler: 'combat' }, // fires as a direct-fire special (generic damage; signature clinging web Phase 6)
   dimensional_portal: { kind: 'building', handler: 'npc' }, // enables attack_antarans (npc.ts A1)
   sensors: { kind: 'empire_tech', stub: 'deep scan (verify values, Phase 6)' },
   time_warp_facilitator: { kind: 'ship_special', stub: 'extra combat turn (Phase 6 combat specials)' },
@@ -316,7 +316,7 @@ export const PICK_STATUS: Record<string, { handler?: string; stub?: string }> = 
   arti_world: { handler: 'galaxy' },
   cybernetic: { handler: 'economy' },
   lithovore: { handler: 'economy' },
-  repulsive: { stub: 'diplomacy limits (Phase 6)' },
+  repulsive: { handler: 'commands' }, // implemented: treaty refusal both directions (validatePropose) + halved leader-offer chance (leaders.ts)
   charismatic: { handler: 'leaders' }, // +offer chance, -25% hire cost (leaders.ts)
   uncreative: { handler: 'research' },
   creative: { handler: 'research' },
