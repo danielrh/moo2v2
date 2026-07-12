@@ -8,7 +8,7 @@ import { buildableItems, itemCost, refitCost, SHIPYARD_BASES } from './items';
 import { empireAccum } from './effects';
 import { isBlockaded } from './ground';
 import { leaderById } from './leaders';
-import { commandPoints, driveSpeed, fuelRangeCp, inRange, supportStars } from './movement';
+import { commandPoints, driveSpeed, inRange } from './movement';
 import { hostileMonsterAt } from './npc';
 import { appPickableBy, availableFields, fieldGrantsAll, fieldListedCost, researchEtaTurns, researchOddsPct } from './research';
 import { starDistance } from './galaxy';
@@ -742,15 +742,14 @@ export interface MoveOption {
 export function moveOptions(state: GameState, empireId: number, fromStarId: number): MoveOption[] {
   const empire = state.empires.find((e) => e.id === empireId)!;
   const from = state.stars.find((s) => s.id === fromStarId)!;
-  const range = fuelRangeCp(empire);
-  const support = supportStars(state, empireId);
   const speed = driveSpeed(empire) * 100;
   return state.stars
     .filter((s) => s.id !== fromStarId)
     .map((s) => {
       const d = starDistance(from, s);
-      // wormholes carry ships regardless of fuel range
-      const reachable = from.wormholeTo === s.id || support.some((sup) => starDistance(sup, s) <= range);
+      // wormholes carry ships regardless of fuel range; inRange also counts
+      // supply extended through a wormhole from the network
+      const reachable = from.wormholeTo === s.id || inRange(state, empireId, s);
       return {
         starId: s.id,
         name: s.name,

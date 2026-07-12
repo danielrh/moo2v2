@@ -69,7 +69,13 @@ export function inRange(state: GameState, empireId: number, dest: Star): boolean
   const empire = state.empires.find((e) => e.id === empireId);
   if (!empire) return false;
   const range = fuelRangeCp(empire);
-  return supportStars(state, empireId).some((s) => starDistance(s, dest) <= range);
+  const support = supportStars(state, empireId);
+  const near = (star: Star) => support.some((s) => starDistance(s, star) <= range);
+  if (near(dest)) return true;
+  // supply reaches through wormholes: a star whose wormhole partner sits
+  // inside the network is itself in supply (ships there are not stranded)
+  const partner = dest.wormholeTo === null ? null : state.stars.find((s) => s.id === dest.wormholeTo);
+  return partner != null && near(partner);
 }
 
 export function travelTurns(state: GameState, empire: Empire, from: Star, to: Star): number {

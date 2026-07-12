@@ -12,8 +12,7 @@ import { leaderEmpireBonuses, leadersUpkeep } from './leaders';
 import { antaranUpkeep, hostileMonsterAt, randomEventsUpkeep } from './npc';
 import { allocId } from './ids';
 import { itemCost, parseDesignItem, parseRefitItem } from './items';
-import { commandPoints, fuelRangeCp, supportStars } from './movement';
-import { starDistance } from './galaxy';
+import { commandPoints, inRange, supportStars } from './movement';
 import { ceilDiv } from './imath';
 import { applyTerraformStep, terraformCost, unsettledPlanetsInSystem } from './terraform';
 import { busyFreighters, colonyMaxPop, colonyOutput, colonyPopUnits, farmingViable, freeFreighters, groupGrowthK, traitsOf } from './economy';
@@ -93,18 +92,19 @@ function finishTurn(state: GameState, events: TurnEvent[]): void {
  * toward the nearest own colony. It fights first (battles resolve before
  * this step), then withdraws; a ship already at one of its own colony stars
  * is in range by definition and never moves. Ships whose empire has no
- * colony to run to hold position. */
+ * colony to run to hold position. inRange extends supply through wormholes,
+ * so a fleet at either end holds station as long as the other end is inside
+ * the network. */
 function s10_strandedRetreat(state: GameState, events: TurnEvent[]): void {
   for (const empire of state.empires) {
     if (empire.eliminated) continue;
-    const range = fuelRangeCp(empire);
     const support = supportStars(state, empire.id);
     if (support.length === 0) continue; // no network at all: nowhere to be stranded FROM
     for (const ship of state.ships) {
       if (ship.owner !== empire.id || ship.location.kind !== 'star') continue;
       const star = state.stars.find((s) => s.id === (ship.location as { starId: number }).starId);
       if (!star) continue;
-      if (support.some((sup) => starDistance(sup, star) <= range)) continue; // in range
+      if (inRange(state, empire.id, star)) continue; // in supply (incl. via wormhole)
       const dest = retreatDestination(state, empire.id, star.id);
       if (!dest) continue; // no colony to run to: hold position
       ship.location = {

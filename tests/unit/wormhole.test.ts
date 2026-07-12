@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { gameEngine } from '@engine/index';
 import { validateCommand, applyCommand } from '@engine/commands';
-import { inRange } from '@engine/movement';
+import { fuelRangeCp, inRange } from '@engine/movement';
+import { advanceTurn } from '@engine/pipeline';
+import { starDistance } from '@engine/galaxy';
 import { moveOptions } from '@engine/selectors';
 import * as selectors from '@engine/selectors';
 import type { GameState } from '@engine/types';
@@ -55,7 +57,9 @@ describe('wormhole transit without fuel range (bug: outposts beyond range via wo
   it('allows moving through a wormhole to a star far outside fuel range', () => {
     const state = newGame();
     const { homeStar, far, scout } = rig(state);
-    expect(inRange(state, 0, far)).toBe(false); // out of range on a small map corner
+    // beyond raw fuel range on a small map corner (supply DOES reach it via
+    // the wormhole, but the move should be legal on the wormhole clause alone)
+    expect(starDistance(homeStar, far)).toBeGreaterThan(fuelRangeCp(state.empires[0]!));
     const cmd = {
       turn: state.turn,
       playerId: 0,
@@ -136,5 +140,35 @@ describe('wormhole transit without fuel range (bug: outposts beyond range via wo
     const after = selectors.scannedStars(state, 0);
     expect(after.size).toBeGreaterThanOrEqual(before.size);
     for (const id of before) expect(after.has(id)).toBe(true);
+  });
+});
+
+describe('supply extends through wormholes (fleets at either end are not stranded)', () => {
+  it('inRange counts a star whose wormhole partner is inside the network', () => {
+    const state = newGame();
+    const { homeStar, far } = rig(state);
+    expect(starDistance(homeStar, far)).toBeGreaterThan(fuelRangeCp(state.empires[0]!));
+    expect(inRange(state, 0, far)).toBe(true); // home anchors supply through the wormhole
+    // the far end is in supply, but it is no fuel ANCHOR: severing the link
+    // (both directions checked via the partner lookup) drops it again
+    homeStar.wormholeTo = null;
+    far.wormholeTo = null;
+    expect(inRange(state, 0, far)).toBe(false);
+  });
+
+  it('a fleet at the far end holds station; severing the wormhole strands it', () => {
+    const state = newGame();
+    const { homeStar, far, scout } = rig(state);
+    scout.location = { kind: 'star', starId: far.id };
+    state.monsters = []; // no lair fight in this scenario
+    advanceTurn(state);
+    // either wormhole end in the network ⇒ no ship_stranded_retreat withdrawal
+    expect(scout.location).toEqual({ kind: 'star', starId: far.id });
+    // the wormhole collapses: the far end leaves supply and the fleet limps home
+    homeStar.wormholeTo = null;
+    far.wormholeTo = null;
+    advanceTurn(state);
+    const loc: unknown = state.ships.find((s) => s.id === scout.id)!.location;
+    expect(loc).toMatchObject({ kind: 'transit', from: far.id, to: homeStar.id });
   });
 });
