@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { gameEngine } from '@engine/index';
 import { applyCommand, validateCommand } from '@engine/commands';
-import { fieldCostMultiplierPct, fieldGrantsAll } from '@engine/research';
+import { fieldCost, fieldGrantsAll } from '@engine/research';
 import { FIELD_ROWS, applicationsOfField, fieldById, startingFieldNums } from '@engine/data/index';
 import type { GameState } from '@engine/types';
 
@@ -74,10 +74,12 @@ describe('tech tree matches the mechanics docs (bug: Cold Fusion must research e
     expect(state.empires[0]!.completedFields).toContain(cf.num);
   });
 
-  it('grants-all fields stay at list price (no seeded cost variance)', () => {
+  it('even grants-all basics have a hidden discovery line past list price (improvements.md)', () => {
     const state = newGame();
     for (const f of FIELD_ROWS.filter((x) => fieldGrantsAll(x))) {
-      expect(fieldCostMultiplierPct(state, f)).toBe(100);
+      const line = fieldCost(state, state.empires[0]!, f);
+      expect(line).toBeGreaterThan(f.cost);
+      expect(line).toBeLessThanOrEqual(2 * f.cost);
     }
   });
 });

@@ -654,9 +654,7 @@ Public parameter data indicates these starting field ids:
 are buildable from turn 1, and everything else — electronic computer, lasers,
 drives, fuel cells, armor, bombs, missiles, colony ships — is researched from
 scratch. That puts exactly the classic eight fields on a pre-warp game's
-first research screen, at list price (the seeded field-cost difficulty
-multiplier exempts the whole opening set — every `previous === 0` root and
-Engineering's children):
+first research screen, at their listed prices:
 
 | RP | Field | Grants |
 |---|---|---|
@@ -682,7 +680,23 @@ Average/advanced are unchanged and still begin with the five tier-1 roots
 above: they reuse field ids 29,28,55,57,22 as a *data* lookup to build their
 superset of the engineering-only pre-warp mode grant. Default start mode is
 **average** (the MOO2 normal opening: two scouts + a colony ship; pre-warp
-gets one scout and no colony ship).
+gets one scout and no colony ship). The homeworld starts with a marine
+barracks AND a star base in every non-advanced mode — including pre-warp
+(improvements.md: "The original planet starts with a starbase even in
+pre-warp").
+
+**Research discovery lines (improvements.md).** Every listed cost above is
+what the research screen shows, but a field is actually *discovered* somewhere
+past it: the real completion point is uniform on (listed, 2 × listed],
+seeded per game and per field — the SAME hidden line for every empire, so
+nobody gets a private discount. The UI never reveals the line; instead, as
+soon as next turn's research could reach it (accumulated RP + RP/turn >
+listed cost), the screen shows the exact "% chance to discover" — e.g. 138
+RP spent on a 150-RP field at +15/turn overshoots the listed 150 by 3 of the
+150 possible line positions: "(2% chance to discover)". Before that point the
+screen estimates "~N turns" against the expected line (≈1.5 × listed: a fresh
+50-RP field at 12 RP/turn reads "~7 turns"). Leftover RP past the line
+carries into the next field.
 
 ## Technology field table
 

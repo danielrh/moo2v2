@@ -273,7 +273,7 @@
         {#each ['small', 'medium', 'large', 'huge'] as g (g)}<option value={g}>{g}</option>{/each}
       </select>
     </label>
-    <label title="pre-warp: the classic MOO2 primitive age — only the construction basics are known (colony base, star base, marine barracks buildable from turn 1); the electronic computer, lasers, drives, fuel cells and colony ships must all be researched; one scout, no colony ship. average (default): the classic MOO2 opening — tier-1 basics plus a tech head start, two scouts + a colony ship, star base built. advanced: everyone begins with an identical developed empire — the players' regions together cover ~1/3 of the map with identical worlds system-for-system, every planet half full, freighters covering the food runs, and 5 scouts at the frontier.">
+    <label title="pre-warp: the classic MOO2 primitive age — only the construction basics are known; the electronic computer, lasers, drives, fuel cells and colony ships must all be researched; one scout, no colony ship, star base built. average (default): the classic MOO2 opening — tier-1 basics plus a tech head start, two scouts + a colony ship, star base built. advanced: everyone begins with an identical developed empire — the players' regions together cover ~1/3 of the map with identical worlds system-for-system, every planet half full, freighters covering the food runs, and 5 scouts at the frontier.">
       Start:
       <select
         data-testid="start-mode"

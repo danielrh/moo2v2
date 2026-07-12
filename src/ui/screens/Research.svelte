@@ -105,8 +105,13 @@
   <p data-testid="research-status" class="status">
     Current: <b>{summary.researching ? pretty(summary.researching) : 'none'}</b>
     {#if empire.research.fieldNum !== null}
-      — {empire.research.accumRP} RP accumulated, +{summary.researchPerTurn}/turn
+      — {empire.research.accumRP}/{summary.researchListedCost} RP, +{summary.researchPerTurn}/turn
       {#if summary.researchTarget}(target: {pretty(summary.researchTarget)}){/if}
+      {#if summary.researchOddsPct > 0}
+        <b data-testid="research-odds" title="The real discovery point is hidden somewhere between the listed cost and twice the listed cost — the same for every empire this game. This is the chance your accumulated research reaches it by the beginning of next turn.">({summary.researchOddsPct}% chance to discover)</b>
+      {:else if summary.researchTurnsLeft !== null}
+        <span class="dim" title="estimate to the expected discovery point (~1.5× the listed cost — the real point is hidden)">~{summary.researchTurnsLeft} turns</span>
+      {/if}
       <span class="pbar"><span class="pfill" style="width:{currentPct}%"></span></span>
     {:else if empire.research.accumRP > 0}
       — {empire.research.accumRP} RP banked
@@ -153,9 +158,9 @@
               <b>{pretty(choice.field.id)}</b>
               <span
                 class="dim"
-                title={choice.cost !== choice.field.cost
-                  ? `base ${choice.field.cost} RP × this galaxy's seeded difficulty (same for every player)`
-                  : ''}
+                title={choice.cost > choice.field.cost
+                  ? `base ${choice.field.cost} RP + hyper-advanced level surcharge`
+                  : 'Discovery lands somewhere between this cost and twice it — the same hidden point for every empire this game.'}
               >{choice.cost} RP{choice.cost > choice.field.cost ? ' ▲' : ''}</span>
             </div>
             {#if choice.grantsAll}

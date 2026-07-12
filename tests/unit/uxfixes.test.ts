@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { gameEngine } from '@engine/index';
 import { applyCommand, validateCommand } from '@engine/commands';
-import { fieldCost, fieldCostMultiplierPct, fieldGrantsAll } from '@engine/research';
+import { fieldCost, fieldGrantsAll, fieldListedCost, researchOddsPct } from '@engine/research';
 import { colonyOutput } from '@engine/economy';
 import { FIELD_ROWS, applicationsOfField } from '@engine/data/index';
 import type { GameState } from '@engine/types';
@@ -128,20 +128,37 @@ describe('empire tax rate (bug: need a tax when losing money)', () => {
   });
 });
 
-describe('seeded research cost variance (same for all players, per game)', () => {
-  it('multiplier is 100-200%, identical across empires, and skips tier-1 basics', () => {
+describe('hidden research discovery line (improvements.md: same for all players, per game)', () => {
+  it('line is in (listed, 2×listed], identical across empires, for EVERY normal field', () => {
     const state = newGame();
-    for (const f of FIELD_ROWS) {
-      const pct = fieldCostMultiplierPct(state, f);
-      expect(pct).toBeGreaterThanOrEqual(100);
-      expect(pct).toBeLessThanOrEqual(200);
-      if (fieldGrantsAll(f)) expect(pct).toBe(100);
-      expect(fieldCost(state, state.empires[0]!, f)).toBe(fieldCost(state, state.empires[1]!, f));
+    for (const f of FIELD_ROWS.filter((x) => !x.id.startsWith('advf_'))) {
+      const listed = fieldListedCost(state.empires[0]!, f);
+      const line = fieldCost(state, state.empires[0]!, f);
+      expect(listed).toBe(f.cost); // the research screen shows list price
+      expect(line).toBeGreaterThan(listed); // discovery always overshoots the listed cost
+      expect(line).toBeLessThanOrEqual(2 * listed);
+      expect(fieldCost(state, state.empires[1]!, f)).toBe(line); // shared line
     }
-    // a different seed shuffles the multipliers
+    // a different seed rolls different lines
     const other = { ...state, seed: 'ffffeeeeddddccccbbbbaaaa99998888' } as GameState;
-    const changed = FIELD_ROWS.some((f) => fieldCostMultiplierPct(other, f) !== fieldCostMultiplierPct(state, f));
+    const changed = FIELD_ROWS.some(
+      (f) => !f.id.startsWith('advf_') && fieldCost(other, other.empires[0]!, f) !== fieldCost(state, state.empires[0]!, f),
+    );
     expect(changed).toBe(true);
+  });
+
+  it('discovery odds: the improvements.md 2% example, and the show-as-soon-as-possible rule', () => {
+    // 138/150 RP accumulated at +15/turn: next turn reaches 153, overshooting
+    // the listed 150 by 3 of the 150 possible line positions -> exactly 2%
+    expect(researchOddsPct(150, 138, 15)).toBe(2);
+    // not yet possible to discover by next turn -> no percentage shown
+    expect(researchOddsPct(150, 120, 15)).toBe(0); // 135 <= 150
+    expect(researchOddsPct(150, 135, 15)).toBe(0); // exactly list price is never the line
+    expect(researchOddsPct(150, 136, 15)).toBe(1); // barely possible -> shows >= 1%
+    // certain once next turn covers the whole (listed, 2×listed] range
+    expect(researchOddsPct(150, 285, 15)).toBe(100);
+    // deep overshoot conditions on the line exceeding what was already spent
+    expect(researchOddsPct(150, 200, 15)).toBe(15); // 15 of (300-200) remaining positions
   });
 });
 

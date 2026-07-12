@@ -4,7 +4,7 @@
 // - No imports from outside src/engine (zero runtime dependencies).
 // - No sources of nondeterminism; randomness comes only from the seeded PRNG.
 
-export const ENGINE_VERSION = '0.10.0'; // init+research change: pre_warp is now the classic MOO2 primitive age — ONLY Engineering pre-completed (colony base/star base/marine barracks buildable turn 1), everything else (computers, lasers, drives, colony ships) researched from scratch, opening with the classic eight fields at list price (the seeded cost multiplier now exempts the whole opening set). Default start mode is now "average" (MOO2 normal opening: 2 scouts + a colony ship; average/advanced head-starts otherwise unchanged). Adds debug unlockAllTech (all fields+apps, gated on debugCommands). 0.9.x replays diverge at init, so old saves load snapshot-first.
+export const ENGINE_VERSION = '0.10.0'; // init+research change (improvements.md): pre_warp is the classic MOO2 primitive age — ONLY Engineering pre-completed (colony base/star base/marine barracks buildable turn 1), everything else researched from scratch; the homeworld starts with a star base in EVERY non-advanced mode, pre-warp included. Research now discovers on a hidden per-game line uniform on (listed, 2×listed] shared by all empires — the UI shows listed costs, "~N turns" estimates, and "% chance to discover" odds. Default start mode is "average" (2 scouts + a colony ship). Adds debug unlockAllTech (gated on debugCommands). 0.9.x replays diverge at init, so old saves load snapshot-first.
 
 export * from './types';
 export * from './ids';

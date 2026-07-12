@@ -10,7 +10,7 @@ import { isBlockaded } from './ground';
 import { leaderById } from './leaders';
 import { commandPoints, driveSpeed, fuelRangeCp, inRange, supportStars } from './movement';
 import { hostileMonsterAt } from './npc';
-import { appPickableBy, availableFields, fieldCost, fieldGrantsAll } from './research';
+import { appPickableBy, availableFields, fieldGrantsAll, fieldListedCost, researchEtaTurns, researchOddsPct } from './research';
 import { starDistance } from './galaxy';
 import { ceilDiv } from './imath';
 import type { Colony, Empire, GameState, Planet, Ship, Star } from './types';
@@ -234,9 +234,14 @@ export interface EmpireSummary {
   colonistsInTransit: number;
   colonies: number;
   researching: string | null;
+  /** listed cost of the current field (never the hidden discovery line) */
+  researchListedCost: number | null;
+  /** "~N turns" estimate to the EXPECTED discovery (~1.5× listed cost) */
   researchTurnsLeft: number | null;
-  /** progress toward the current field, 0-100 (null when no field selected) */
+  /** progress toward the LISTED cost, 0-100 (null when no field selected) */
   researchProgressPct: number | null;
+  /** % chance the tech discovers by the beginning of next turn (0 = not yet possible) */
+  researchOddsPct: number;
   researchTarget: string | null;
   extraQueue: string[];
   taxRatePct: number;
@@ -261,7 +266,9 @@ export function empireSummary(state: GameState, empireId: number): EmpireSummary
     if (out.foodNet < 0) freightersNeeded += -out.foodNet;
   }
   const field = empire.research.fieldNum !== null ? fieldByNum.get(empire.research.fieldNum) : null;
-  const fieldCostNow = field ? fieldCost(state, empire, field) : 0;
+  // the LISTED cost — the hidden discovery line (fieldCost) must never reach
+  // the UI; players see list price, progress toward it, and discovery odds
+  const listedNow = field ? fieldListedCost(empire, field) : 0;
   const cp = commandPoints(state, empire);
   // projected freighter upkeep: 0.5 BC per freighter in use (food hauls up to
   // free capacity + colonists in transit at 5 per unit); idle hulls are free
@@ -285,10 +292,11 @@ export function empireSummary(state: GameState, empireId: number): EmpireSummary
     ),
     colonies,
     researching: field?.id ?? (empire.research.extraQueue[0] ? `extra: ${empire.research.extraQueue[0]}` : null),
-    researchTurnsLeft:
-      field && rp > 0 ? ceilDiv(Math.max(0, fieldCostNow - empire.research.accumRP), rp) : null,
+    researchListedCost: field ? listedNow : null,
+    researchTurnsLeft: field ? researchEtaTurns(listedNow, empire.research.accumRP, rp) : null,
     researchProgressPct:
-      field && fieldCostNow > 0 ? Math.min(100, Math.floor((empire.research.accumRP * 100) / fieldCostNow)) : null,
+      field && listedNow > 0 ? Math.min(100, Math.floor((empire.research.accumRP * 100) / listedNow)) : null,
+    researchOddsPct: field ? researchOddsPct(listedNow, empire.research.accumRP, rp) : 0,
     researchTarget: empire.research.targetApp,
     extraQueue: empire.research.extraQueue,
     taxRatePct: empire.taxRatePct ?? 0,
@@ -472,6 +480,7 @@ export function fixFoodJobs(
 export interface ResearchChoice {
   field: FieldRow;
   subject: string;
+  /** LISTED cost (the hidden discovery line is never exposed to the UI) */
   cost: number;
   /** "(General)" fields deliver every application at once (no target choice) */
   grantsAll: boolean;
@@ -483,7 +492,7 @@ export function researchChoices(state: GameState, empireId: number): ResearchCho
   return availableFields(empire).map((field) => ({
     field,
     subject: subjectLabel(field),
-    cost: fieldCost(state, empire, field),
+    cost: fieldListedCost(empire, field),
     grantsAll: fieldGrantsAll(field),
     apps: applicationsOfField(field.id).map((a) => ({
       id: a.id,

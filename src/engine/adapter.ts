@@ -108,11 +108,11 @@ export function initGame(start: EngineGameStart): GameState {
   // leaves exactly the classic eight fields on the first research screen:
   // advanced engineering 80, nuclear fission 50, chemistry 50, military
   // tactics 150, electronics 50, astro ecology 80, physics 50, advanced
-  // magnetism 250 (list price — research.ts exempts the opening set from the
-  // seeded difficulty multiplier). Ships still fly and can be designed thanks
-  // to the hardcoded nuclear-drive + fuel-cell + titanium baselines
-  // (movement.ts / shipdesign.ts) and everyone keeps the pre-built starter
-  // frigate.
+  // magnetism 250 (listed prices — actual discovery lands on the hidden
+  // per-game line in (listed, 2×listed], research.ts). Ships still fly and
+  // can be designed thanks to the hardcoded nuclear-drive + fuel-cell +
+  // titanium baselines (movement.ts / shipdesign.ts) and everyone keeps the
+  // pre-built starter frigate.
   //
   // "average"/"advanced" are HEAD STARTS: already-developed empires that
   // begin with the full tier-1 root tier plus their extra fields. Their
@@ -211,7 +211,9 @@ export function initGame(start: EngineGameStart): GameState {
             unrest: false,
           },
         ],
-        buildings: start.settings.startMode === 'average' ? ['marine_barracks', 'star_base'] : ['marine_barracks'],
+        // improvements.md: the homeworld starts with a star base even in
+        // pre-warp (the classic MOO2 opening), alongside the marine barracks
+        buildings: ['marine_barracks', 'star_base'],
         queue: [],
         storedProd: 0,
         stickyInvested: {},

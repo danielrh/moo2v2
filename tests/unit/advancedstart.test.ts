@@ -11,7 +11,7 @@ import { hashCanonical } from '@engine/canonical';
 import { colonyMaxPop, colonyOutput, colonyPopUnits } from '@engine/economy';
 import { fieldById, FIELD_ROWS, APPLICATION_ROWS } from '@engine/data/index';
 import { STAR_COUNTS, starDistance } from '@engine/galaxy';
-import { availableFields, fieldCost } from '@engine/research';
+import { availableFields, fieldListedCost } from '@engine/research';
 import { advanceTurn } from '@engine/pipeline';
 import type { GameState, GameStateSettings, Planet } from '@engine/types';
 
@@ -82,10 +82,12 @@ describe('start modes: the free colony ship', () => {
     expect(s.empires[0]!.knownApps).not.toContain('colony_ship');
   });
 
-  it('pre-warp opens with the classic eight research choices at list price', () => {
+  it('pre-warp opens with the classic eight research choices at LISTED price', () => {
     const s = newGame('pre_warp');
     const empire = s.empires[0]!;
-    const choices = availableFields(empire).map((f) => [f.id, fieldCost(s, empire, f)]);
+    // the research screen shows list prices; actual discovery happens on the
+    // hidden line in (listed, 2×listed] (improvements.md)
+    const choices = availableFields(empire).map((f) => [f.id, fieldListedCost(empire, f)]);
     // the exact MOO2 pre-warp research screen (fields sorted by num)
     expect(choices).toEqual([
       ['advanced_engineering', 80], // anti-missile rockets, fighter bays, reinforced hull

@@ -18,7 +18,7 @@ import {
   type FieldRow,
 } from './data/index';
 import { rngFor, type Rng } from './rng';
-import { floorDiv } from './imath';
+import { ceilDiv } from './imath';
 import { traitsOf } from './economy';
 import type { Empire, GameState, TurnEvent } from './types';
 
@@ -29,27 +29,48 @@ export function fieldGrantsAll(field: FieldRow): boolean {
   return field.general;
 }
 
-/** Seeded per-game difficulty: every field's real cost is its base cost times a
- * multiplier in [100%, 200%], fixed by the game seed — identical for every
- * player (nobody gets "lucky" on a category), different between games.
- * The OPENING SET stays at list price so the classic opening is predictable:
- * the general tier-1 roots plus everything on a pre-warp game's first
- * research screen (all previous===0 roots and Engineering's children — the
- * classic 80/50/50/150/50/80/50/250 eight). */
-const ENGINEERING_NUM = fieldById.get('engineering')?.num ?? -1;
-export function fieldCostMultiplierPct(state: GameState, field: FieldRow): number {
-  if (fieldGrantsAll(field) || field.id.startsWith('advf_')) return 100;
-  if (field.previous === 0 || field.previous === ENGINEERING_NUM) return 100;
-  return 100 + rngFor(state.seed, 'field_cost', field.num).int(101);
-}
-
-export function fieldCost(state: GameState, empire: Empire, field: FieldRow): number {
-  const scaled = floorDiv(field.cost * fieldCostMultiplierPct(state, field), 100);
+/** Listed research cost: what the tech tree and research screen display.
+ * Hyper-advanced repeats add their level surcharge to the listed price. */
+export function fieldListedCost(empire: Empire, field: FieldRow): number {
   if (field.id.startsWith('advf_')) {
     const level = empire.research.hyperLevels[field.id] ?? 0;
-    return scaled + 10000 * level;
+    return field.cost + 10000 * level;
   }
-  return scaled;
+  return field.cost;
+}
+
+/** The hidden DISCOVERY LINE (improvements.md): a field actually completes
+ * somewhere past its listed cost — uniformly at random in
+ * (listed, 2 × listed] — fixed by the game seed, so every empire shares the
+ * same line for the same field and nobody sees it. The UI shows the listed
+ * cost plus "% chance to discover" odds once next turn's RP could reach the
+ * line (researchOddsPct below). Hyper-advanced repeats stay at list price
+ * (a predictable endgame sink). */
+export function fieldCost(state: GameState, empire: Empire, field: FieldRow): number {
+  const listed = fieldListedCost(empire, field);
+  if (field.id.startsWith('advf_')) return listed;
+  return rngFor(state.seed, 'field_cost', field.num).range(listed + 1, 2 * listed);
+}
+
+/** Integer % chance that the current research discovers by the beginning of
+ * next turn: P(line ≤ accum + rp) given the line is uniform on
+ * (listed, 2 × listed] and known to exceed both the listed cost and what has
+ * already been spent without discovering. Ceil'd so any real chance shows as
+ * at least 1%; 0 while discovery is impossible next turn. */
+export function researchOddsPct(listed: number, accumRP: number, rpPerTurn: number): number {
+  if (listed <= 0 || rpPerTurn <= 0) return 0;
+  const lower = Math.max(accumRP, listed);
+  const next = Math.min(accumRP + rpPerTurn, 2 * listed);
+  if (next <= lower) return 0;
+  return Math.min(100, ceilDiv((next - lower) * 100, 2 * listed - lower));
+}
+
+/** "~N turns" discovery estimate against the EXPECTED line (≈1.5 × listed —
+ * the real line is hidden). Never below 1 while unfinished. */
+export function researchEtaTurns(listed: number, accumRP: number, rpPerTurn: number): number | null {
+  if (rpPerTurn <= 0) return null;
+  const expectedX2 = 3 * listed + 1; // 2 × E[line] for line uniform on (listed, 2·listed]
+  return Math.max(1, ceilDiv(Math.max(0, expectedX2 - 2 * accumRP), 2 * rpPerTurn));
 }
 
 /** The next researchable field per subject (previous completed, not yet done). */
