@@ -667,6 +667,25 @@ first research screen, at their listed prices:
 | 50 | Physics | laser cannon, laser rifle, space scanner |
 | 250 | Advanced Magnetism | class I shield, mass driver, ECM jammer |
 
+**Implementation note (this variant), Average/Advanced.** The table's Average
+row is kept as reference data only. Average (and Advanced) complete the five
+tier-1 roots (29, 28, 55, 57, 22) plus Cold Fusion (23) — the classic MOO2
+normal opening: electronic computer, nuclear drive, lasers, standard fuel
+cells, titanium armor, and colony/outpost/transport ships + freighters are
+known from turn 1; Optronics is NOT pre-researched. That puts exactly the
+classic eight fields on an average game's first research screen:
+
+| RP | Field | Grants |
+|---|---|---|
+| 80 | Advanced Engineering | anti-missile rockets, fighter bays, reinforced hull |
+| 250 | Advanced Fusion | fusion drive, fusion bomb, augmented engines |
+| 250 | Advanced Metallurgy | deuterium fuel cells, tritanium armor |
+| 150 | Military Tactics | space academy |
+| 150 | Optronics | research lab, optronic computer, dauntless guidance system |
+| 80 | Astro Ecology | hydroponic farm, habitat domes |
+| 150 | Fusion Physics | fusion beam, fusion rifle |
+| 250 | Advanced Magnetism | class I shield, mass driver, ECM jammer |
+
 (One deliberate data difference vs. classic MOO2: freighters live in Cold
 Fusion here — with the colony/outpost/transport ships — not in Nuclear
 Fission.) Ships still fly and can be designed before those techs land because

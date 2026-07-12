@@ -74,6 +74,8 @@ describe('ship designer', () => {
   it('validates space and derives stats', () => {
     const state = startTwoEmpireGame();
     const empire = state.empires[0]!;
+    // class I shields are an average-start research CHOICE, not a grant
+    empire.knownApps = [...empire.knownApps, 'class_i_shield'].sort();
     const stats = designStats(state, empire, {
       name: 'Test',
       hull: 'frigate',

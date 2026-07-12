@@ -115,21 +115,23 @@ export function initGame(start: EngineGameStart): GameState {
   // pre-built starter Patrol Frigate DESIGN (no frigate ship is spawned —
   // the opening fleet is the scout(s) + colony ship listed below).
   //
-  // "average"/"advanced" are HEAD STARTS: already-developed empires that
-  // begin with the full tier-1 root tier plus their extra fields. Their
-  // supersets union in the DATA lookup startingFieldNums('pre_warp') (the 5
-  // roots, unchanged in the tables) — intentionally MORE than the
-  // engineering-only pre_warp *mode* grant above. "advanced" adds Cold Fusion
-  // (colony/outpost/transport ships, freighters) its big empires need from
-  // day one.
+  // "average"/"advanced" are the classic MOO2 developed opening: the five
+  // tier-1 roots — from the DATA lookup startingFieldNums('pre_warp'),
+  // unchanged in the tables — plus Cold Fusion (colony/outpost/transport
+  // ships, freighters). Electronic computer is known; Optronics is NOT.
+  // That puts exactly the classic eight fields on an average game's first
+  // research screen: advanced engineering 80, advanced fusion 250, advanced
+  // metallurgy 250, military tactics 150, optronics 150, astro ecology 80,
+  // fusion physics 150, advanced magnetism 250. (STARTING_FIELD_NUMS
+  // ['average'] stays as reference data only — like pre_warp's five, the
+  // mode grant is decided here; see the §05 implementation note in
+  // mechanics/game_mechanics.md.)
   const unlockAll = start.settings.debugCommands && start.settings.unlockAllTech === true;
   const startFieldNums = unlockAll
     ? FIELD_ROWS.map((f) => f.num)
-    : start.settings.startMode === 'average'
-      ? [...new Set([...startingFieldNums('pre_warp'), ...startingFieldNums('average')])]
-      : start.settings.startMode === 'advanced'
-        ? [...new Set([...startingFieldNums('pre_warp'), fieldById.get('cold_fusion')!.num])]
-        : [fieldById.get('engineering')!.num]; // pre_warp: construction basics only
+    : start.settings.startMode === 'pre_warp'
+      ? [fieldById.get('engineering')!.num] // construction basics only
+      : [...new Set([...startingFieldNums('pre_warp'), fieldById.get('cold_fusion')!.num])];
   const startApps = new Set<string>(ALWAYS_KNOWN_ITEMS);
   for (const num of startFieldNums) {
     const field = fieldByNum.get(num);

@@ -4,7 +4,7 @@
 // - No imports from outside src/engine (zero runtime dependencies).
 // - No sources of nondeterminism; randomness comes only from the seeded PRNG.
 
-export const ENGINE_VERSION = '0.10.1'; // supply-rule change: the fuel/supply network extends through wormholes — a star whose wormhole partner is inside the network is itself in supply, so fleets parked at either end hold station instead of stranded-retreating (inRange is now the single range gate for retreat, move validation and the map). 0.10.0 replays diverge at the first turn a wormhole-end fleet used to withdraw, so older saves load snapshot-first.
+export const ENGINE_VERSION = '0.11.0'; // init change: the "average" start is the classic MOO2 normal opening — the five tier-1 roots + Cold Fusion completed (electronic computer known, Optronics NOT), so the first research screen offers the classic eight: advanced engineering 80, advanced fusion 250, advanced metallurgy 250, military tactics 150, optronics 150, astro ecology 80, fusion physics 150, advanced magnetism 250. Average empires no longer begin with deuterium fuel cells (4 pc fuel range until researched), class I shields, fighter bays, space academies or research labs; average and advanced now share the same tech grant. Also in 0.10.1: the fuel/supply network extends through wormholes — a star whose wormhole partner is inside the network is itself in supply, so fleets at either end hold station instead of stranded-retreating. 0.10.x replays diverge at init for average games, so older saves load snapshot-first.
 
 export * from './types';
 export * from './ids';

@@ -110,6 +110,33 @@ describe('start modes: the free colony ship', () => {
     // average still begins with the tier-1 basics researched
     expect(s.empires[0]!.knownApps).toContain('colony_base');
   });
+
+  it('average opens with the classic eight research choices (Electronics done, Optronics not)', () => {
+    const s = newGame('average');
+    const empire = s.empires[0]!;
+    // the tier-1 roots + Cold Fusion are complete…
+    expect(empire.knownApps).toContain('electronic_computer');
+    expect(empire.knownApps).toContain('colony_ship');
+    expect(empire.knownApps).toContain('freighters');
+    // …and nothing beyond them: these all sit in the eight opening choices
+    expect(empire.knownApps).not.toContain('optronic_computer');
+    expect(empire.knownApps).not.toContain('research_lab');
+    expect(empire.knownApps).not.toContain('deuterium_fuel_cells');
+    expect(empire.knownApps).not.toContain('class_i_shield');
+    expect(empire.knownApps).not.toContain('space_academy');
+    const choices = availableFields(empire).map((f) => [f.id, fieldListedCost(empire, f)]);
+    // the exact MOO2 average research screen (fields sorted by num)
+    expect(choices).toEqual([
+      ['advanced_engineering', 80], // anti-missile rockets, fighter bays, reinforced hull
+      ['advanced_fusion', 250], // fusion drive, fusion bomb, augmented engines
+      ['advanced_magnetism', 250], // class I shield, mass driver, ECM jammer
+      ['advanced_metallurgy', 250], // deuterium fuel cells, tritanium armor
+      ['military_tactics', 150], // space academy
+      ['astro_ecology', 80], // hydroponic farm, habitat domes
+      ['fusion_physics', 150], // fusion beam, fusion rifle
+      ['optronics', 150], // research lab, optronic computer, dauntless guidance system
+    ]);
+  });
 });
 
 describe('debug: unlock all tech', () => {
