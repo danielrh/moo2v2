@@ -4,9 +4,11 @@
   // and watch the replay. Pure client-side — touches no game state.
   import {
     ARMOR_MULT,
-    ARMOR_NAMES,
+    COMPUTER_APPS,
+    SHIELD_APPS,
     designStats,
     runBattle,
+    specialSystemInfo,
     DEFAULT_ORDERS,
     HULLS_BUILDABLE,
     SPECIALS,
@@ -19,9 +21,18 @@
   } from '@engine/index';
   import { rngFor } from '@engine/rng';
   import { SHIP_STYLES } from '@engine/index';
-  import { APPLICATION_ROWS, FIELD_ROWS, WEAPON_ROWS, hullById } from '@engine/data/index';
+  import { appForWeapon, APPLICATION_ROWS, FIELD_ROWS, WEAPON_ROWS, hullById } from '@engine/data/index';
   import BattleViewer from '../battle/BattleViewer.svelte';
   import ShipPreview from '../battle/ShipPreview.svelte';
+  import ShipLoadoutEditor from '../components/ShipLoadoutEditor.svelte';
+  import {
+    armorNameForTier,
+    computerNameForTier,
+    driveNameForTier,
+    armorTierOptions,
+    shieldNameForTier,
+    weaponModTooltip,
+  } from '../components/shipLoadoutShared';
   import { variantsFor, wrapVariant, type ArtClass } from '../battle/shipart';
   import { playerColor } from '../colors';
   import { takeLabSeed } from '../labSeed';
@@ -55,8 +66,8 @@
     hull: string;
     computer: number;
     shield: number;
-    /** armor tier 1..6 (titanium..xentronium); absent = best (xentronium) */
-    armor?: number;
+    /** group armor tier 1..6 (titanium..xentronium) */
+    armor: number;
     specials: string[];
     weapons: Array<{ weapon: string; count: number; mods: string[]; arc: 'F' | 'FX' | 'R' | '360' }>;
     count: number;
@@ -73,7 +84,11 @@
   // every mountable weapon, bombs and strike craft included — filtering to
   // classId <= 2 left e.g. a design's nuclear-bomb slot BLANK when a real
   // battle was loaded into the lab (bugs.md)
-  const weaponChoices = WEAPON_ROWS.filter((w) => w.techId !== 0);
+  const weaponChoices = WEAPON_ROWS.filter((w) => w.techId !== 0).map((w) => ({
+    ...w,
+    label: appForWeapon(w.id)?.name ?? w.id.replaceAll('_', ' '),
+  }));
+  const armorOptions = armorTierOptions();
   const newGroup = (): LabGroup => ({
     hull: 'cruiser',
     computer: 3,
@@ -86,20 +101,16 @@
 
   // a live game can hand its ship types over (Empires tab -> battle simulator)
   const seeded = takeLabSeed();
-  const seedGroups = (
-    list:
-      | { hull: string; computer: number; shield: number; armor?: number; specials: string[]; weapons: LabGroup['weapons']; count: number }[]
-      | undefined,
-  ): LabGroup[] | null =>
+  const seedGroups = (list: Array<Partial<LabGroup>> | undefined): LabGroup[] | null =>
     list && list.length
       ? list.map((g) => ({
-          hull: g.hull,
-          computer: g.computer,
-          shield: g.shield,
-          armor: g.armor ?? 6,
-          specials: [...g.specials],
-          weapons: g.weapons.map((w) => ({ ...w, mods: [...w.mods] })),
-          count: g.count,
+          hull: g.hull ?? 'cruiser',
+          computer: g.computer ?? 3,
+          shield: g.shield ?? 3,
+          armor: Math.max(1, Math.min(6, g.armor ?? 3)),
+          specials: [...(g.specials ?? [])],
+          weapons: (g.weapons ?? [{ weapon: 'laser_cannon', count: 4, mods: [], arc: 'F' }]).map((w) => ({ ...w, mods: [...w.mods] })),
+          count: g.count ?? 2,
         }))
       : null;
 
@@ -119,9 +130,23 @@
   let seed = $state(seeded?.seed ?? 'battle-lab-0001');
   let viewing = $state<ReplayEntry | null>(null);
   let error = $state('');
+  let editing = $state<{ side: 0 | 1; gi: number } | null>(null);
+
+  function applyLabOverrides(stats: DesignStats, g: LabGroup): DesignStats {
+    const out = { ...stats };
+    const armorTier = Math.max(1, Math.min(6, g.armor));
+
+    // designStats is computed with a max-tech lab empire (tier 6 drive/armor).
+    // Keep drive behavior at max-tech and only rescale armor/structure.
+    const bestArmorMult = ARMOR_MULT[5]!;
+    const armorMult = ARMOR_MULT[armorTier - 1]!;
+    out.armorHp = Math.max(1, Math.round((out.armorHp * armorMult) / bestArmorMult));
+    out.structureHp = Math.max(1, Math.round((out.structureHp * armorMult) / bestArmorMult));
+    return out;
+  }
 
   function groupStats(side: 0 | 1, g: LabGroup): DesignStats | string {
-    return designStats(stubState, empires[side]!, {
+    const base = designStats(stubState, empires[side]!, {
       name: 'lab',
       hull: g.hull,
       computer: g.computer,
@@ -129,18 +154,12 @@
       specials: g.specials,
       weapons: g.weapons,
     });
+    return typeof base === 'string' ? base : applyLabOverrides(base, g);
   }
 
   function toCombat(side: 0 | 1, g: LabGroup, idx: number, n: number, style: string): CombatShipInit | string {
     const stats = groupStats(side, g);
     if (typeof stats === 'string') return stats;
-    // armor class override: the lab empire knows xentronium (x10); rescale
-    // hull points to the chosen tier so observed enemies match reality
-    const wantTier = g.armor ?? 6;
-    const bestMult = ARMOR_MULT[5]!;
-    const wantMult = ARMOR_MULT[Math.max(1, Math.min(6, wantTier)) - 1]!;
-    const armorHp = Math.max(1, Math.round((stats.armorHp * wantMult) / bestMult));
-    const structureHp = Math.max(1, Math.round((stats.structureHp * wantMult) / bestMult));
     return {
       shipId: (side + 1) * 1000 + idx * 100 + n,
       side,
@@ -150,8 +169,8 @@
       beamAttack: stats.beamAttack,
       beamDefense: stats.beamDefense,
       speed: stats.combatSpeed,
-      armorHp,
-      structureHp,
+      armorHp: stats.armorHp,
+      structureHp: stats.structureHp,
       shieldPool: stats.shieldPool,
       shieldFlat: stats.shieldFlat,
       weapons: stats.weapons.map((w) => ({
@@ -165,8 +184,8 @@
         count: w.count,
         arc: w.arc,
       })),
-      startingStructure: structureHp,
-      startingArmor: armorHp,
+      startingStructure: stats.structureHp,
+      startingArmor: stats.armorHp,
       specials: g.specials,
       style,
       modelIdx: g.model ?? 0,
@@ -240,6 +259,35 @@
   }
   const pretty = (id: string) => id.replaceAll('_', ' ');
   const maxHullSpace = (h: string) => hullById.get(h)?.space ?? 0;
+  function clickField(ev: MouseEvent, value: number, lo: number, hi: number): number {
+    const el = ev.currentTarget as HTMLElement;
+    const r = el.getBoundingClientRect();
+    const dir = ev.clientX - r.left < r.width / 2 ? -1 : 1;
+    return Math.max(lo, Math.min(hi, value + dir));
+  }
+  function missileEvasionOf(g: LabGroup): number {
+    if (g.specials.includes('multi_wave_ecm_jammer')) return 70;
+    if (g.specials.includes('ecm_jammer') || g.specials.includes('wide_area_jammer')) return 40;
+    return 0;
+  }
+  function openEditor(side: 0 | 1, gi: number) {
+    editing = { side, gi };
+  }
+  function removeGroup(side: 0 | 1, gi: number) {
+    sides[side].groups = sides[side].groups.filter((_, x) => x !== gi);
+    if (editing?.side === side && editing.gi === gi) editing = null;
+  }
+  function groupSummary(g: LabGroup): string {
+    const wep = g.weapons
+      .slice(0, 3)
+      .map((w) => `${w.count}x ${pretty(w.weapon)}`)
+      .join(', ');
+    const more = g.weapons.length > 3 ? ` +${g.weapons.length - 3} more` : '';
+    return `${pretty(g.hull)} | comp ${g.computer} | shield ${g.shield} | ${wep}${more}`;
+  }
+  const specialName = (id: string) => specialSystemInfo(id).name;
+  const specialDescription = (id: string) => specialSystemInfo(id).description;
+  const specialSpacePct = (id: string) => specialSystemInfo(id).spacePct;
 </script>
 
 <div class="lab">
@@ -297,7 +345,7 @@
         {#each s.groups as g, gi (gi)}
           {@const st = groupStats(side, g)}
           <div class="group">
-            <div class="row">
+            <div class="row groupHead">
               <ShipPreview
                 style={s.style}
                 cls={g.hull as ArtClass}
@@ -308,55 +356,21 @@
                 missileTubes={g.weapons.reduce((t, w) => t + ((weaponChoices.find((wc) => wc.id === w.weapon)?.classId ?? 0) === 1 ? w.count : 0), 0)}
                 px={2}
               />
-              <button
-                class="mini"
-                title="cycle this group's model variant"
-                onclick={() => (g.model = (wrapVariant(g.hull as ArtClass, g.model ?? 0) + 1) % variantsFor(g.hull as ArtClass))}
-              >model {wrapVariant(g.hull as ArtClass, g.model ?? 0) + 1}/{variantsFor(g.hull as ArtClass)}</button>
-              <input type="number" min="1" max="12" bind:value={g.count} title="ships in this group" />×
-              <select bind:value={g.hull}>
-                {#each HULLS_BUILDABLE as h (h)}<option value={h}>{h} ({maxHullSpace(h)} space)</option>{/each}
-              </select>
-              <label>comp <input type="number" min="0" max="6" bind:value={g.computer} /></label>
-              <label>shield <input type="number" min="0" max="7" bind:value={g.shield} /></label>
+              <div class="groupMeta">
+                <b>{groupSummary(g)}</b>
+                <span class="dim">model {wrapVariant(g.hull as ArtClass, g.model ?? 0) + 1}/{variantsFor(g.hull as ArtClass)} · drive 6 · armor {g.armor} · weapons {g.weapons.length} · specials {g.specials.length}</span>
+              </div>
               <label>armor
-                <select bind:value={g.armor} title="armor class scales hull and structure points (observed enemies import with their real class)">
-                  {#each ARMOR_NAMES as an, ai (an)}
-                    <option value={ai + 1}>{an} ×{ARMOR_MULT[ai]}</option>
+                <select bind:value={g.armor} title="group armor tier">
+                  {#each armorOptions as o (o.tier)}
+                    <option value={o.tier}>{o.tier}</option>
                   {/each}
                 </select>
               </label>
+              <label>count <input type="number" min="1" max="12" bind:value={g.count} title="ships in this group" /></label>
+              <button class="mini" data-testid="lab-edit-{side}-{gi}" onclick={() => openEditor(side, gi)}>Edit</button>
               <button class="mini" data-testid="clone-{side}-{gi}" title="clone this ship type" onclick={() => (s.groups = [...s.groups.slice(0, gi + 1), structuredClone($state.snapshot(g)) as typeof g, ...s.groups.slice(gi + 1)])}>⎘ clone</button>
-              <button class="mini" onclick={() => (s.groups = s.groups.filter((_, x) => x !== gi))}>✕</button>
-            </div>
-            {#each g.weapons as w, wi (wi)}
-              <div class="row weap">
-                <select bind:value={w.weapon}>
-                  {#each weaponChoices as wc (wc.id)}<option value={wc.id}>{pretty(wc.id)}</option>{/each}
-                </select>
-                <input type="number" min="1" max="40" bind:value={w.count} />
-                <select bind:value={w.arc} title="firing arc: F forward 180° · FX 270° (+20% space) · R rear 180° (−10%) · 360 turret (+40%)">
-                  <option value="F">F</option>
-                  <option value="FX">FX</option>
-                  <option value="R">R</option>
-                  <option value="360">360</option>
-                </select>
-                {#each weaponChoices.find((wc) => wc.id === w.weapon)?.availableMods ?? [] as mod (mod)}
-                  <label class="mod"><input type="checkbox" checked={w.mods.includes(mod)} onchange={() => toggleMod(g, wi, mod)} />{mod}</label>
-                {/each}
-                <button class="mini" onclick={() => (g.weapons = g.weapons.filter((_, x) => x !== wi))}>✕</button>
-              </div>
-            {/each}
-            <div class="row">
-              <button class="mini" onclick={() => addWeapon(g)}>+ weapon</button>
-              <details>
-                <summary>specials ({g.specials.length})</summary>
-                <div class="specials">
-                  {#each Object.keys(SPECIALS) as sp (sp)}
-                    <label class="mod"><input type="checkbox" checked={g.specials.includes(sp)} onchange={() => toggleSpecial(g, sp)} />{pretty(sp)}</label>
-                  {/each}
-                </div>
-              </details>
+              <button class="mini" onclick={() => removeGroup(side, gi)}>✕</button>
             </div>
             {#if typeof st === 'string'}
               <p class="error">{st}</p>
@@ -373,6 +387,65 @@
 
 {#if viewing}
   <BattleViewer replay={viewing} onclose={() => (viewing = null)} />
+{/if}
+
+{#if editing}
+  {@const s = sides[editing.side]}
+  {@const g = s.groups[editing.gi]}
+  {#if g}
+    <div class="overlay" role="dialog" aria-label="Edit ship group">
+      <div class="editorModal">
+        <header class="modalHead">
+          <h3>Edit Ship Group</h3>
+          <button class="mini" onclick={() => (editing = null)}>Close</button>
+        </header>
+        <ShipLoadoutEditor
+          driveName={driveNameForTier(6)}
+          armorName={armorNameForTier(Math.max(1, Math.min(6, g.armor)))}
+          shipStyle={s.style}
+          shipClass={g.hull}
+          shipVariant={g.model ?? 0}
+          shipColor={playerColor(editing.side)}
+          shipPx={2}
+          previewSpecials={g.specials}
+          previewHeavyBeams={g.weapons.some((w) => w.mods.includes('hv'))}
+          previewMissileTubes={g.weapons.reduce((t, w) => t + ((weaponChoices.find((wc) => wc.id === w.weapon)?.classId ?? 0) === 1 ? w.count : 0), 0)}
+          modelLabel={`model ${wrapVariant(g.hull as ArtClass, g.model ?? 0) + 1}/${variantsFor(g.hull as ArtClass)}`}
+          canPrevModel={variantsFor(g.hull as ArtClass) >= 2}
+          canNextModel={variantsFor(g.hull as ArtClass) >= 2}
+          onPrevModel={() => (g.model = (wrapVariant(g.hull as ArtClass, g.model ?? 0) - 1 + variantsFor(g.hull as ArtClass)) % variantsFor(g.hull as ArtClass))}
+          onNextModel={() => (g.model = (wrapVariant(g.hull as ArtClass, g.model ?? 0) + 1) % variantsFor(g.hull as ArtClass))}
+          hullOptions={HULLS_BUILDABLE.map((h) => ({ id: h, label: `${h} (${maxHullSpace(h)} space)` }))}
+          selectedHull={g.hull}
+          hullSpace={maxHullSpace(g.hull)}
+          hullSelectTestId="lab-hull"
+          onSelectHull={(h) => (g.hull = h)}
+          driveTier={6}
+          armorTier={Math.max(1, Math.min(6, g.armor))}
+          computerName={computerNameForTier(g.computer)}
+          shieldName={shieldNameForTier(g.shield)}
+          maxComputer={COMPUTER_APPS.length}
+          maxShield={SHIELD_APPS.length}
+          missileEvasion={missileEvasionOf(g)}
+          stats={groupStats(editing.side, g)}
+          availableSpecials={Object.keys(SPECIALS)}
+          specials={g.specials}
+          specialName={specialName}
+          specialDescription={specialDescription}
+          specialSpacePct={specialSpacePct}
+          weapons={g.weapons}
+          weaponChoices={weaponChoices}
+          modTooltip={weaponModTooltip}
+          onClickComputerField={(ev) => (g.computer = clickField(ev, g.computer, 0, COMPUTER_APPS.length))}
+          onClickShieldField={(ev) => (g.shield = clickField(ev, g.shield, 0, SHIELD_APPS.length))}
+          onToggleSpecial={(sp) => toggleSpecial(g, sp)}
+          onToggleMod={(wi, mod) => toggleMod(g, wi, mod)}
+          onAddWeapon={() => addWeapon(g)}
+          onRemoveWeapon={(wi) => (g.weapons = g.weapons.filter((_, x) => x !== wi))}
+        />
+      </div>
+    </div>
+  {/if}
 {/if}
 
 <style>
@@ -428,6 +501,16 @@
     padding: 0.5rem 0.6rem;
     margin-bottom: 0.6rem;
   }
+  .groupHead {
+    align-items: flex-start;
+  }
+  .groupMeta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 18rem;
+    flex: 1;
+  }
   .row {
     display: flex;
     gap: 0.4rem;
@@ -435,22 +518,36 @@
     flex-wrap: wrap;
     margin-bottom: 0.3rem;
   }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(4, 8, 20, 0.75);
+    display: grid;
+    place-items: center;
+    z-index: 60;
+    padding: 1rem;
+  }
+  .editorModal {
+    width: min(74rem, 96vw);
+    max-height: 88vh;
+    overflow: auto;
+    border: 1px solid #35548f;
+    border-radius: 10px;
+    padding: 0.8rem 0.9rem;
+    background: linear-gradient(180deg, rgba(21, 29, 63, 0.96), rgba(15, 21, 48, 0.96));
+  }
+  .modalHead {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+  .modalHead h3 {
+    margin: 0;
+    color: var(--accent-soft);
+  }
   .row input[type='number'] {
     width: 3.4rem;
-  }
-  .weap {
-    margin-left: 0.6rem;
-  }
-  .mod {
-    font-size: 0.75rem;
-    display: inline-flex;
-    gap: 0.15rem;
-  }
-  .specials {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
-    gap: 0.15rem 0.6rem;
-    padding: 0.3rem 0;
   }
   .stats {
     font-size: 0.78rem;

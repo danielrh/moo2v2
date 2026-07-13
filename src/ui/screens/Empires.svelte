@@ -1,9 +1,11 @@
 <script lang="ts">
   import { leaderById, salaryOf, MAX_LEADERS_PER_KIND, countKind } from '@engine/leaders';
-  import { selectors, HULLS_BUILDABLE } from '@engine/index';
+  import { selectors, shipStyleOf, SHIP_STYLES, HULLS_BUILDABLE } from '@engine/index';
   import { PICK_ROWS, GOVERNMENTS, pickById } from '@engine/data/index';
   import type { ProposalKind } from '@engine/types';
   import { ownerName, playerColor } from '../colors';
+  import ShipPreview from '../battle/ShipPreview.svelte';
+  import type { ArtClass } from '../battle/shipart';
   import { battleToLabSeed, enemySeedsFromReplays, setLabSeed, type LabSeedGroup } from '../labSeed';
   import GroundBattleDialog from '../battle/GroundBattleDialog.svelte';
   import type { GroundBattleEntry } from '../state.svelte';
@@ -22,6 +24,21 @@
   const others = $derived(gs ? gs.empires.filter((e) => e.id !== selfId && met.has(e.id)) : []);
   const livingOthers = $derived(others.filter((e) => !e.eliminated));
   const unmetCount = $derived(gs ? gs.empires.filter((e) => e.id !== selfId && !met.has(e.id)).length : 0);
+  const PREVIEW_CLASSES: ArtClass[] = ['scout', 'frigate', 'destroyer', 'cruiser', 'battleship', 'titan', 'doomstar', 'star_base'];
+  const currentStyle = $derived(me ? shipStyleOf(me) : SHIP_STYLES[0]!.id);
+  let styleSel = $state<string | null>(null);
+  const shownStyle = $derived(styleSel ?? currentStyle);
+  const shownStyleInfo = $derived(SHIP_STYLES.find((s) => s.id === shownStyle) ?? SHIP_STYLES[0]!);
+
+  function cycleStyle(dir: 1 | -1) {
+    const i = SHIP_STYLES.findIndex((s) => s.id === shownStyle);
+    styleSel = SHIP_STYLES[(i + dir + SHIP_STYLES.length) % SHIP_STYLES.length]!.id;
+  }
+  function applyStyle() {
+    if (shownStyle === currentStyle) return;
+    submit('set_ship_style', { style: shownStyle });
+    styleSel = null;
+  }
 
   let note = $state('');
   let viewingGround = $state<GroundBattleEntry | null>(null);
@@ -212,6 +229,30 @@
     {/each}
     {#if me.picks.length === 0}<span class="dim">no racial modifiers</span>{/if}
   </p>
+
+  <div class="appearance" data-testid="fleet-style-panel">
+    <div class="stylebar">
+      <h3>Fleet look</h3>
+      <button class="mini" data-testid="style-prev" onclick={() => cycleStyle(-1)} title="previous style">◀</button>
+      <b class="stylename">{shownStyleInfo.name}</b>
+      <button class="mini" data-testid="style-next" onclick={() => cycleStyle(1)} title="next style">▶</button>
+      <span class="dim">{shownStyleInfo.blurb}</span>
+      {#if shownStyle !== currentStyle}
+        <button data-testid="style-apply" onclick={applyStyle}>Adopt this style</button>
+      {:else}
+        <span class="current">current fleet style</span>
+      {/if}
+    </div>
+    <div class="stylestrip">
+      {#each PREVIEW_CLASSES as pc (pc)}
+        <span class="cell">
+          <ShipPreview style={shownStyle} cls={pc} variant={0} color={playerColor(selfId)} px={2} title={pc.replaceAll('_', ' ')} />
+          <small>{pc === 'star_base' ? 'base' : pc}</small>
+        </span>
+      {/each}
+    </div>
+    <p class="dim finePrint">Cosmetic only. This changes how your fleets look in battles and replays.</p>
+  </div>
 
   <h3>Relations</h3>
   {#if unmetCount > 0}
@@ -511,6 +552,56 @@
 {/if}
 
 <style>
+  .appearance {
+    border: 1px solid #26304f;
+    border-radius: 10px;
+    padding: 0.5rem 0.9rem 0.35rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(180deg, rgba(15, 21, 48, 0.65), rgba(10, 14, 34, 0.65));
+    max-width: 64rem;
+  }
+  .stylebar {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+  }
+  .stylebar h3 {
+    margin: 0;
+  }
+  .stylename {
+    min-width: 6rem;
+    text-align: center;
+    color: var(--accent-soft);
+  }
+  .current {
+    color: var(--good, #5ee08a);
+    font-size: 0.85rem;
+  }
+  .stylestrip {
+    display: flex;
+    gap: 0.95rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 0.45rem;
+  }
+  .stylestrip .cell {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.12rem;
+  }
+  .stylestrip small {
+    color: var(--text-dim);
+    font-size: 0.68rem;
+  }
+  .mini {
+    padding: 0.1rem 0.45rem;
+  }
+  .finePrint {
+    margin: 0.2rem 0 0;
+    font-size: 0.78rem;
+  }
   .pickrow {
     display: flex;
     flex-wrap: wrap;

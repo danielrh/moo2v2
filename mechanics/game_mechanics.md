@@ -1131,22 +1131,22 @@ Columns:
 
 ## Weapon modification table
 
-| mod | mod_id | miniaturization_level | space_percent | cost_percent | damage_multiplier |
-|---|---:|---:|---:|---:|---:|
-| heavy_mount | 1 | 0 | 100 | 100 | 1 |
-| point_defense | 2 | 0 | -50 | -50 | 1 |
-| armor_piercing | 3 | 1 | 50 | 50 | 0 |
-| continuous | 4 | 1 | 50 | 50 | 0 |
-| no_range_dissipation | 5 | 1 | 25 | 25 | 0 |
-| shield_piercing | 6 | 1 | 50 | 50 | 0 |
-| auto_fire | 7 | 2 | 50 | 50 | 0 |
-| enveloping | 8 | 2 | 100 | 100 | 0 |
-| mirv | 9 | 2 | 100 | 100 | 0 |
-| eccm | 10 | 1 | 25 | 25 | 0 |
-| heavily_armored | 11 | 1 | 25 | 25 | 0 |
-| fast | 12 | 1 | 25 | 25 | 0 |
-| emissions_guidance | 13 | 0 | 300 | 300 | 0 |
-| overloaded | 14 | 1 | 50 | 50 | 0 |
+| mod | mod_id | miniaturization_level | space_percent | cost_percent | damage_multiplier | hint |
+|---|---:|---:|---:|---:|---:|---|
+| heavy_mount | 1 | 0 | 100 | 100 | 1 | Heavy mount: +50% damage and longer beam reach. |
+| point_defense | 2 | 0 | -50 | -50 | 1 | Point defense: shoots incoming missiles and torpedoes, limited anti-ship output. |
+| armor_piercing | 3 | 1 | 50 | 50 | 0 | Armor piercing: bypasses armor and hits structure directly. |
+| continuous | 4 | 1 | 50 | 50 | 0 | Continuous: +25 to-hit bonus. |
+| no_range_dissipation | 5 | 1 | 25 | 25 | 0 | No range dissipation: keeps full damage at all bands. |
+| shield_piercing | 6 | 1 | 50 | 50 | 0 | Shield piercing: bypasses shields unless hard shields are active. |
+| auto_fire | 7 | 2 | 50 | 50 | 0 | Auto-fire: fires 3 shots with lower per-shot hit chance. |
+| enveloping | 8 | 2 | 100 | 100 | 0 | Enveloping: doubles damage and wraps around shields. |
+| mirv | 9 | 2 | 100 | 100 | 0 | MIRV: missile splits into 4 independently interceptable warheads. |
+| eccm | 10 | 1 | 25 | 25 | 0 | ECCM: ignores missile evasion jamming. |
+| heavily_armored | 11 | 1 | 25 | 25 | 0 | Armored munition: survives one interceptor hit. |
+| fast | 12 | 1 | 25 | 25 | 0 | Fast munition: higher missile or torpedo travel speed. |
+| emissions_guidance | 13 | 0 | 300 | 300 | 0 | Emissions guidance: bypasses shields and favors drive-system knockouts. |
+| overloaded | 14 | 1 | 50 | 50 | 0 | Overloaded: +50% damage output. |
 
 ## Weapon mod flag legend
 

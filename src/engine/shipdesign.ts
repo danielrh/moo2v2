@@ -16,6 +16,7 @@
 
 import {
   appForWeapon,
+  applicationById,
   fieldById,
   FIELD_ROWS,
   FIELD_SUBJECTS,
@@ -62,10 +63,10 @@ export interface ShipDesign {
 
 // ---------- tech tiers available to an empire ----------
 
-const COMPUTER_APPS = ['electronic_computer', 'optronic_computer', 'positronic_computer', 'cybertronic_computer', 'moleculartronic_computer'];
-const SHIELD_APPS = ['class_i_shield', 'class_iii_shield', 'class_v_shield', 'class_vii_shield', 'class_x_shield'];
-const ARMOR_APPS = ['titanium_armor', 'tritanium_armor', 'zortrium_armor', 'neutronium_armor', 'adamantium_armor', 'xentronium_armor'];
-const DRIVE_APPS = ['nuclear_drive', 'fusion_drive', 'ion_drive', 'anti_matter_drive', 'hyper_drive', 'interphased_drive'];
+export const COMPUTER_APPS = ['electronic_computer', 'optronic_computer', 'positronic_computer', 'cybertronic_computer', 'moleculartronic_computer'];
+export const SHIELD_APPS = ['class_i_shield', 'class_iii_shield', 'class_v_shield', 'class_vii_shield', 'class_x_shield'];
+export const ARMOR_APPS = ['titanium_armor', 'tritanium_armor', 'zortrium_armor', 'neutronium_armor', 'adamantium_armor', 'xentronium_armor'];
+export const DRIVE_APPS = ['nuclear_drive', 'fusion_drive', 'ion_drive', 'anti_matter_drive', 'hyper_drive', 'interphased_drive'];
 export const ARMOR_MULT = [1, 2, 5, 6, 8, 10];
 export const ARMOR_NAMES = ['titanium', 'tritanium', 'zortrium', 'neutronium', 'adamantium', 'xentronium'];
 
@@ -98,7 +99,40 @@ export const SPECIALS: Record<string, number> = {
   lightning_field: 8, // 50% of incoming missiles/torpedoes destroyed
 };
 
-function bestTier(empire: Empire, apps: string[], alwaysFirst = false): number {
+export interface SpecialSystemInfo {
+  id: string;
+  name: string;
+  description: string;
+  spacePct: number;
+}
+
+// SPECIALS ids are canonical for simulation; some differ from application ids.
+const SPECIAL_APP_ALIAS: Readonly<Record<string, string>> = {
+  inertia_nullifier: 'inertial_nullifier',
+  warp_dissipater: 'warp_dissipator',
+};
+
+function prettySpecialId(id: string): string {
+  return id
+    .split('_')
+    .map((w) => (w[0] ?? '').toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+export function specialSystemInfo(id: string): SpecialSystemInfo {
+  const appId = SPECIAL_APP_ALIAS[id] ?? id;
+  const app = applicationById.get(appId);
+  const name = app?.name ?? prettySpecialId(id);
+  const description = app?.effectSummary ?? `${name}.`;
+  return {
+    id,
+    name,
+    description,
+    spacePct: SPECIALS[id] ?? 0,
+  };
+}
+
+function bestTier(empire: Empire, apps: readonly string[], alwaysFirst = false): number {
   let tier = alwaysFirst ? 1 : 0;
   apps.forEach((app, i) => {
     if (empire.knownApps.includes(app)) tier = i + 1;

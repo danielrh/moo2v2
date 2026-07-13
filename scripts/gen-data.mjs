@@ -9,8 +9,9 @@
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const mech = (p) => readFileSync(join(root, 'mechanics', p), 'utf8');
 const OUT = join(root, 'src/engine/data/generated.ts');
 
@@ -203,6 +204,7 @@ const weaponMods = modTable.rows.map((r) => ({
   spacePercent: num(r[3]),
   costPercent: num(r[4]),
   damageMultiplier: num(r[5]),
+  hint: r[6] ?? '',
 }));
 
 const flagTable = findTable(gmTables, ['Flag', 'Suggested key']);
@@ -365,7 +367,7 @@ export interface WeaponRow {
 }
 export interface WeaponModRow {
   id: string; modId: number; miniaturizationLevel: number;
-  spacePercent: number; costPercent: number; damageMultiplier: number;
+  spacePercent: number; costPercent: number; damageMultiplier: number; hint: string;
 }
 export interface ApplicationRow {
   id: string; name: string; subject: string; fieldId: string; techId: number | null;
