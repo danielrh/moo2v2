@@ -18,7 +18,7 @@ export interface WeaponRow {
 }
 export interface WeaponModRow {
   id: string; modId: number; miniaturizationLevel: number;
-  spacePercent: number; costPercent: number; damageMultiplier: number;
+  spacePercent: number; costPercent: number; damageMultiplier: number; hint: string;
 }
 export interface ApplicationRow {
   id: string; name: string; subject: string; fieldId: string; techId: number | null;
@@ -4006,7 +4006,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 0,
     "spacePercent": 100,
     "costPercent": 100,
-    "damageMultiplier": 1
+    "damageMultiplier": 1,
+    "hint": "Heavy mount: +50% damage and longer beam reach."
   },
   {
     "id": "point_defense",
@@ -4014,7 +4015,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 0,
     "spacePercent": -50,
     "costPercent": -50,
-    "damageMultiplier": 1
+    "damageMultiplier": 1,
+    "hint": "Point defense: shoots incoming missiles and torpedoes, limited anti-ship output."
   },
   {
     "id": "armor_piercing",
@@ -4022,7 +4024,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 1,
     "spacePercent": 50,
     "costPercent": 50,
-    "damageMultiplier": 0
+    "damageMultiplier": 0,
+    "hint": "Armor piercing: bypasses armor and hits structure directly."
   },
   {
     "id": "continuous",
@@ -4030,7 +4033,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 1,
     "spacePercent": 50,
     "costPercent": 50,
-    "damageMultiplier": 0
+    "damageMultiplier": 0,
+    "hint": "Continuous: +25 to-hit bonus."
   },
   {
     "id": "no_range_dissipation",
@@ -4038,7 +4042,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 1,
     "spacePercent": 25,
     "costPercent": 25,
-    "damageMultiplier": 0
+    "damageMultiplier": 0,
+    "hint": "No range dissipation: keeps full damage at all bands."
   },
   {
     "id": "shield_piercing",
@@ -4046,7 +4051,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 1,
     "spacePercent": 50,
     "costPercent": 50,
-    "damageMultiplier": 0
+    "damageMultiplier": 0,
+    "hint": "Shield piercing: bypasses shields unless hard shields are active."
   },
   {
     "id": "auto_fire",
@@ -4054,7 +4060,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 2,
     "spacePercent": 50,
     "costPercent": 50,
-    "damageMultiplier": 0
+    "damageMultiplier": 0,
+    "hint": "Auto-fire: fires 3 shots with lower per-shot hit chance."
   },
   {
     "id": "enveloping",
@@ -4062,7 +4069,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 2,
     "spacePercent": 100,
     "costPercent": 100,
-    "damageMultiplier": 0
+    "damageMultiplier": 0,
+    "hint": "Enveloping: doubles damage and wraps around shields."
   },
   {
     "id": "mirv",
@@ -4070,7 +4078,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 2,
     "spacePercent": 100,
     "costPercent": 100,
-    "damageMultiplier": 0
+    "damageMultiplier": 0,
+    "hint": "MIRV: missile splits into 4 independently interceptable warheads."
   },
   {
     "id": "eccm",
@@ -4078,7 +4087,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 1,
     "spacePercent": 25,
     "costPercent": 25,
-    "damageMultiplier": 0
+    "damageMultiplier": 0,
+    "hint": "ECCM: ignores missile evasion jamming."
   },
   {
     "id": "heavily_armored",
@@ -4086,7 +4096,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 1,
     "spacePercent": 25,
     "costPercent": 25,
-    "damageMultiplier": 0
+    "damageMultiplier": 0,
+    "hint": "Armored munition: survives one interceptor hit."
   },
   {
     "id": "fast",
@@ -4094,7 +4105,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 1,
     "spacePercent": 25,
     "costPercent": 25,
-    "damageMultiplier": 0
+    "damageMultiplier": 0,
+    "hint": "Fast munition: higher missile or torpedo travel speed."
   },
   {
     "id": "emissions_guidance",
@@ -4102,7 +4114,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 0,
     "spacePercent": 300,
     "costPercent": 300,
-    "damageMultiplier": 0
+    "damageMultiplier": 0,
+    "hint": "Emissions guidance: bypasses shields and favors drive-system knockouts."
   },
   {
     "id": "overloaded",
@@ -4110,7 +4123,8 @@ export const WEAPON_MOD_ROWS: readonly WeaponModRow[] = [
     "miniaturizationLevel": 1,
     "spacePercent": 50,
     "costPercent": 50,
-    "damageMultiplier": 0
+    "damageMultiplier": 0,
+    "hint": "Overloaded: +50% damage output."
   }
 ] as const;
 

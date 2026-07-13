@@ -1,33 +1,30 @@
 <script lang="ts">
   import {
     availableHulls,
+    bestArmor,
     bestComputer,
+    bestDrive,
     bestShield,
     designDps,
     designStats,
     modUnlocked,
     knownWeapons,
+    specialSystemInfo,
     shipStyleOf,
     HULLS_BUILDABLE,
-    SHIP_STYLES,
     SPECIALS,
     type DesignStats,
     type EmpireDesign,
     type WeaponArc,
   } from '@engine/index';
-  import { weaponById } from '@engine/data/index';
+  import { appForWeapon, hullById, weaponById } from '@engine/data/index';
   import { app, getActive } from '../state.svelte';
   import { playerColor } from '../colors';
   import ShipPreview from '../battle/ShipPreview.svelte';
+  import ShipLoadoutEditor from '../components/ShipLoadoutEditor.svelte';
+  import { armorNameForTier, computerNameForTier, driveNameForTier, shieldNameForTier, weaponModTooltip } from '../components/shipLoadoutShared';
   import { variantsFor, wrapVariant, type ArtClass } from '../battle/shipart';
   import { enemySeedsFromReplays, setLabSeed, type LabSeedGroup } from '../labSeed';
-
-  const ARCS: Array<{ id: WeaponArc; label: string; help: string }> = [
-    { id: 'F', label: 'F', help: 'forward 180° (standard mount)' },
-    { id: 'FX', label: 'FX', help: 'extended forward 270° (+20% space)' },
-    { id: 'R', label: 'R', help: 'rear 180° (−10% space — raiders fire while withdrawing)' },
-    { id: '360', label: '360', help: 'full turret coverage (+40% space)' },
-  ];
   /** designer readout: expected damage/sec at short range for the current fit */
   function dpsOf(st: DesignStats): number {
     return designDps(
@@ -81,22 +78,9 @@
   /** cosmetic model variant within the hull class (scroll with ◀ ▶) */
   let modelIdx = $state(0);
 
-  // ---- fleet appearance (cosmetic; visible to everyone in battle replays) ----
+  // ---- fleet appearance (cosmetic; selected in Empires, previewed here) ----
   const myColor = $derived(playerColor(session().playerId));
-  const currentStyle = $derived(empire ? shipStyleOf(empire) : SHIP_STYLES[0]!.id);
-  let styleSel = $state<string | null>(null); // null = the applied style
-  const shownStyle = $derived(styleSel ?? currentStyle);
-  const shownStyleInfo = $derived(SHIP_STYLES.find((s) => s.id === shownStyle) ?? SHIP_STYLES[0]!);
-  const PREVIEW_CLASSES: ArtClass[] = ['scout', 'frigate', 'destroyer', 'cruiser', 'battleship', 'titan', 'doomstar', 'star_base'];
-  function cycleStyle(dir: 1 | -1) {
-    const i = SHIP_STYLES.findIndex((s) => s.id === shownStyle);
-    styleSel = SHIP_STYLES[(i + dir + SHIP_STYLES.length) % SHIP_STYLES.length]!.id;
-  }
-  function applyStyle() {
-    if (shownStyle === currentStyle) return;
-    const res = session().submit('set_ship_style', { style: shownStyle });
-    if (!res.error) styleSel = null;
-  }
+  const currentStyle = $derived(empire ? shipStyleOf(empire) : 'raptor');
   // model previews bake in the fit: heavy mounts and missile racks show on the hull
   const previewHeavy = $derived(weapons.some((w) => w.mods.includes('hv')));
   const previewMissiles = $derived(
@@ -109,10 +93,30 @@
 
   const maxComputer = $derived(empire ? bestComputer(empire) : 0);
   const maxShield = $derived(empire ? bestShield(empire) : 0);
-  const weaponChoices = $derived(empire ? knownWeapons(empire).filter((w) => w.techId !== 0) : []);
+  const driveTier = $derived(empire ? bestDrive(empire) : 1);
+  const armorTier = $derived(empire ? bestArmor(empire) : 1);
+  const driveName = $derived(driveNameForTier(driveTier));
+  const armorName = $derived(armorNameForTier(armorTier));
+  const computerName = $derived(computerNameForTier(computer));
+  const shieldName = $derived(shieldNameForTier(shield));
+  const missileEvasion = $derived.by(() => {
+    if (specials.includes('multi_wave_ecm_jammer')) return 70;
+    if (specials.includes('ecm_jammer') || specials.includes('wide_area_jammer')) return 40;
+    return 0;
+  });
+  const weaponChoices = $derived(
+    empire
+      ? knownWeapons(empire)
+          .filter((w) => w.techId !== 0)
+          .map((w) => ({ ...w, label: appForWeapon(w.id)?.name ?? w.id.replaceAll('_', ' ') }))
+      : [],
+  );
   const availableSpecials = $derived(
     empire ? Object.keys(SPECIALS).filter((s) => empire.knownApps.includes(s)) : [],
   );
+  const specialName = (id: string) => specialSystemInfo(id).name;
+  const specialDescription = (id: string) => specialSystemInfo(id).description;
+  const specialSpacePct = (id: string) => specialSystemInfo(id).spacePct;
 
   const stats = $derived.by((): DesignStats | string | null => {
     if (!gs || !empire) return null;
@@ -133,6 +137,25 @@
   }
   function toggleSpecial(sp: string) {
     specials = specials.includes(sp) ? specials.filter((s) => s !== sp) : [...specials, sp];
+  }
+  function isModLocked(weaponId: string, mod: string): boolean {
+    return empire ? !modUnlocked(empire, weaponId, mod) : false;
+  }
+  function cycleComputer(dir: 1 | -1) {
+    computer = Math.max(0, Math.min(maxComputer, computer + dir));
+  }
+  function cycleShield(dir: 1 | -1) {
+    shield = Math.max(0, Math.min(maxShield, shield + dir));
+  }
+  function clickComputerField(ev: MouseEvent) {
+    const el = ev.currentTarget as HTMLElement;
+    const r = el.getBoundingClientRect();
+    cycleComputer(ev.clientX - r.left < r.width / 2 ? -1 : 1);
+  }
+  function clickShieldField(ev: MouseEvent) {
+    const el = ev.currentTarget as HTMLElement;
+    const r = el.getBoundingClientRect();
+    cycleShield(ev.clientX - r.left < r.width / 2 ? -1 : 1);
   }
   function save() {
     const res = session().submit('save_design', {
@@ -228,6 +251,36 @@
     titan: 'requires Titan Construction',
     doomstar: 'requires Doom Star Construction',
   };
+  function hullLabel(id: string): string {
+    return id
+      .split('_')
+      .map((w) => (w[0] ?? '').toUpperCase() + w.slice(1))
+      .join(' ');
+  }
+  const hullOptions = $derived(
+    HULLS_BUILDABLE.map((h) => ({
+      id: h,
+      label: hullLabel(h),
+      disabled: !hullsOpen.includes(h),
+      title: hullsOpen.includes(h) ? `select ${hullLabel(h)}` : HULL_REQS[h] ?? 'locked',
+    })),
+  );
+  const hullSpace = $derived(hullById.get(hull)?.space ?? 0);
+  function selectHull(h: string) {
+    if (!hullsOpen.includes(h)) return;
+    hull = h;
+  }
+  function clearEditor() {
+    nameAuto = true;
+    specials = [];
+    weapons = weaponChoices[0] ? [{ weapon: weaponChoices[0].id, count: 1, mods: [], arc: 'F' }] : [];
+  }
+  function cancelEditor() {
+    clearEditor();
+    nameAuto = true;
+    name = autoName(hull);
+    importNote = '';
+  }
 
   // design inspector: expand a saved design to see exactly how it was built
   let inspecting = $state<number | null>(null);
@@ -251,135 +304,94 @@
 </script>
 
 {#if gs && empire}
-  <div class="appearance" data-testid="fleet-style-panel">
-    <div class="stylebar">
-      <h3>Fleet style</h3>
-      <button class="mini" data-testid="style-prev" onclick={() => cycleStyle(-1)} title="previous style">◀</button>
-      <b class="stylename">{shownStyleInfo.name}</b>
-      <button class="mini" data-testid="style-next" onclick={() => cycleStyle(1)} title="next style">▶</button>
-      <span class="dim">{shownStyleInfo.blurb}</span>
-      {#if shownStyle !== currentStyle}
-        <button data-testid="style-apply" onclick={applyStyle}>Adopt this style</button>
-      {:else}
-        <span class="current">✓ your fleet's style</span>
-      {/if}
+  <div class="mooDesigner">
+    <div class="titleBar">
+      <span class="empire">{name || 'Design'} | {hullLabel(hull)}</span>
+      <h2>SHIP DESIGN</h2>
+      <span class="buildState">{typeof stats === 'string' ? 'invalid fit' : 'ready to build'}</span>
     </div>
-    <div class="stylestrip">
-      {#each PREVIEW_CLASSES as pc (pc)}
-        <span class="cell">
-          <ShipPreview style={shownStyle} cls={pc} variant={0} color={myColor} px={2} title={pc.replaceAll('_', ' ')} />
-          <small>{pc === 'star_base' ? 'base' : pc}</small>
-        </span>
-      {/each}
-    </div>
-    <p class="dim finePrint">Cosmetic only — this is how your warships appear to everyone in battle replays. Each design also picks a model of its class below.</p>
-  </div>
-  <div class="wrap">
-    <div class="form">
-      <h3>New warship design</h3>
-      <label>Name <input data-testid="design-name" bind:value={name} oninput={() => (nameAuto = false)} /></label>
-      <label>Hull
-        <select data-testid="design-hull" bind:value={hull}>
-          {#each HULLS_BUILDABLE as h (h)}
-            <option value={h} disabled={!hullsOpen.includes(h)}>
-              {h}{hullsOpen.includes(h) ? '' : ` — 🔒 ${HULL_REQS[h] ?? 'locked'}`}
-            </option>
-          {/each}
-        </select>
-      </label>
-      <div class="modelpick" data-testid="model-picker">
-        <span>Model</span>
-        <button class="mini" data-testid="model-prev" onclick={() => cycleModel(-1)} disabled={variantsFor(hull as ArtClass) < 2}>◀</button>
-        <ShipPreview
-          style={shownStyle}
-          cls={hull as ArtClass}
-          variant={modelIdx}
-          color={myColor}
-          specials={[...specials]}
-          heavyBeams={previewHeavy}
-          missileTubes={previewMissiles}
-          px={3}
-        />
-        <button class="mini" data-testid="model-next" onclick={() => cycleModel(1)} disabled={variantsFor(hull as ArtClass) < 2}>▶</button>
-        <span class="dim">{wrapVariant(hull as ArtClass, modelIdx) + 1}/{variantsFor(hull as ArtClass)}</span>
-      </div>
-      <label>Computer (tier ≤ {maxComputer})
-        <input type="number" min="0" max={maxComputer} bind:value={computer} />
-      </label>
-      <label>Shield (tier ≤ {maxShield})
-        <input type="number" min="0" max={maxShield} bind:value={shield} />
-      </label>
-      {#if availableSpecials.length}
-        <fieldset>
-          <legend>Specials</legend>
-          {#each availableSpecials as sp (sp)}
-            <label class="row">
-              <input type="checkbox" checked={specials.includes(sp)} onchange={() => toggleSpecial(sp)} />
-              {sp.replaceAll('_', ' ')}
-            </label>
-          {/each}
-        </fieldset>
-      {/if}
-      <fieldset>
-        <legend>Weapons</legend>
-        {#each weapons as w, i (i)}
-          <div class="weapon">
-            <select bind:value={w.weapon}>
-              {#each weaponChoices as wc (wc.id)}
-                <option value={wc.id}>{wc.id.replaceAll('_', ' ')}</option>
-              {/each}
-            </select>
-            <input type="number" min="1" max="50" bind:value={w.count} />
-            {#if weaponChoices.find((wc) => wc.id === w.weapon)?.classId === 5}
-              <!-- point defense tracks all around regardless of mount: fixed
-                   360° coverage at standard-mount space (no arc premium) -->
-              <span class="arc pd360" title="point defense tracks 360° — full coverage at standard-mount space">360°</span>
-            {:else}
-              <select class="arc" bind:value={w.arc} title={ARCS.find((a) => a.id === w.arc)?.help}>
-                {#each ARCS as a (a.id)}
-                  <option value={a.id} title={a.help}>{a.label}</option>
-                {/each}
-              </select>
-            {/if}
-            {#each weaponChoices.find((wc) => wc.id === w.weapon)?.availableMods ?? [] as mod (mod)}
-              {@const locked = empire ? !modUnlocked(empire, w.weapon, mod) : false}
-              <label class="mod" class:locked title={locked ? `${mod}: requires research ${mod === 'pd' ? 'one level' : 'two levels'} deeper in this weapon's field` : ''}>
-                <input type="checkbox" disabled={locked} checked={w.mods.includes(mod)} onchange={() => toggleMod(i, mod)} />{mod}{locked ? '🔒' : ''}
-              </label>
-            {/each}
-            <button onclick={() => removeWeapon(i)}>✕</button>
-          </div>
-        {/each}
-        <button onclick={addWeapon}>+ weapon</button>
-      </fieldset>
 
-      {#if typeof stats === 'string'}
-        <p class="error" data-testid="design-error">{stats}</p>
-      {:else if stats}
-        <p data-testid="design-stats">
-          space {stats.spaceUsed}/{stats.spaceTotal} · cost {stats.cost} · CP {stats.cpUsage} ·
-          atk +{stats.beamAttack} · def +{stats.beamDefense} · speed {stats.combatSpeed} ·
-          armor {stats.armorHp} · struct {stats.structureHp} · shields {stats.shieldPool}
-        </p>
-        <p class="battlestats" data-testid="design-battle-stats" title="DPS = expected damage/second at short range · evasion = enemy to-hit is reduced by this · beams fall to 70% damage at medium and 40% at long range">
-          ⚔ DPS ~{dpsOf(stats)} · 🛰 evasion {stats.beamDefense} · 🚀 speed {stats.combatSpeed} ·
-          📏 beams to 448u{stats.weapons.some((w) => w.mods.includes('hv')) ? ' (heavy 560u)' : ''} · missiles 600u · torpedoes 500u
-        </p>
+    <div class="topDeck">
+      <ShipLoadoutEditor
+        driveName={driveName}
+        armorName={armorName}
+        shipStyle={currentStyle}
+        shipClass={hull}
+        shipVariant={modelIdx}
+        shipColor={myColor}
+        shipPx={4}
+        previewSpecials={specials}
+        previewHeavyBeams={previewHeavy}
+        previewMissileTubes={previewMissiles}
+        modelLabel={`Model ${wrapVariant(hull as ArtClass, modelIdx) + 1}/${variantsFor(hull as ArtClass)}`}
+        canPrevModel={variantsFor(hull as ArtClass) >= 2}
+        canNextModel={variantsFor(hull as ArtClass) >= 2}
+        onPrevModel={() => cycleModel(-1)}
+        onNextModel={() => cycleModel(1)}
+        hullOptions={hullOptions}
+        selectedHull={hull}
+        hullSpace={hullSpace}
+        hullSelectTestId="design-hull"
+        onSelectHull={selectHull}
+        designName={name}
+        nameLabel="Name"
+        nameTestId="design-name"
+        onNameInput={(v) => {
+          name = v;
+          nameAuto = false;
+        }}
+        computerName={computerName}
+        shieldName={shieldName}
+        maxComputer={maxComputer}
+        maxShield={maxShield}
+        missileEvasion={missileEvasion}
+        stats={stats}
+        availableSpecials={availableSpecials}
+        specials={specials}
+        specialName={specialName}
+        specialDescription={specialDescription}
+        specialSpacePct={specialSpacePct}
+        weapons={weapons}
+        weaponChoices={weaponChoices}
+        modTooltip={weaponModTooltip}
+        isModLocked={isModLocked}
+        onClickComputerField={clickComputerField}
+        onClickShieldField={clickShieldField}
+        onToggleSpecial={toggleSpecial}
+        onToggleMod={toggleMod}
+        onAddWeapon={addWeapon}
+        onRemoveWeapon={removeWeapon}
+      />
+    </div>
+    {#if !hullsOpen.includes(hull)}
+      <p class="dim">locked: {HULL_REQS[hull] ?? 'requires research'}</p>
+    {/if}
+
+
+    <div class="commandBar">
+      <div class="metric"><span>Cost</span><b>{stats && typeof stats !== 'string' ? stats.cost : '--'}</b></div>
+      <div class="metric"><span>Space Available</span><b>{stats && typeof stats !== 'string' ? stats.spaceTotal - stats.spaceUsed : '--'}</b></div>
+      {#if stats && typeof stats !== 'string'}
+        <span class="battleBrief" data-testid="design-battle-stats">DPS {dpsOf(stats)} | Evasion +{stats.beamDefense} | Speed {stats.combatSpeed}</span>
       {/if}
-      <button data-testid="design-save" disabled={typeof stats === 'string'} onclick={save}>Save design</button>
+      <div class="actions">
+        <button onclick={clearEditor}>Clear</button>
+        <button onclick={cancelEditor}>Cancel</button>
+        <button data-testid="design-save" disabled={typeof stats === 'string'} onclick={save}>Build</button>
+      </div>
+    </div>
+    {#if importNote}<p class="dim" data-testid="design-import-note">{importNote}</p>{/if}
+
+    <div class="fileTools">
       <button
         data-testid="design-simulate"
         disabled={typeof stats === 'string'}
         onclick={simulate}
-        title="open the Battle Lab with this exact fit (unsaved is fine) vs every enemy type you have met — sandbox only"
-      >⚗ Simulate</button>
-      <button
-        data-testid="design-export"
-        onclick={exportDesign}
-        title="download this fit as a .moo2design.json file — share it or re-import it in any game"
-      >⬇ Download</button>
-      <label class="importbtn" title="load a .moo2design.json file into the editor (stats re-validate against YOUR current tech)">
-        ⬆ Upload<input
+        title="open the Battle Lab with this exact fit against enemies you have met"
+      >Simulate</button>
+      <button data-testid="design-export" onclick={exportDesign} title="download this fit as a .moo2design.json file">Download</button>
+      <label class="importbtn" title="load a .moo2design.json file into the editor">
+        Upload<input
           data-testid="design-import"
           type="file"
           accept=".json,.moo2design,application/json"
@@ -387,191 +399,161 @@
           style="display:none"
         />
       </label>
-      {#if importNote}<span class="dim" data-testid="design-import-note">{importNote}</span>{/if}
     </div>
+  </div>
 
-    <div class="list">
-      <h3>Your designs</h3>
-      <ul>
-        {#each empire.designs as d (d.id)}
-          <li class:obsolete={d.obsolete} data-testid="design-{d.id}">
-            <ShipPreview
-              style={currentStyle}
-              cls={d.hull as ArtClass}
-              variant={d.modelIdx ?? d.id}
-              color={myColor}
-              specials={[...d.specials]}
-              px={1}
-            />
-            <button class="linklike" onclick={() => inspect(d)}>{inspecting === d.id ? '▾' : '▸'} <b>{d.name}</b></button>
-            ({d.hull}) — {d.weapons.map((w) => `${w.count}×${w.weapon.replaceAll('_', ' ')}${w.arc && w.arc !== 'F' ? `⟨${w.arc}⟩` : ''}${w.mods.length ? ` [${w.mods.join(',')}]` : ''}`).join(', ') || 'unarmed'}
-            {#if !d.obsolete}
-              <button onclick={() => obsolete(d.id)}>obsolete</button>
-            {:else}
-              <span class="dim">obsolete</span>
-            {/if}
-            {#if inspecting === d.id}
-              {@const st = statsOf(d)}
-              <div class="inspect">
-                <div>computer tier {d.computer} · shield tier {d.shield}{d.specials.length ? ` · specials: ${d.specials.map((s) => s.replaceAll('_', ' ')).join(', ')}` : ''}</div>
-                {#if st && typeof st !== 'string'}
-                  <div class="dim">
-                    space {st.spaceUsed}/{st.spaceTotal} · cost {st.cost} · CP {st.cpUsage} ·
-                    atk +{st.beamAttack} · def +{st.beamDefense} · speed {st.combatSpeed} ·
-                    armor {st.armorHp} · struct {st.structureHp} · shields {st.shieldPool}
-                  </div>
-                {:else if typeof st === 'string'}
-                  <div class="error">no longer valid: {st}</div>
-                {/if}
-                <button onclick={() => loadIntoEditor(d)}>⎘ copy into editor</button>
-              </div>
-            {/if}
-          </li>
-        {/each}
-      </ul>
-      <p class="dim">Queue warships from the Colonies tab build dropdown (⚔ entries).</p>
-    </div>
+  <div class="list">
+    <h3>Your designs</h3>
+    <ul>
+      {#each empire.designs as d (d.id)}
+        <li class:obsolete={d.obsolete} data-testid="design-{d.id}">
+          <ShipPreview
+            style={currentStyle}
+            cls={d.hull as ArtClass}
+            variant={d.modelIdx ?? d.id}
+            color={myColor}
+            specials={[...d.specials]}
+            px={1}
+          />
+          <button class="linklike" onclick={() => inspect(d)}>{inspecting === d.id ? '▾' : '▸'} <b>{d.name}</b></button>
+          ({d.hull}) - {d.weapons.map((w) => `${w.count}x${w.weapon.replaceAll('_', ' ')}${w.arc && w.arc !== 'F' ? ` <${w.arc}>` : ''}${w.mods.length ? ` [${w.mods.join(',')}]` : ''}`).join(', ') || 'unarmed'}
+          {#if !d.obsolete}
+            <button onclick={() => obsolete(d.id)}>obsolete</button>
+          {:else}
+            <span class="dim">obsolete</span>
+          {/if}
+          {#if inspecting === d.id}
+            {@const st = statsOf(d)}
+            <div class="inspect">
+              <div>computer tier {d.computer} | shield tier {d.shield}{d.specials.length ? ` | specials: ${d.specials.map((s) => s.replaceAll('_', ' ')).join(', ')}` : ''}</div>
+              {#if st && typeof st !== 'string'}
+                <div class="dim">
+                  space {st.spaceUsed}/{st.spaceTotal} | cost {st.cost} | CP {st.cpUsage} |
+                  atk +{st.beamAttack} | def +{st.beamDefense} | speed {st.combatSpeed} |
+                  armor {st.armorHp} | struct {st.structureHp} | shields {st.shieldPool}
+                </div>
+              {:else if typeof st === 'string'}
+                <div class="error">no longer valid: {st}</div>
+              {/if}
+              <button onclick={() => loadIntoEditor(d)}>copy into editor</button>
+            </div>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+    <p class="dim">Queue warships from the Colonies tab build dropdown (combat entries).</p>
   </div>
 {/if}
 
 <style>
-  /* the Upload control is a <label> around a hidden file input, dressed as a button */
+  .mooDesigner {
+    border: 2px solid #596276;
+    background: #070f1f;
+    box-shadow: inset 0 0 0 2px #1a253d;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+    font-family: Verdana, Tahoma, sans-serif;
+  }
+  .titleBar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    border: 1px solid #5c6474;
+    background: linear-gradient(180deg, #252c38, #131a25);
+    color: #e4e9f3;
+    padding: 0.35rem 0.6rem;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .titleBar h2 {
+    margin: 0;
+    text-align: center;
+    font-size: 1.15rem;
+  }
+  .empire,
+  .buildState {
+    color: #d58a35;
+    font-size: 0.76rem;
+  }
+  .buildState {
+    text-align: right;
+  }
+  .topDeck {
+    display: block;
+    gap: 0.45rem;
+    margin-bottom: 0.45rem;
+  }
+  .commandBar {
+    margin-top: 0.45rem;
+    border: 1px solid #586278;
+    background: linear-gradient(180deg, #222833, #151c27);
+    padding: 0.35rem 0.45rem;
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    align-items: center;
+    gap: 0.55rem;
+  }
+  .metric {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid #4f596c;
+    background: #0e1521;
+    padding: 0.2rem 0.42rem;
+    min-width: 130px;
+  }
+  .metric span {
+    color: #d58a35;
+    font-size: 0.76rem;
+  }
+  .metric b {
+    color: #f1f5ff;
+    font-size: 1rem;
+  }
+  .battleBrief {
+    color: #cf985a;
+    font-size: 0.79rem;
+  }
+  .actions {
+    display: flex;
+    gap: 0.35rem;
+  }
+  .fileTools {
+    margin-top: 0.4rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+  }
   .importbtn {
     display: inline-block;
     border: 1px solid var(--line, #26304f);
     border-radius: 6px;
     background: #1a2140;
-    padding: 0.25rem 0.6rem;
+    padding: 0.22rem 0.55rem;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
   }
   .importbtn:hover {
     background: #232c55;
   }
-  .appearance {
-    border: 1px solid #26304f;
-    border-radius: 10px;
-    padding: 0.5rem 0.9rem 0.2rem;
-    margin-bottom: 1rem;
-    background: linear-gradient(180deg, rgba(15, 21, 48, 0.65), rgba(10, 14, 34, 0.65));
-  }
-  .stylebar {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-  }
-  .stylebar h3 {
-    margin: 0;
-  }
-  .stylename {
-    min-width: 5.5rem;
-    text-align: center;
-    color: var(--accent-soft);
-  }
-  .current {
-    color: var(--good, #5ee08a);
-    font-size: 0.85rem;
-  }
-  .stylestrip {
-    display: flex;
-    gap: 1.1rem;
-    align-items: center;
-    padding: 0.55rem 0.2rem 0.25rem;
-    flex-wrap: wrap;
-  }
-  .stylestrip .cell {
-    display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.15rem;
-  }
-  .stylestrip small {
-    color: var(--text-dim);
-    font-size: 0.68rem;
-  }
-  .finePrint {
-    margin: 0.1rem 0 0.4rem;
-    font-size: 0.78rem;
-  }
-  .modelpick {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin: 0.35rem 0;
-    min-height: 45px;
-  }
-  .mini {
-    padding: 0.1rem 0.45rem;
-  }
-  .mod.locked {
-    opacity: 0.45;
-  }
-  .wrap {
-    display: flex;
-    gap: 1.5rem;
-    align-items: flex-start;
-  }
-  .form,
   .list {
-    flex: 1;
-  }
-  label {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin: 0.3rem 0;
-    max-width: 26rem;
-  }
-  fieldset {
-    border: 1px solid #26304f;
-    margin: 0.5rem 0;
-    max-width: 30rem;
-  }
-  .weapon {
-    display: flex;
-    gap: 0.4rem;
-    align-items: center;
-    flex-wrap: wrap;
-    margin-bottom: 0.35rem;
-  }
-  .weapon input[type='number'] {
-    width: 3.5rem;
-  }
-  .mod {
-    font-size: 0.75rem;
-    display: inline-flex;
-    gap: 0.15rem;
-    margin: 0;
-  }
-  .arc {
-    width: 4rem;
-  }
-  .pd360 {
-    display: inline-block;
-    text-align: center;
-    color: var(--accent-soft);
-    font-size: 0.8rem;
-    opacity: 0.9;
-  }
-  .battlestats {
-    color: var(--accent-soft);
-    font-size: 0.9rem;
-  }
-  .row {
-    justify-content: flex-start;
+    border: 1px solid #374359;
+    background: #0a1223;
+    padding: 0.5rem;
   }
   .error {
     color: #ff8a7a;
   }
   .dim {
-    opacity: 0.6;
+    opacity: 0.65;
   }
   li.obsolete {
     opacity: 0.5;
   }
   li {
-    margin-bottom: 0.4rem;
+    margin-bottom: 0.45rem;
   }
   .linklike {
     background: none;
@@ -591,5 +573,18 @@
     flex-direction: column;
     gap: 0.25rem;
     align-items: flex-start;
+  }
+
+  @media (max-width: 1100px) {
+    .topDeck {
+      grid-template-columns: 1fr;
+    }
+    .commandBar {
+      grid-template-columns: 1fr;
+      align-items: stretch;
+    }
+    .actions {
+      justify-content: flex-end;
+    }
   }
 </style>
