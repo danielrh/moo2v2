@@ -1,6 +1,8 @@
 # MOO2v2
 
-A browser 4X strategy game with Master of Orion 2's rules and mechanics — economy,
+Try it at https://fireflyk64.github.io
+
+A browser 4X strategy game with rules and mechanics inspired by Master of Orion 2 — economy,
 tech tree, race picks, colonies, leaders, espionage, diplomacy, monsters, Antarans —
 **except combat and the Creative trait, which are redesigned**. 100% TypeScript,
 peer-to-peer multiplayer over WebRTC, SQLite persistence in the browser, and a
