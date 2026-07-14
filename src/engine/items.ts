@@ -6,7 +6,7 @@ import { ALWAYS_KNOWN_ITEMS, applicationById, buildableById } from './data/index
 import type { Colony, Empire, GameState, Planet } from './types';
 import { planetOf } from './economy';
 import { designStats } from './shipdesign';
-import { canTerraform, terraformCost, unsettledPlanetsInSystem } from './terraform';
+import { canTerraform, convertiblePlanetsInSystem, terraformCost, unsettledPlanetsInSystem } from './terraform';
 
 /** Ship-like buildables that spawn units instead of colony structures. */
 export const SHIP_BUILDABLES = new Set([
@@ -24,12 +24,12 @@ export const PROJECT_BUILDABLES = new Set([
   'terraforming',
   'gaia_transformation',
   'colony_base',
+  'artificial_planet',
 ]);
 
 /** Buildables intentionally unavailable until later phases (documented). Their
  * effect entries in effectsMap carry matching stub notes. */
 export const DEFERRED_BUILDABLES = new Set([
-  'artificial_planet',
   'fighter_garrison', // carrier ops omitted by the combat redesign (documented)
   'flux_shield', // superseded shield tiers stay data-only (planetary shield covers defense)
   'planetary_flux_shield',
@@ -58,6 +58,7 @@ export const DEFERRED_BUILDABLES = new Set([
 /** Buildables whose unlocking application id differs from the buildable id.
  * Kept in lockstep with the data tables by tests/data/unlocks.test.ts. */
 export const BUILDABLE_APP_ALIAS: Record<string, string> = {
+  artificial_planet: 'artificial_planet_construction',
   freighter_fleet: 'freighters',
   battle_station: 'battlestation',
   robo_miner_plant: 'robominers',
@@ -191,6 +192,14 @@ export function canQueue(state: GameState, colony: Colony, itemId: string): stri
     // would complete into nothing and burn their production
     const queued = colony.queue.filter((q) => q.item === 'colony_base').length;
     if (queued >= open) return `only ${open} unsettled planet(s) in this system`;
+  }
+  if (itemId === 'artificial_planet') {
+    const candidates = convertiblePlanetsInSystem(state, planet.starId).length;
+    if (candidates === 0) return 'no asteroid belt or gas giant in this system';
+    // project the queue like colony_base: more conversions than candidate
+    // bodies would complete into nothing and burn their production
+    const queued = colony.queue.filter((q) => q.item === 'artificial_planet').length;
+    if (queued >= candidates) return `only ${candidates} convertible body(ies) in this system`;
   }
   if (itemId === 'spy') {
     const queued = colony.queue.filter((q) => q.item === 'spy').length;

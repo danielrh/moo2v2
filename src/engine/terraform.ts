@@ -64,6 +64,14 @@ export function effectiveClimate(planet: Planet, colony: Colony | null): Climate
   return planet.climate;
 }
 
+/** Asteroid belts and gas giants a planetary-construction project could
+ * convert into a barren world, nearest orbit first (deterministic order). */
+export function convertiblePlanetsInSystem(state: GameState, starId: number): Planet[] {
+  return state.planets
+    .filter((p) => p.starId === starId && (p.body === 'asteroids' || p.body === 'gas_giant'))
+    .sort((a, b) => a.orbit - b.orbit || a.id - b.id);
+}
+
 export function unsettledPlanetsInSystem(state: GameState, starId: number): Planet[] {
   return state.planets
     .filter(

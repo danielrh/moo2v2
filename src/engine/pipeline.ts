@@ -15,7 +15,7 @@ import { itemCost, parseDesignItem, parseRefitItem } from './items';
 import { commandPoints, inRange, supportStars } from './movement';
 import { availableHulls, defaultDesign, designLoadoutKey } from './shipdesign';
 import { ceilDiv } from './imath';
-import { applyTerraformStep, terraformCost, unsettledPlanetsInSystem } from './terraform';
+import { applyTerraformStep, convertiblePlanetsInSystem, terraformCost, unsettledPlanetsInSystem } from './terraform';
 import { busyFreighters, colonyMaxPop, colonyOutput, colonyPopUnits, farmingViable, freeFreighters, groupGrowthK, traitsOf } from './economy';
 import { applyFoundingSpecials, normalizeJobsForGroup } from './commands';
 import { rngFor } from './rng';
@@ -417,6 +417,28 @@ function completeItem(state: GameState, colony: Colony, item: string, events: Tu
       // of silently burning ~500 PP — same rule as topped-out terraforming
       colony.storedProd += itemCost(state, colony.owner, 'gaia_transformation', colony) ?? 0;
     }
+    return;
+  }
+  if (item === 'artificial_planet') {
+    const target = convertiblePlanetsInSystem(state, planet.starId)[0];
+    if (!target) {
+      // every belt/giant here already converted (duplicate queue entry):
+      // refund instead of burning 500 PP — same rule as gaia_transformation
+      colony.storedProd += itemCost(state, colony.owner, 'artificial_planet', colony) ?? 0;
+      return;
+    }
+    // MOO2-style planetary construction: the body becomes a barren world.
+    // A gas giant compacts into a huge planet, an asteroid belt into a medium
+    // one; minerals and gravity carry over from the original body.
+    target.sizeClass = target.body === 'gas_giant' ? 5 : 3;
+    target.body = 'planet';
+    target.climate = 'barren';
+    target.terraformSteps = 0;
+    events.push({
+      visibleTo: colony.owner,
+      kind: 'planet_constructed',
+      payload: { colonyId: colony.id, planetId: target.id, orbit: target.orbit },
+    });
     return;
   }
   if (item === 'colony_base') {

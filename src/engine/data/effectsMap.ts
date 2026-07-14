@@ -139,7 +139,7 @@ export const EFFECTS: Record<string, EffectSpec> = {
   battleoids: { kind: 'ground_unit', stub: 'ground combat (Phase 6)' },
   recyclotron: { kind: 'building', handler: 'economy' }, // +1 prod/pop unit, pollution-free (economy.ts)
   automated_repair_unit: { kind: 'ship_special', handler: 'combat' }, // ~0.5% structure/tick in combat
-  artificial_planet: { kind: 'project', stub: 'asteroid/gas giant conversion (Phase 6)' },
+  artificial_planet: { kind: 'project', handler: 'pipeline' }, // converts an asteroid belt / gas giant in-system into a barren world (completeItem)
   robotic_factory: { kind: 'building', handler: 'economy' }, // +5..+25 prod by minerals
   deep_core_mine: { kind: 'building', modifiers: [col('prod_flat', 15), col('prod_coeff', 3)] },
   core_waste_dump: { kind: 'building', modifiers: [col('pollution_zero', 1)] },
