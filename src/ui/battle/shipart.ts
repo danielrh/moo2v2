@@ -436,21 +436,24 @@ const planSaucer: Plan = (g, cls, k, r, variant) => {
     g.gun(c, HH * 0.7);
     return;
   }
-  const discR = Math.max(2, Math.round(HH * (variant === 1 ? 0.82 : 0.72)));
+  // the battleship refit: slimmer drive nacelles under a grander saucer
+  const bb = cls === 'battleship';
+  const discR = Math.max(2, Math.round(HH * (variant === 1 ? 0.82 : 0.72))) + (bb ? 1 : 0);
   const discX = Math.round(L * (variant === 3 ? 0.6 : variant === 1 ? 0.62 : 0.66));
   const nacDy = HH - 1;
+  const nacTop = bb ? nacDy : nacDy - 1; // battleship nacelles are 1px slim
   const nacLen = Math.round(L * (variant === 2 ? 0.55 : 0.42));
   // secondary hull along the spine
   g.box(1, discX, 0, Math.max(1, Math.round(discR * 0.35)), R_HULL);
   // primary saucer
-  g.ellipse(discX, discR + (variant === 1 ? 1 : 0), discR, R_HULL);
+  g.ellipse(discX, discR + (variant === 1 ? 1 : 0) + (bb ? 1 : 0), discR, R_HULL);
   // nacelle pair + pylons
   const nacX0 = variant === 3 ? 0 : 1;
-  g.boxPair(nacX0, nacX0 + nacLen, nacDy - 1, nacDy, R_HULL);
-  g.linePair(Math.round(L * 0.3), 1, nacX0 + Math.round(nacLen * 0.4), nacDy - 1, R_SHADE);
+  g.boxPair(nacX0, nacX0 + nacLen, nacTop, nacDy, R_HULL);
+  g.linePair(Math.round(L * 0.3), 1, nacX0 + Math.round(nacLen * 0.4), nacTop, R_SHADE);
   g.bevel();
   // bussard glow on the nacelle front caps + player ring on the saucer
-  g.sym(nacX0 + nacLen, nacDy - 1, R_ACCENT);
+  g.sym(nacX0 + nacLen - (bb ? 1 : 0), bb ? nacDy : nacDy - 1, R_ACCENT);
   g.sym(nacX0 + nacLen, nacDy, R_GLOW);
   g.ring(discX, discR - 0.5, discR - 1.6, R_ACCENT);
   g.sym(discX, 0, R_GLOW); // bridge
@@ -459,12 +462,13 @@ const planSaucer: Plan = (g, cls, k, r, variant) => {
     g.sym(discX + 2, Math.round(discR * 0.5), R_GLOW);
   }
   if (k.tier >= 4) {
-    // capital saucers run four nacelles
-    g.boxPair(2, 2 + Math.round(nacLen * 0.8), Math.round(HH * 0.55), Math.round(HH * 0.55) + 1, R_HULL);
-    g.eng(2, Math.round(HH * 0.55));
+    // capital saucers run four nacelles (slim on the battleship)
+    const nac2D = Math.round(HH * 0.55);
+    g.boxPair(2, 2 + Math.round(nacLen * 0.8), nac2D, bb ? nac2D : nac2D + 1, R_HULL);
+    g.eng(2, nac2D);
     g.greeble(r, k.tier, [R_SHADE, R_GLOW]);
   }
-  g.eng(nacX0, nacDy - 1);
+  g.eng(nacX0, nacTop);
   if (k.tier >= 1) g.eng(0, 0);
   g.gun(discX + discR, 0);
   if (k.tier >= 3) g.gun(discX, discR);
@@ -506,6 +510,12 @@ const planLattice: Plan = (g, cls, k, r, variant) => {
     }
     g.gun(Math.round(c + R * 0.7), 0);
     g.gun(c, Math.round(R * 0.7));
+    return;
+  }
+  // default hull: hand-drawn art (bugs/lattice*.png), stamped verbatim
+  const spr = importedSpriteFor('lattice', cls, variant);
+  if (spr) {
+    stampImported(g, spr);
     return;
   }
   // --- Raider: chrome forward-swept crescent with a scanning eye ---
@@ -823,11 +833,11 @@ const planManta: Plan = (g, cls, k, r, variant) => {
 };
 
 /** bulwark: brutalist armored slabs */
-// ---- bulwark: hand-drawn source art (bugs/bullwark.png), stamped verbatim ----
-// The six warship hulls are imported pixel-for-pixel from the reference sheet
-// (nose right, engines left); variants 1..3 are generated refits layered onto
-// the same silhouette. Grids are larger than the shared CLASS_SPECS canvas, so
-// these models carry a pxScale that keeps their on-field footprint standard.
+// ---- imported hand-drawn hulls (bugs/*.png), stamped verbatim ----
+// Warship hulls imported pixel-for-pixel from reference sheets (nose right,
+// engines left). Bulwark refit variants 1..3 layer decals onto the original
+// silhouette. Grids larger than the shared CLASS_SPECS canvas carry a pxScale
+// that keeps their on-field footprint standard.
 interface ImportedSprite {
   /** row index of the bright spine band (the ship's optical axis) */
   spine: number;
@@ -1004,6 +1014,223 @@ const BULWARK_SPRITES: Partial<Record<ArtClass, ImportedSprite>> = {
   },
 };
 
+// New default (variant 0) bulwark hulls; classes without a mk2 sheet fall
+// back to the original import, and refit variants 1..3 keep the originals.
+const BULWARK_MK2_SPRITES: Partial<Record<ArtClass, ImportedSprite>> = {
+  // BULWARK_MK2 frigate (33x14 from bugs/bullwarkfrigate.png)
+  frigate: {
+    spine: 6,
+    rows: [
+      '...tttttttttst...................',
+      '..tthhsssssagggt.................',
+      '....tttssshst....................',
+      '....tsshhhhsst...................',
+      '....ttsssthhhhaaa................',
+      '....ttsssthhhhggg.......tttttt...',
+      '....ttsssthhhhggghhhhhhhlllllllll',
+      '....ttsssthhhhggghhhhhhhlllllllll',
+      '....ttsssthhhhggg.......tttttt...',
+      '....ttsssthhhhaaa................',
+      '....tsshhhhsst...................',
+      '....tttssshst....................',
+      '..tthhsssssagggt.................',
+      '...tttttttttst...................',
+    ],
+  },
+  // BULWARK_MK2 battleship (51x30 from bugs/bullwarkbattleship.png)
+  battleship: {
+    spine: 14,
+    rows: [
+      '.lllllllllllllllllgggt.............................',
+      'saahhshhhhshhhhhggggt..............................',
+      '.sssssssshhhhhhhhsssst.............................',
+      '.........tsssssst..................................',
+      '.........lhhhhhhst.................................',
+      '.........lhghhhhsst................................',
+      '.........lhghhhhhst................................',
+      '........lhhhhhhhhsst...............................',
+      '........lhhssssssshst..............................',
+      '........lhhssssssshhst.............................',
+      '........lhhslslslshhhst............................',
+      '........lhhssssssshhhhsst.................tssst....',
+      '........lhhhhhlllllhhhhhhsssst....sssssstshhhhhsst.',
+      '........lhhhhlllllllllhhhhhssssssssssssshhllhhhhhst',
+      '........lhhlllllllllllllhhhhshhhhlhhhlhshaahhhst...',
+      '........lhhlllllllllllllhhhhshhhhlhhhlhshaahhhst...',
+      '........lhhhhlllllllllhhhhhssssssssssssshhllhhhhhst',
+      '........lhhhhhlllllhhhhhhsssst....sssssstshhhhhsst.',
+      '........lhhssssssshhhhsst.................tssst....',
+      '........lhhslslslshhhst............................',
+      '........lhhssssssshhst.............................',
+      '........lhhssssssshst..............................',
+      '........lhhhhhhhhsst...............................',
+      '.........lhghhhhhst................................',
+      '.........lhghhhhsst................................',
+      '.........lhhhhhhst.................................',
+      '.........tsssssst..................................',
+      '.sssssssshhhhhhhhsssst.............................',
+      'saahhshhhhshhhhhggggt..............................',
+      '.lllllllllllllllllgggt.............................',
+    ],
+  },
+  // BULWARK_MK2 titan (61x38 from bugs/bullwark_titan.png)
+  titan: {
+    spine: 18,
+    rows: [
+      '.....................tsssssssssssst..........................',
+      '...........tsssshhhhhhhllllhhhhlllhhsst......................',
+      '.....tsssssshhhhhhhhhhssssssssssssssssst.....................',
+      '..............tshhhhhhhhhhhhhhhhhst..........................',
+      '...............tsssshhhhhhhhhhsggt...........................',
+      '..............tsshhhhhhhhsssshhsgt...........................',
+      '............tsshhhhhhhhhsssssshst............................',
+      '...........tsshhhhhlllhsssssshht.............................',
+      '...........tshhhhhlllhsssssshhlt.............................',
+      '..........tshhhhhhghhsssssshhlt..............................',
+      '..........tshhhhhhhhhsssssshhhlt.............................',
+      '..........tshhhhhhhhhhsssshhhhst.............................',
+      '...........tsshhhhhhhhhhhhhhst.....................ssss......',
+      '..............tssshhhhhhhhhsst.....................shhhhs....',
+      '..........tshhsssssshhhhhhhhsst...................shhhhhhs...',
+      '..........tsshhhhhhhhhhhhhhhhhhssst..............shhhlllhhs..',
+      '........tssssshhhhhhhhhhhhhhhhhhhhhhhhhhhhhssssssshhhlllhhst.',
+      '.tsssssshhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaahhhhhhhhhhhlllhhsst',
+      'tssshhhhhhhhhhhhhhhhhlllllllllllllllllllaallllllhhhhllllllhst',
+      'tssshhhhhhhhhhhhhhhhhlllllllllllllllllllaallllllhhhhllllllhst',
+      '.tsssssshhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaahhhhhhhhhhhlllhhsst',
+      '........tssssshhhhhhhhhhhhhhhhhhhhhhhhhhhhhssssssshhhlllhhst.',
+      '..........tsshhhhhhhhhhhhhhhhhhssst..............shhhlllhhs..',
+      '..........tshhsssssshhhhhhhhsst...................shhhhhhs...',
+      '..............tssshhhhhhhhhsst.....................shhhhs....',
+      '...........tsshhhhhhhhhhhhhhst.....................ssss......',
+      '..........tshhhhhhhhhhsssshhhhst.............................',
+      '..........tshhhhhhhhhsssssshhhlt.............................',
+      '..........tshhhhhhghhsssssshhlt..............................',
+      '...........tshhhhhlllhsssssshhlt.............................',
+      '...........tsshhhhhlllhsssssshht.............................',
+      '............tsshhhhhhhhhsssssshst............................',
+      '..............tsshhhhhhhhsssshhsgt...........................',
+      '...............tsssshhhhhhhhhhsggt...........................',
+      '..............tshhhhhhhhhhhhhhhhhst..........................',
+      '.....tsssssshhhhhhhhhhssssssssssssssssst.....................',
+      '...........tsssshhhhhhhllllhhhhlllhhsst......................',
+      '.....................tsssssssssssst..........................',
+    ],
+  },
+};
+
+// Lattice default (variant 0) hulls; variants 1..3 stay procedural crescents.
+const LATTICE_SPRITES: Partial<Record<ArtClass, ImportedSprite>> = {
+  // LATTICE frigate (15x9 from bugs/latticefrigate.png)
+  frigate: {
+    spine: 4,
+    rows: [
+      '....lllllla....',
+      '.....lhhhl.....',
+      '....lhhhhhl....',
+      '....ahhhhhl....',
+      '....ahtggtha...',
+      '....ahhhhhs....',
+      '....shhhhhs....',
+      '.....shhhs.....',
+      '....ssssssa....',
+    ],
+  },
+  // LATTICE destroyer (19x11 from bugs/latticedestroyer.png)
+  destroyer: {
+    spine: 5,
+    rows: [
+      '.......lllla.......',
+      '....lllhhhhhllla...',
+      '..llhhssssssssssla.',
+      '.lhhha...........sa',
+      'lhhhhhlla..........',
+      'aahtggggtlllllla...',
+      'shhhhhssa..........',
+      '.shhha...........la',
+      '..sshhllllllllllla.',
+      '....ssshhhhhsssa...',
+      '.......ssssa.......',
+    ],
+  },
+  // LATTICE cruiser (24x13 from bugs/latticecruiser.png)
+  cruiser: {
+    spine: 6,
+    rows: [
+      '..........lllla.........',
+      '.....lllllhhhhhlllla....',
+      '...llhhhhhssssssssssla..',
+      '..lhhhhssa..........ssla',
+      '.lhhhha................a',
+      'lhhhhhhlllllla..........',
+      'aahhtgggggthhhlllllla...',
+      'shhhhhhssssssa..........',
+      '.shhhha................a',
+      '..shhhhlla..........llla',
+      '...sshhhhhllllllllllsa..',
+      '.....ssssshhhhhssssa....',
+      '..........ssssa.........',
+    ],
+  },
+  // LATTICE battleship (30x17 from bugs/latticebattleship.png)
+  battleship: {
+    spine: 8,
+    rows: [
+      'al..........................la',
+      'asll......................llsa',
+      '..asllll..............llllsa..',
+      '....ahhhlll........lllhhha....',
+      '.....ashhhhlll..lllhhhhsa.....',
+      '.......ashhhhhlllhhhhsa.......',
+      '.........ahhhhhhhhhha.........',
+      '........ahhhhhhhhhhhha........',
+      'alllllllhhhhhhtgghhhhhllllllla',
+      '........ahhhhhhhhhhhha........',
+      '.........ahhhhhhhhhha.........',
+      '.......alhhhhhssshhhhla.......',
+      '.....alhhhhsss..ssshhhhla.....',
+      '....ahhhsss........ssshhha....',
+      '..alssss..............ssssla..',
+      'alss......................ssla',
+      'as..........................sa',
+    ],
+  },
+  // LATTICE titan (35x21 from bugs/latticetitan.png)
+  titan: {
+    spine: 10,
+    rows: [
+      'a................................la',
+      'sla............................llsa',
+      '.sslla......................lllha..',
+      '...shhla.................lllhhsa...',
+      '....shhhlla...........lllhhhha.....',
+      '.....shhhhhla.....llllhhhhhsa......',
+      '......sshhhhhlllllhhhhhhhsa........',
+      '........shhhhhhhhhhhhhhha..........',
+      '.........ahhhhhhhhhhhhha...........',
+      '...alllllhhhhhhhhhhhhhhhllllla.....',
+      'lllhhhhhhhggggggthhhhhhhhhhhhhlllla',
+      '...assssshhhhhhhhhhhhhhhsssssa.....',
+      '.........ahhhhhhhhhhhhha...........',
+      '........lhhhhhhhhhhhhhhha..........',
+      '......llhhhhhssssshhhhhhhla........',
+      '.....lhhhhhsa.....sssshhhhhla......',
+      '....lhhhssa...........ssshhhha.....',
+      '...lhhsa.................ssshhla...',
+      '.llssa......................sssha..',
+      'lsa............................ssla',
+      'a................................sa',
+    ],
+  },
+};
+
+/** hand-drawn sheet for a (style, class, variant), if one exists */
+function importedSpriteFor(style: string, cls: ArtClass, variant: number): ImportedSprite | undefined {
+  if (style === 'bulwark') return variant === 0 ? (BULWARK_MK2_SPRITES[cls] ?? BULWARK_SPRITES[cls]) : BULWARK_SPRITES[cls];
+  if (style === 'lattice' && variant === 0) return LATTICE_SPRITES[cls];
+  return undefined;
+}
+
 /** paint an imported sprite into g (canvas must match the grid dims) and
  * derive engine mounts (contiguous hull runs on the stern column) + the
  * spine-row gun muzzle */
@@ -1015,13 +1242,16 @@ function stampImported(g: G, spr: ImportedSprite): void {
       if (v !== R_EMPTY) g.set(x, y, v);
     }
   }
-  // engines: center of each contiguous painted run in column 0
+  // engines: center of each contiguous painted run in the sternmost column
+  // (the leftmost column with any pixel — not every sheet touches column 0)
+  let sternX = 0;
+  while (sternX < spr.rows[0]!.length && spr.rows.every((row) => (IMPORT_ROLES[row[sternX]!] ?? R_EMPTY) === R_EMPTY)) sternX++;
   let runStart = -1;
   for (let y = 0; y <= spr.rows.length; y++) {
-    const filled = y < spr.rows.length && (IMPORT_ROLES[spr.rows[y]![0]!] ?? R_EMPTY) !== R_EMPTY;
+    const filled = y < spr.rows.length && (IMPORT_ROLES[spr.rows[y]![sternX]!] ?? R_EMPTY) !== R_EMPTY;
     if (filled && runStart < 0) runStart = y;
     if (!filled && runStart >= 0) {
-      g.engines.push({ x: 0, y: (runStart + y - 1) >> 1 });
+      g.engines.push({ x: sternX, y: (runStart + y - 1) >> 1 });
       runStart = -1;
     }
   }
@@ -1036,7 +1266,7 @@ function stampImported(g: G, spr: ImportedSprite): void {
 }
 
 const planBulwark: Plan = (g, cls, k, r, variant) => {
-  const spr = BULWARK_SPRITES[cls];
+  const spr = importedSpriteFor('bulwark', cls, variant);
   if (spr) {
     stampImported(g, spr);
     const spine = spr.spine;
@@ -1165,8 +1395,16 @@ const planHalo: Plan = (g, cls, k, r, variant) => {
   const ringX = Math.round(L * (variant === 1 ? 0.52 : 0.62));
   const rOut = HH;
   const rIn = Math.max(2, HH - (variant === 2 ? 2 : 3));
+  const twin = variant >= 2; // twin-drive refits: two separated engine pods astern
+  const podD = Math.max(1, Math.round(HH * 0.45));
   // stern block + spine through the ring
-  g.wedge(1, ringX, Math.max(1, Math.round(HH * 0.3)), 1, R_HULL);
+  if (twin) {
+    const podHw = HH >= 6 ? 1 : 0;
+    g.boxPair(1, Math.round(ringX * 0.8), podD - podHw, podD + podHw, R_HULL);
+    g.box(Math.round(ringX * 0.55), ringX, 0, 0, R_HULL);
+  } else {
+    g.wedge(1, ringX, Math.max(1, Math.round(HH * 0.3)), 1, R_HULL);
+  }
   g.box(ringX, Math.min(L - 1, ringX + rOut + 1), 0, 0, R_HULL);
   g.ring(ringX, rOut, rIn, R_HULL);
   // hub
@@ -1184,8 +1422,12 @@ const planHalo: Plan = (g, cls, k, r, variant) => {
   g.sym(ringX, 0, R_GLOW);
   g.sym(Math.min(L - 1, ringX + rOut + 1), 0, R_GLOW); // bow beacon
   for (let i = 1; i <= 2 + (k.tier >> 1); i++) g.sym(ringX + (i % 2 === 0 ? i : -i), rOut - 1, R_GLOW);
-  g.eng(0, Math.max(1, Math.round(HH * 0.22)));
-  if (k.tier >= 3) g.eng(0, 0);
+  if (twin) {
+    g.eng(0, podD); // the pod pair: exactly two drives
+  } else {
+    g.eng(0, Math.max(1, Math.round(HH * 0.22)));
+    if (k.tier >= 3) g.eng(0, 0);
+  }
   g.gun(Math.min(L - 1, ringX + rOut + 1), 0);
   if (k.tier >= 2) g.gun(ringX, rOut);
 };
@@ -1513,8 +1755,8 @@ export function getShipModel(req: ModelRequest): ShipModel {
   const hit = modelCache.get(key);
   if (hit) return hit;
   const spec = CLASS_SPECS[req.cls];
-  // imported hi-res art (bulwark) draws at its native grid size
-  const imported = req.style === 'bulwark' ? BULWARK_SPRITES[req.cls] : undefined;
+  // imported hi-res art draws at its native grid size
+  const imported = importedSpriteFor(req.style, req.cls, variant);
   const g = imported ? new G(imported.rows[0]!.length, imported.rows.length) : new G(spec.w, spec.h);
   const r = new Rnd(`${req.style}/${req.cls}/${variant}`);
   const plan = PLANS[req.style] ?? planRaptor;
