@@ -1,6 +1,6 @@
 // One-pass tactical combat (redesigned; deterministic; fixed-point integers).
 //
-// Field: 512x384 units (positions stored x256). 10 logical ticks/second, cap
+// Field: 768x576 units (positions stored x256). 10 logical ticks/second, cap
 // 400 ticks (~40s of playback). Range bands by pair distance:
 //   short <= 96u (dmg 100%, hit +10), medium <= 224u (70%, +0),
 //   long <= 448u (40%, -20); heavy mounts also fire out to 560u at long stats.
@@ -15,8 +15,8 @@ import type { Rng } from './rng';
 import type { DesignStats } from './shipdesign';
 
 export const FP = 256; // fixed-point scale
-export const FIELD_W = 512 * FP;
-export const FIELD_H = 384 * FP;
+export const FIELD_W = 768 * FP;
+export const FIELD_H = 576 * FP;
 export const MAX_TICKS = 400;
 /** master pace knob: percent of base rate-of-fire (tuned by the balance harness
  * to land equal-tech passes in the 20-40% fleet-damage envelope) */
@@ -343,7 +343,7 @@ export function runBattle(
       s.y = Math.floor(((ai + 1) * FIELD_H) / (countA + 1));
       ai++;
     } else {
-      s.x = s.init.isBase ? 488 * FP : 460 * FP;
+      s.x = s.init.isBase ? FIELD_W - 24 * FP : FIELD_W - 52 * FP;
       s.y = Math.floor(((di + 1) * FIELD_H) / (countD + 1));
       di++;
     }
