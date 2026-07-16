@@ -10,7 +10,7 @@ import { isBlockaded } from './ground';
 import { ceilDiv, floorDiv, roundDiv } from './imath';
 import { isqrt } from './isqrt';
 import { hasAdvancedGov, gravitySteps, resolveTraits, type RaceTraits } from './race';
-import { NATIVE_RACE } from './types';
+import { ANDROID_RACE, NATIVE_RACE } from './types';
 import type { Climate, Colony, Empire, GameState, Minerals, Planet, PopGroup } from './types';
 
 // ---------- lookup helpers ----------
@@ -54,6 +54,20 @@ export function colonyPopUnits(colony: Colony): number {
 
 export function groupUnits(g: PopGroup): number {
   return floorDiv(g.popK, 1000);
+}
+
+/** android units on a colony (their compact compartments have their own cap) */
+export function androidUnitsOf(colony: Colony): number {
+  let units = 0;
+  for (const g of colony.groups) if (g.race === ANDROID_RACE) units += groupUnits(g);
+  return units;
+}
+
+/** organic units only: the count every climate-population-cap comparison must
+ * use — androids never occupy organic housing (bugs.md). One helper so the
+ * validators, the growth pipeline, and the transit landings cannot disagree. */
+export function organicUnitsOf(colony: Colony): number {
+  return colonyPopUnits(colony) - androidUnitsOf(colony);
 }
 
 function has(colony: Colony, building: string): boolean {
@@ -244,7 +258,33 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
   let prodNeedHalves = 0;
 
   const blockaded = isBlockaded(state, colony);
+  // androids (data effect text): +3 in their hardwired category on top of a
+  // no-bonus colonist's coefficient, unaffected by morale/government/gravity
+  // (machines), 1 production upkeep per unit instead of food, no income.
+  // They bypass the percentage multipliers below via the flat-output path.
+  let androidFood = 0;
+  let androidProd = 0;
+  let androidSci = 0;
+  let androidUnits = 0;
   for (const g of colony.groups) {
+    if (g.race === ANDROID_RACE) {
+      const units = groupUnits(g);
+      androidUnits += units;
+      const farmHalves = farmCoeffHalves(effClim, NEUTRAL_TRAITS, acc.farmCoeff) + 6;
+      let aFood = floorDiv(g.farmers * farmHalves, 2);
+      let aProd = g.workers * (Math.max(1, MINERAL_PROD[planet.minerals] + acc.prodCoeff) + 3);
+      if (blockaded) {
+        // a siege interdicts supply lines, machines included — only the
+        // morale/government/gravity multipliers are android-exempt
+        aFood -= roundDiv(aFood * 50, 100);
+        aProd -= roundDiv(aProd * 50, 100);
+      }
+      androidFood += aFood;
+      androidProd += aProd;
+      androidSci += g.scientists * (Math.max(1, 3 + acc.sciCoeff) + 3 + (planet.special === 'ancient_artifacts' ? 2 : 0));
+      prodNeedHalves += units * 2; // 1 production per unit keeps them spry
+      continue;
+    }
     const gTraits = g.race === colony.owner ? ownerTraits : groupTraits(state, g.race, ownerTraits);
     const units = groupUnits(g);
     let gravPen = planetHasGravityFix(colony) ? 0 : gravitySteps(gTraits.gravityPref, planet.gravity) * 25;
@@ -286,7 +326,7 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
   const advGov = hasAdvancedGov(owner);
   const farmWorker =
     roundDiv(farmBase * (100 + cTotalPct('farm', ownerTraits, morale, advGov) + acc.farmPct), 100) - farmPenalty;
-  const food = Math.max(0, farmWorker) + acc.farmFlat;
+  const food = Math.max(0, farmWorker) + acc.farmFlat + androidFood;
 
   // production before pollution
   const prodWorkerRaw =
@@ -300,6 +340,7 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
     let tolNum = 0;
     let tolDen = 0;
     for (const g of colony.groups) {
+      if (g.race === ANDROID_RACE) continue; // machines: their output is pollution-exempt
       const gTraits = g.race === colony.owner ? ownerTraits : groupTraits(state, g.race, ownerTraits);
       const units = groupUnits(g);
       tolDen += units;
@@ -313,7 +354,7 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
       pollution = Math.max(0, ceilDiv(Math.max(0, scaled - absorb), 2));
     }
   }
-  const prodGross = Math.max(0, prodWorker + acc.prodFlat - pollution);
+  const prodGross = Math.max(0, prodWorker + acc.prodFlat + androidProd - pollution);
   const prodConsumed = ceilDiv(prodNeedHalves, 2);
   const prodLack = Math.max(0, prodConsumed - prodGross);
   const prod = Math.max(0, prodGross - prodConsumed);
@@ -321,11 +362,12 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
   // research
   const sciWorker =
     roundDiv(sciBase * (100 + cTotalPct('sci', ownerTraits, morale, advGov) + acc.sciPct), 100) - sciPenalty;
-  const research = Math.max(0, sciWorker) + acc.sciFlat;
+  const research = Math.max(0, sciWorker) + acc.sciFlat + androidSci;
 
   // ---------- F7 money ----------
   const special = planet.special === 'gem_deposits' ? 10 : planet.special === 'gold_deposits' ? 5 : 0;
-  const popIncome = roundDiv(popUnits * (2 + ownerTraits.bcHalves), 2);
+  // androids generate no income (data effect text): only organics pay taxes
+  const popIncome = roundDiv((popUnits - androidUnits) * (2 + ownerTraits.bcHalves), 2);
   let bonusIncome = 0;
   const baseForBonus = special + popIncome;
   if (acc.moneyCoeffHalves > 0) bonusIncome += floorDiv(baseForBonus * acc.moneyCoeffHalves, 2);
@@ -421,6 +463,17 @@ export function explainOutput(state: GameState, colony: Colony): OutputExplain {
   const out: OutputExplain = { farm: [], prod: [], sci: [], bc: [] };
 
   for (const g of colony.groups) {
+    if (g.race === ANDROID_RACE) {
+      // mirror computeOutput's android branch: +3 category bonus on neutral
+      // coefficients, no morale/gravity, upkeep shown as its own line below
+      const farmHalves = farmCoeffHalves(effClim, NEUTRAL_TRAITS, acc.farmCoeff) + 6;
+      const prodC = Math.max(1, MINERAL_PROD[planet.minerals] + acc.prodCoeff) + 3;
+      const sciC = Math.max(1, 3 + acc.sciCoeff) + 3 + (planet.special === 'ancient_artifacts' ? 2 : 0);
+      if (g.farmers) out.farm.push(`${g.farmers} android farmer${g.farmers === 1 ? '' : 's'} × ${farmHalves / 2} (+3 android)`);
+      if (g.workers) out.prod.push(`${g.workers} android worker${g.workers === 1 ? '' : 's'} × ${prodC} (+3 android)`);
+      if (g.scientists) out.sci.push(`${g.scientists} android scientist${g.scientists === 1 ? '' : 's'} × ${sciC} (+3 android)`);
+      continue;
+    }
     const gTraits = g.race === colony.owner ? ownerTraits : groupTraits(state, g.race, ownerTraits);
     const gravPen = planetHasGravityFix(colony) ? 0 : gravitySteps(gTraits.gravityPref, planet.gravity) * 25;
     const farmBase = foodPerFarmerBase(effClim, gTraits.aquatic);
@@ -466,9 +519,10 @@ export function explainOutput(state: GameState, colony: Colony): OutputExplain {
   }
   const o = colonyOutput(state, colony);
   if (o.pollution > 0) out.prod.push(`−${o.pollution} pollution`);
-  if (o.prodConsumed > 0) out.prod.push(`−${o.prodConsumed} cybernetic upkeep`);
+  if (o.prodConsumed > 0) out.prod.push(`−${o.prodConsumed} cybernetic/android upkeep`);
   out.farm.push(`− ${o.foodConsumed} eaten = net ${o.foodNet >= 0 ? '+' : ''}${o.foodNet}`);
-  out.bc.push(`${o.popUnits} pop × ${(2 + ownerTraits.bcHalves) / 2} BC`);
+  const taxpayers = o.popUnits - androidUnitsOf(colony); // androids pay no taxes
+  out.bc.push(`${taxpayers} pop × ${(2 + ownerTraits.bcHalves) / 2} BC`);
   if (planet.special === 'gem_deposits') out.bc.push('+10 gem deposits');
   if (planet.special === 'gold_deposits') out.bc.push('+5 gold deposits');
   if (o.tradeBC) out.bc.push(`+${o.tradeBC} trade goods`);
@@ -484,7 +538,7 @@ const NEUTRAL_TRAITS: RaceTraits = resolveTraits(['dictatorship']);
 
 /** Traits for non-owner pop groups (conquered races, natives). */
 function groupTraits(state: GameState, race: number, fallback: RaceTraits): RaceTraits {
-  if (race === NATIVE_RACE) return NEUTRAL_TRAITS;
+  if (race === NATIVE_RACE || race === ANDROID_RACE) return NEUTRAL_TRAITS;
   if (race >= 0) {
     const e = state.empires.find((x) => x.id === race);
     if (e) return traitsOf(e);
@@ -517,6 +571,11 @@ export function groupGrowthK(
    * results instead of the stored previous-turn values the pipeline applies */
   projected?: { foodLack: number; prodLack: number; housingPP: number },
 ): number {
+  // androids are built, not grown — and their subterranean compartments
+  // never crowd organic housing, so they drop out of both sides of the
+  // capacity math
+  if (group.race === ANDROID_RACE) return 0;
+  totalUnits -= androidUnitsOf(colony);
   const owner = empireOf(state, colony.owner);
   const ownerTraits = traitsOf(owner);
   const gTraits = group.race === colony.owner ? ownerTraits : groupTraits(state, group.race, ownerTraits);

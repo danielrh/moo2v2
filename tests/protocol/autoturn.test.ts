@@ -112,3 +112,43 @@ describe('auto-turn timer (all-but-one committed → countdown → single advanc
     void hosted;
   });
 });
+
+describe('realtime turns (bugs.md: the clock starts when the turn opens)', () => {
+  it('advances with ZERO commits once the deadline passes, then re-arms next turn', async () => {
+    const { hub, hosted } = await twoPlayerGame({ realtimeTurnSeconds: 0.05 });
+    hosted.host.startGame(SEED);
+    await hub.settle();
+    expect(hosted.session.getState()!.turn).toBe(1);
+
+    await sleep(120); // nobody commits at all
+    await hub.settle();
+    const after = hosted.session.getState()!.turn;
+    expect(after).toBeGreaterThanOrEqual(2);
+
+    // the clock restarts for each new turn automatically
+    await sleep(120);
+    await hub.settle();
+    expect(hosted.session.getState()!.turn).toBeGreaterThan(after);
+  });
+
+  it('committing everyone still advances immediately (commit faster, never slower)', async () => {
+    const { hub, hosted, client } = await twoPlayerGame({ realtimeTurnSeconds: 5 });
+    hosted.host.startGame(SEED);
+    await hub.settle();
+    client.commitTurn();
+    hosted.session.commitTurn();
+    await hub.settle();
+    expect(hosted.session.getState()!.turn).toBe(2);
+  });
+
+  it('the deadline reaches clients as soon as the turn opens (no commits needed)', async () => {
+    const { hub, hosted, client } = await twoPlayerGame({ realtimeTurnSeconds: 5 });
+    hosted.host.startGame(SEED);
+    await hub.settle();
+    const deadline = client.getAutoTurnDeadline();
+    expect(deadline).not.toBeNull();
+    expect(deadline! - Date.now()).toBeGreaterThan(3000);
+    expect(deadline! - Date.now()).toBeLessThanOrEqual(5000);
+    void hosted;
+  });
+});

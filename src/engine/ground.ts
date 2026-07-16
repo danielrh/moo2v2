@@ -17,7 +17,7 @@ import { colonyPopUnits, empireOf, traitsOf } from './economy';
 import { leaderEmpireBonuses } from './leaders';
 import { areAtWar } from './battles';
 import { normalizeJobsForGroup } from './commands';
-import type { Colony, GameState, Ship, TurnEvent } from './types';
+import { ANDROID_RACE, type Colony, type GameState, type Ship, type TurnEvent } from './types';
 
 export const TROOPS_PER_TRANSPORT = 2;
 
@@ -141,6 +141,9 @@ export function resolveInvasions(state: GameState, events: TurnEvent[]): void {
       colony.queue = [];
       colony.storedProd = 0;
       colony.stickyInvested = {};
+      // androids self-destruct rather than serve a conqueror (MOO2 rule:
+      // destroyed, never captured)
+      colony.groups = colony.groups.filter((g) => g.race !== ANDROID_RACE);
       // existing civilians become conquered (unrest)
       for (const g of colony.groups) g.unrest = true;
       // surviving troops settle

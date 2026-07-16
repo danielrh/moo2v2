@@ -100,9 +100,9 @@ export const EFFECTS: Record<string, EffectSpec> = {
   cyber_security_link: { kind: 'empire_tech', modifiers: [emp('spy_defense', 10)] },
   autolab: { kind: 'building', modifiers: [col('sci_flat', 30)] },
   structural_analyzer: { kind: 'ship_special', handler: 'combat' }, // beam damage x2
-  android_farmers: { kind: 'system', stub: 'android population units (Phase 6)' },
-  android_workers: { kind: 'system', stub: 'android population units (Phase 6)' },
-  android_scientists: { kind: 'system', stub: 'android population units (Phase 6)' },
+  android_farmers: { kind: 'system', handler: 'economy' }, // buildable android units (pipeline/economy)
+  android_workers: { kind: 'system', handler: 'economy' },
+  android_scientists: { kind: 'system', handler: 'economy' },
   virtual_reality_network: { kind: 'building', modifiers: [col('morale_pct', 20)], handler: 'economy' },
   galactic_cybernet: { kind: 'building', modifiers: [col('sci_flat', 15), col('sci_coeff', 3)] },
   pleasure_dome: { kind: 'building', modifiers: [col('morale_pct', 30)] },

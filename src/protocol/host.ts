@@ -92,6 +92,8 @@ export class HostCore<S> {
   /** auto-turn: armed once all seats but one have committed */
   private autoTurnTimer: ReturnType<typeof setTimeout> | null = null;
   private autoTurnDeadline = 0;
+  /** turn the auto-turn timer was armed for (realtime re-arms each turn) */
+  private autoTurnArmedTurn = -1;
   private auction: {
     seed: string;
     contested: Record<string, number[]>;
@@ -370,7 +372,12 @@ export class HostCore<S> {
     }
     this.broadcastLobby();
     if (this.started) {
-      this.sendTo(seatId, this.commitStatusMsg());
+      // a (re)joining client must learn a live countdown too — realtime mode
+      // never re-broadcasts the deadline until someone commits or it fires
+      this.sendTo(
+        seatId,
+        this.commitStatusMsg(this.autoTurnTimer ? Math.max(0, this.autoTurnDeadline - Date.now()) : undefined),
+      );
     }
   }
 
@@ -432,6 +439,9 @@ export class HostCore<S> {
       ...(auctionOutcomes ? { auction: auctionOutcomes } : {}),
     };
     this.accept({ turn: 0, playerId: -1, kind: 'game_start', payload });
+    // realtime turns: the very first clock starts at game start, before any
+    // commit arrives (every later turn re-arms via broadcastCommitStatus)
+    this.broadcastCommitStatus();
   }
 
   // ----- sealed-bid pick auction -----
@@ -839,7 +849,12 @@ export class HostCore<S> {
    * advances the turn without them (their next-turn planning is unharmed;
    * turns always advance ONE at a time). */
   private armAutoTurn(): void {
-    const secs = this.settings.autoTurnSeconds ?? 0;
+    // realtime mode: the clock starts the moment the turn opens and waits
+    // for nobody (bugs.md); otherwise the classic laggard timer arms only
+    // once every seat except one has committed
+    const realtimeSecs = this.settings.realtimeTurnSeconds ?? 0;
+    const realtime = realtimeSecs > 0;
+    const secs = realtime ? realtimeSecs : (this.settings.autoTurnSeconds ?? 0);
     const seats = [...this.seats.keys()];
     const committed = seats.filter((id) => this.committed.has(id)).length;
     const eligible =
@@ -848,9 +863,12 @@ export class HostCore<S> {
       // would only corrupt their own-turn planning
       !this.fastLive() &&
       !!this.state &&
+      // a decided game must not keep ticking: realtime re-arms after every
+      // advance, so without this a finished game would advance forever
+      (this.engine.winnerOf?.(this.state!) ?? null) === null &&
       (!this.engine.phaseOf || this.engine.phaseOf(this.state) === 'planning') &&
       seats.length >= 2 &&
-      committed >= seats.length - 1 &&
+      (realtime || committed >= seats.length - 1) &&
       committed < seats.length;
     if (!eligible) {
       if (this.autoTurnTimer) {
@@ -859,17 +877,27 @@ export class HostCore<S> {
       }
       return;
     }
-    // already armed: a committed player re-sending commit_turn must NOT keep
-    // pushing the laggard's deadline out
-    if (this.autoTurnTimer) return;
+    // already armed THIS turn: a committed player re-sending commit_turn must
+    // NOT keep pushing the deadline out. A leftover timer from the previous
+    // turn (realtime re-arms every turn) restarts fresh instead.
+    if (this.autoTurnTimer) {
+      if (this.autoTurnArmedTurn === this.currentTurn()) return;
+      clearTimeout(this.autoTurnTimer);
+      this.autoTurnTimer = null;
+    }
+    this.autoTurnArmedTurn = this.currentTurn();
     this.autoTurnDeadline = Date.now() + secs * 1000;
     this.autoTurnTimer = setTimeout(() => {
       this.autoTurnTimer = null;
       if (!this.state) return;
+      if ((this.engine.winnerOf?.(this.state) ?? null) !== null) return; // game ended meanwhile
       if (this.engine.phaseOf && this.engine.phaseOf(this.state) !== 'planning') return;
       const now = [...this.seats.keys()];
       const done = now.filter((id) => this.committed.has(id)).length;
-      if (done < now.length - 1) return; // someone uncommitted meanwhile
+      // classic mode advances only if the table is still one short;
+      // realtime advances regardless — the deadline is the deadline
+      if (!realtime && done < now.length - 1) return;
+      if (done >= now.length) return; // everyone committed: normal advance already ran
       const turn = this.currentTurn();
       this.committed.clear();
       this.accept({

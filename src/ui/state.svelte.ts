@@ -58,7 +58,44 @@ export const app = $state({
   contactFlash: null as null | { turn: number; pairs: Array<[number, number]> },
   /** map view: star to center/select on next open (colony-ship arrival alert) */
   focusStarId: null as number | null,
+  /** slider autopilot (bugs.md): when on, five weights run every colony each
+   * turn and the player only manages research, ships and the map */
+  autopilot: {
+    enabled: false,
+    weights: { infra: 6, pop: 5, research: 5, colonyShips: 4, military: 3 },
+  },
 });
+
+// autopilot settings survive reloads (per browser, not per game)
+try {
+  const saved = localStorage.getItem('moo2.autopilot');
+  if (saved) {
+    const parsed = JSON.parse(saved) as typeof app.autopilot;
+    app.autopilot.enabled = parsed.enabled === true;
+    // sanitize: a hand-edited/corrupt entry must not NaN a slider off
+    const num = (v: unknown, d: number) => {
+      const n = Math.round(Number(v));
+      return Number.isFinite(n) ? Math.max(0, Math.min(10, n)) : d;
+    };
+    const w = app.autopilot.weights;
+    app.autopilot.weights = {
+      infra: num(parsed.weights?.infra, w.infra),
+      pop: num(parsed.weights?.pop, w.pop),
+      research: num(parsed.weights?.research, w.research),
+      colonyShips: num(parsed.weights?.colonyShips, w.colonyShips),
+      military: num(parsed.weights?.military, w.military),
+    };
+  }
+} catch {
+  // corrupt/absent storage: defaults stand
+}
+export function saveAutopilot(): void {
+  try {
+    localStorage.setItem('moo2.autopilot', JSON.stringify(app.autopilot));
+  } catch {
+    // private mode: settings last for this tab only
+  }
+}
 
 let rejectedNoteTimer: ReturnType<typeof setTimeout> | null = null;
 

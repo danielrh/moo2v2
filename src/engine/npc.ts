@@ -22,7 +22,7 @@ import { allocWorldId, MONSTER_COMBAT_ID } from './ids';
 import { rngFor } from './rng';
 import { NEXT_TERRAFORM } from './terraform';
 import { grantApp } from './research';
-import { colonyMaxPop, colonyPopUnits, traitsOf } from './economy';
+import { colonyMaxPop, colonyPopUnits, organicUnitsOf, traitsOf } from './economy';
 import type { CombatShipInit, CombatWeapon } from './combat';
 import type { GameState, MonsterUnit, Planet, TurnEvent } from './types';
 
@@ -429,9 +429,11 @@ export function randomEventsUpkeep(state: GameState, events: TurnEvent[]): void 
     }
     case 1: {
       if (colony) {
-        const g = colony.groups[0];
-        // the boom respects the world's population ceiling
-        if (g && colonyPopUnits(colony) < colonyMaxPop(state, colony)) {
+        // organics only: android groups sort first (race -2) but a boom must
+        // never mint a free android past its compartment cap
+        const g = colony.groups.find((x) => x.race >= 0) ?? colony.groups.find((x) => x.race === -1);
+        // the boom respects the world's (organic) population ceiling
+        if (g && organicUnitsOf(colony) < colonyMaxPop(state, colony)) {
           g.popK += 1000;
           events.push({ visibleTo: empire.id, kind: 'event_boom', payload: { empireId: empire.id, colonyId: colony.id } });
         }
@@ -488,7 +490,9 @@ export function randomEventsUpkeep(state: GameState, events: TurnEvent[]): void 
     }
     case 7: {
       if (colony) {
-        const g = colony.groups[0];
+        // a plague infects the living — machines are immune (androids sort
+        // first, so groups[0] would have killed an android)
+        const g = colony.groups.find((x) => x.race >= -1 && x.popK > 1000);
         if (g && g.popK > 1000) {
           g.popK -= 1000;
           const units = Math.floor(g.popK / 1000);

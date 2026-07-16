@@ -17,7 +17,10 @@
 // as the competitiveness benchmark. Iteration protocol: bugs/tournament/README.md.
 //
 // Knobs: TOURNEY_TURNS (297), TOURNEY_SEEDS (SOLO seed, comma-separated),
-//        TOURNEY_RACES (solari,ferron,lithor,hivex), TOURNEY_PHASES.
+//        TOURNEY_RACES (solari,ferron,lithor,hivex), TOURNEY_PHASES,
+//        TOURNEY_SEATINGS (2; 1 = single seating per pair — iteration mode),
+//        TOURNEY_SHARD (k/n: run only matches with index % n == k so several
+//        workers split a round; runid gets a .k suffix, merge the jsonl).
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -41,6 +44,8 @@ const SEEDS = (process.env['TOURNEY_SEEDS'] ?? SOLO_SEED).split(',');
 const PHASES = (process.env['TOURNEY_PHASES'] ?? 'races,rr').split(',');
 const RACES = (process.env['TOURNEY_RACES'] ?? 'solari,ferron,lithor,hivex').split(',');
 const CHECKPOINTS = [...new Set([100, 200, 297, 500, TURNS])].filter((t) => t <= TURNS);
+const SEATINGS = Number(process.env['TOURNEY_SEATINGS'] ?? 2);
+const [SHARD_K, SHARD_N] = (process.env['TOURNEY_SHARD'] ?? '0/1').split('/').map(Number) as [number, number];
 const PERSONALITIES: BotPersonality[] = ['balanced', 'techer', 'rusher', 'industrialist', 'expander', 'militarist'];
 
 interface SeatCfg {
@@ -184,10 +189,14 @@ describe.runIf(enabled)('AI tournament', () => {
     'runs the configured phases and writes the report',
     async () => {
       mkdirSync(OUT_DIR, { recursive: true });
-      const runId = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const runId =
+        (process.env['TOURNEY_RUNID'] ?? new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)) +
+        (SHARD_N > 1 ? `.${SHARD_K}` : '');
       const jsonl = join(OUT_DIR, `results-${runId}.jsonl`);
       const results: MatchResult[] = [];
+      let matchIndex = 0;
       const play = async (phase: string, seed: string, a: SeatCfg, b: SeatCfg) => {
+        if (matchIndex++ % SHARD_N !== SHARD_K) return null;
         const r = await runMatch(phase, seed, a, b);
         results.push(r);
         appendFileSync(jsonl, JSON.stringify(r) + '\n');
@@ -205,7 +214,7 @@ describe.runIf(enabled)('AI tournament', () => {
           for (const race of RACES) {
             const cfg: SeatCfg = { personality: 'balanced', race };
             await play('races', seed, cfg, baseline); // race in the human's seat
-            await play('races', seed, baseline, cfg); // race in the bot's seat
+            if (SEATINGS > 1) await play('races', seed, baseline, cfg); // race in the bot's seat
           }
         }
       }
@@ -216,7 +225,7 @@ describe.runIf(enabled)('AI tournament', () => {
               const pa: SeatCfg = { personality: PERSONALITIES[i]!, race: 'solari' };
               const pb: SeatCfg = { personality: PERSONALITIES[j]!, race: 'solari' };
               await play('rr', seed, pa, pb);
-              await play('rr', seed, pb, pa);
+              if (SEATINGS > 1) await play('rr', seed, pb, pa);
             }
           }
         }

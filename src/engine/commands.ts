@@ -14,7 +14,7 @@ import {
 } from './data/index';
 import { areAtWar, relationKey, setRelation } from './battles';
 import { anyEmpireContact, metEmpireIds } from './contact';
-import { buyCost, colonyMaxPop, colonyPopUnits as popUnitsOf, empireOf, farmingViable, freeFreighters, traitsOf } from './economy';
+import { buyCost, colonyMaxPop, colonyPopUnits as popUnitsOf, empireOf, farmingViable, freeFreighters, organicUnitsOf, traitsOf } from './economy';
 import { allocId, allocWorldId } from './ids';
 import { constructAsBarren } from './terraform';
 import { canQueue, itemCost, parseRefitItem } from './items';
@@ -24,7 +24,7 @@ import { appPickableBy, availableFields, fieldGrantsAll } from './research';
 import { availableHulls, designStats, knownWeapons } from './shipdesign';
 import { isShipStyle } from './shipstyles';
 import type { BattleOrders, Stance, TargetPriority } from './combat';
-import { NATIVE_RACE } from './types';
+import { ANDROID_RACE, NATIVE_RACE } from './types';
 import type { Colony, GameState, Planet, PopGroup, Ship, Star, TurnEvent } from './types';
 
 export interface EngineCommand {
@@ -82,6 +82,14 @@ const validateSetJobs: Validator = (state, cmd) => {
     }
     if (g.farmers + g.workers + g.scientists !== units) {
       return `jobs must total ${units} for race ${g.race}`;
+    }
+    // androids are hardwired at the factory: the group's job split may only
+    // ever be restated verbatim, never changed (bugs.md)
+    if (g.race === ANDROID_RACE) {
+      if (g.farmers !== grp.farmers || g.workers !== grp.workers || g.scientists !== grp.scientists) {
+        return 'androids are hardwired to the job they were built for';
+      }
+      continue;
     }
     // natives only ever farm (planet_specials.md); their idle-farming on a
     // spoiled world is fine — the viability guard is for the owner's citizens
@@ -816,7 +824,7 @@ const validateUnloadTransports: Validator = (state, cmd) => {
   const planet = state.planets.find((x) => x.id === c.planetId)!;
   if (ship.location.starId !== planet.starId) return 'transport is not at that colony';
   // same cap as move_colonists: no packing a colony past its climate ceiling
-  if (popUnitsOf(c) + ship.cargoPopUnits > colonyMaxPop(state, c)) {
+  if (organicUnitsOf(c) + ship.cargoPopUnits > colonyMaxPop(state, c)) {
     return 'colony is at its population limit';
   }
   return null;
@@ -1112,6 +1120,7 @@ const validateMoveColonists: Validator = (state, cmd) => {
   if (from.id === to.id) return 'already there';
   if (!Number.isSafeInteger(p.count) || p.count < 1) return 'bad count';
   if (p.race === NATIVE_RACE) return 'natives never leave their world';
+  if (p.race === ANDROID_RACE) return 'androids are wired into this colony and never leave';
   const fromStarId = state.planets.find((x) => x.id === from.planetId)!.starId;
   const toStarId = state.planets.find((x) => x.id === to.planetId)!.starId;
   if (fromStarId !== toStarId) {
@@ -1133,7 +1142,7 @@ const validateMoveColonists: Validator = (state, cmd) => {
   if (groupUnits < p.count) return `only ${groupUnits} unit(s) of that group`;
   if (totalUnits - p.count < 1) return 'the last colonist cannot leave';
   const cap = colonyMaxPop(state, to);
-  const there = popUnitsOf(to);
+  const there = organicUnitsOf(to);
   const incoming = (state.popTransits ?? []).reduce((n, t) => n + (t.toColonyId === to.id ? t.units : 0), 0);
   if (there + incoming + p.count > cap) return `destination full (${there + incoming}/${cap} incl. en route)`;
   return null;

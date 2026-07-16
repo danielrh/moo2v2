@@ -13,7 +13,7 @@ import { hostileMonsterAt } from './npc';
 import { appPickableBy, availableFields, fieldGrantsAll, fieldListedCost, researchEtaTurns, researchOddsPct } from './research';
 import { starDistance } from './galaxy';
 import { ceilDiv } from './imath';
-import { NATIVE_RACE } from './types';
+import { ANDROID_RACE, NATIVE_RACE } from './types';
 import type { Colony, Empire, GameState, Planet, Ship, Star } from './types';
 
 export interface ColonyRow {
@@ -174,7 +174,9 @@ export function colonyRow(state: GameState, colony: Colony, projectedFoodLack?: 
       raceName:
         g.race === NATIVE_RACE
           ? 'Natives'
-          : (state.empires.find((e) => e.id === g.race)?.raceName ?? `race ${g.race}`),
+          : g.race === ANDROID_RACE
+            ? 'Androids'
+            : (state.empires.find((e) => e.id === g.race)?.raceName ?? `race ${g.race}`),
       units: Math.floor(g.popK / 1000),
       farmers: g.farmers,
       workers: g.workers,
@@ -345,13 +347,15 @@ export function presetJobs(
   if (!colony || colony.outpost || colony.groups.length === 0) return null;
   const probe: Colony = structuredClone(colony);
   const unitsOf = (g: { popK: number }) => Math.floor(g.popK / 1000);
-  const total = probe.groups.reduce((n, g) => n + unitsOf(g), 0);
+  // androids are hardwired to their jobs: presets sweep past them entirely
+  const flexible = probe.groups.filter((g) => g.race !== ANDROID_RACE);
+  const total = flexible.reduce((n, g) => n + unitsOf(g), 0);
   if (total === 0) return null;
 
   const assign = (farmers: number, workers: number): void => {
     let f = farmers;
     let w = workers;
-    for (const g of probe.groups) {
+    for (const g of flexible) {
       const units = unitsOf(g);
       g.farmers = Math.min(units, f);
       f -= g.farmers;
@@ -381,7 +385,9 @@ export function presetJobs(
     // farming is outright hopeless here (then free every hand, as before)
     assign(total, 0);
     const bestPossible = colonyOutput(state, probe).foodNet;
-    farmers = bestPossible > 0 ? Math.min(total, colony.groups.reduce((n, g) => n + g.farmers, 0)) : 0;
+    farmers = bestPossible > 0
+      ? Math.min(total, colony.groups.reduce((n, g) => n + (g.race === ANDROID_RACE ? 0 : g.farmers), 0))
+      : 0;
   }
 
   const rest = total - farmers;
@@ -398,7 +404,10 @@ export function presetJobs(
     }
   }
   assign(farmers, workers);
-  return probe.groups.map((g) => ({
+  // android groups stay out of the result: callers may tweak the returned
+  // jobs (the solo bot shifts workers to science) and any touched android
+  // split would void the whole set_jobs command
+  return flexible.map((g) => ({
     race: g.race,
     farmers: g.farmers,
     workers: g.workers,
@@ -432,10 +441,42 @@ export function fixFoodJobs(
     }
     return net;
   };
+  // fixing food must not rewrite HOW the colony splits its non-farmers: a
+  // 2:1 worker:scientist world stays ~2:1 after the fix (bugs.md — the old
+  // pass 1 reset everyone to the research pose, so "fix food" silently put
+  // whole empires on science). Share = workers/(workers+scientists) BEFORE.
+  // androids are hardwired: everything below only ever touches organic groups
+  const flexGroups = (c: Colony) => c.groups.filter((g) => g.race !== ANDROID_RACE);
+  const workerShare = new Map<number, number>();
+  for (const c of probes) {
+    const w = flexGroups(c).reduce((n, g) => n + g.workers, 0);
+    const s = flexGroups(c).reduce((n, g) => n + g.scientists, 0);
+    workerShare.set(c.id, w + s > 0 ? w / (w + s) : 0.5);
+  }
+  /** fill the colony's organic groups with the given totals: farmers first,
+   * then workers, scientists take the remainder (same walk presetJobs uses) */
+  const assign = (c: Colony, farmers: number, workers: number): void => {
+    let f = farmers;
+    let w = workers;
+    for (const g of flexGroups(c)) {
+      const units = Math.floor(g.popK / 1000);
+      g.farmers = Math.min(units, f);
+      f -= g.farmers;
+      g.workers = Math.min(units - g.farmers, w);
+      w -= g.workers;
+      g.scientists = units - g.farmers - g.workers;
+    }
+  };
   const addFarmer = (c: Colony): boolean => {
-    // pull from workers first, then scientists (largest group first)
-    for (const job of ['workers', 'scientists'] as const) {
-      const grp = [...c.groups].sort((a, b) => b[job] - a[job])[0];
+    // pull from whichever job is over its pre-fix share, so the colony's
+    // worker:scientist balance survives the farming draft
+    const share = workerShare.get(c.id) ?? 0.5;
+    const w = flexGroups(c).reduce((n, g) => n + g.workers, 0);
+    const s = flexGroups(c).reduce((n, g) => n + g.scientists, 0);
+    const preferWorkers = w * (1 - share) >= s * share;
+    const order = preferWorkers ? (['workers', 'scientists'] as const) : (['scientists', 'workers'] as const);
+    for (const job of order) {
+      const grp = [...flexGroups(c)].sort((a, b) => b[job] - a[job])[0];
       if (grp && grp[job] > 0) {
         grp[job] -= 1;
         grp.farmers += 1;
@@ -445,18 +486,15 @@ export function fixFoodJobs(
     return false;
   };
 
-  // pass 1: relieve every selected colony to its lean-farming research pose
+  // pass 1: relieve every selected colony to lean farming, splitting the
+  // freed hands by the colony's own worker:scientist share
   for (const c of probes) {
     const groups = presetJobs(probeState, c.id, 'research');
     if (!groups) continue;
-    for (const g of groups) {
-      const target = c.groups.find((x) => x.race === g.race);
-      if (target) {
-        target.farmers = g.farmers;
-        target.workers = g.workers;
-        target.scientists = g.scientists;
-      }
-    }
+    const farmers = groups.reduce((n, g) => n + g.farmers, 0);
+    const total = flexGroups(c).reduce((n, g) => n + Math.floor(g.popK / 1000), 0);
+    const rest = Math.max(0, total - farmers);
+    assign(c, farmers, Math.round(rest * (workerShare.get(c.id) ?? 0.5)));
   }
   // pass 2: farm the best dirt first until the empire is fed
   let guard = 0;
@@ -480,7 +518,7 @@ export function fixFoodJobs(
   for (const c of probes) {
     out.set(
       c.id,
-      c.groups.map((g) => ({ race: g.race, farmers: g.farmers, workers: g.workers, scientists: g.scientists })),
+      flexGroups(c).map((g) => ({ race: g.race, farmers: g.farmers, workers: g.workers, scientists: g.scientists })),
     );
   }
   return out;

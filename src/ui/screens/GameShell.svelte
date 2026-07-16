@@ -2,6 +2,7 @@
   import { selectors, gameEngine } from '@engine/index';
   import { FAST_MAX_AHEAD } from '@protocol/messages';
   import { app, getActive, leaveGame } from '../state.svelte';
+  import { governColonies } from '../governor';
   import { syncEmpireColors } from '../colors';
   import { latchEdge, type EdgeLatch, type EdgeLevel } from '../commitEdge';
   import { describeSaveError, downloadRawDatabase, downloadSave } from '../saveload';
@@ -35,6 +36,17 @@
     void app.version;
     const s = session().getPlanned();
     return s ? selectors.empireSummary(s, session().playerId) : null;
+  });
+  // slider autopilot: run the governor once per (turn, weights) — a repeat
+  // pass with identical inputs would only echo the same commands forever
+  let governedFp = '';
+  $effect(() => {
+    const s = gs;
+    if (!s || !app.autopilot.enabled || s.phase !== 'planning' || s.winner !== null) return;
+    const fp = `${s.turn}:${JSON.stringify(app.autopilot.weights)}`;
+    if (fp === governedFp) return;
+    governedFp = fp;
+    governColonies(session(), app.autopilot.weights);
   });
   const committed = $derived.by(() => {
     void app.version;
@@ -159,6 +171,10 @@
   const autoTurnSeconds = $derived.by(() => {
     void app.version;
     return session().getSettings()?.autoTurnSeconds ?? 0;
+  });
+  const realtimeTurns = $derived.by(() => {
+    void app.version;
+    return (session().getSettings()?.realtimeTurnSeconds ?? 0) > 0;
   });
   // countdown display for the armed auto-turn timer (ticks locally)
   let nowTick = $state(Date.now());
@@ -449,7 +465,11 @@
   {/if}
   <!-- seat problems live on the Empires tab now (bugs.md: the big yellow
        banner must not block the whole main screen); the tab badge points there -->
-  {#if autoTurnRemaining !== null && !iCommitted}
+  {#if realtimeTurns && autoTurnRemaining !== null}
+    <div class="banner {autoTurnRemaining <= 5 && !iCommitted ? 'warn' : 'dim'}" data-testid="auto-turn-banner">
+      ⏱ Realtime: turn advances in {autoTurnRemaining}s{iCommitted ? '' : ' — commit your orders'}.
+    </div>
+  {:else if autoTurnRemaining !== null && !iCommitted}
     <div class="banner warn" data-testid="auto-turn-banner">
       ⏱ Everyone else has committed — the turn advances in {autoTurnRemaining}s unless you commit (or someone uncommits).
     </div>

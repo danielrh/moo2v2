@@ -384,11 +384,24 @@
         <option value={300}>5min after all but one commit</option>
       </select>
     </label>
+    <label title="Realtime: the turn clock starts ticking the moment each turn opens — commit sooner if you like, but when the timer runs out the turn advances without waiting for anyone. (The auto-turn timer above only starts once all but one player have committed.)">
+      ⏱ Realtime turns:
+      <select
+        data-testid="realtime-turn-seconds"
+        value={settings.realtimeTurnSeconds ?? 0}
+        onchange={(e) => updateSetting('realtimeTurnSeconds', Number((e.target as HTMLSelectElement).value))}
+      >
+        <option value={0}>off</option>
+        <option value={10}>10s per turn</option>
+        <option value={30}>30s per turn</option>
+        <option value={60}>60s per turn</option>
+      </select>
+    </label>
   </fieldset>
 {:else if settings}
   <p class="dim" data-testid="settings-view">
     {settings.galaxySize} galaxy, {settings.startMode} start —
-    {MODE_HELP.filter((m) => settings.modes[m.key]).map((m) => m.label).join(', ') || 'no optional modes'}{(settings.autoTurnSeconds ?? 0) > 0 ? ` — auto-turn ${settings.autoTurnSeconds}s after all but one commit` : ''}{(settings.pickPoints ?? 10) !== 10 ? ` — ${settings.pickPoints} pick points` : ''}
+    {MODE_HELP.filter((m) => settings.modes[m.key]).map((m) => m.label).join(', ') || 'no optional modes'}{(settings.realtimeTurnSeconds ?? 0) > 0 ? ` — ⏱ REALTIME ${settings.realtimeTurnSeconds}s turns` : (settings.autoTurnSeconds ?? 0) > 0 ? ` — auto-turn ${settings.autoTurnSeconds}s after all but one commit` : ''}{(settings.pickPoints ?? 10) !== 10 ? ` — ${settings.pickPoints} pick points` : ''}
   </p>
 {/if}
 

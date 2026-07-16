@@ -1,8 +1,8 @@
 <script lang="ts">
   // The system-wide colonies spreadsheet: the primary way to run your empire.
   // Every edit is an optimistic command; dirty cells resolve on host accept.
-  import { selectors, itemLabel, explainOutput, COLONY_TAGS } from '@engine/index';
-  import { app, getActive } from '../state.svelte';
+  import { selectors, itemLabel, explainOutput, COLONY_TAGS, ANDROID_RACE } from '@engine/index';
+  import { app, getActive, saveAutopilot } from '../state.svelte';
 
   const session = () => getActive()!.session;
   const allRowsWithOutposts = $derived.by(() => {
@@ -16,6 +16,18 @@
   const stickyMode = $derived.by(() => {
     void app.version;
     return session().getPlanned()?.settings.modes.stickyBuild === true;
+  });
+  // live research readout: the whole point of shuffling scientists is to see
+  // what it does to research, so the numbers live HERE, not a screen away
+  // (bugs.md: "move guy off research, click research screen to observe
+  // percent, click back" — the flipping killed the workflow)
+  const research = $derived.by(() => {
+    void app.version;
+    const s = session().getPlanned();
+    if (!s) return null;
+    const sum = selectors.empireSummary(s, session().playerId);
+    const accumRP = s.empires.find((e) => e.id === session().playerId)?.research.accumRP ?? 0;
+    return { sum, accumRP };
   });
   const label = (item: string) => {
     const s = session().getPlanned();
@@ -435,6 +447,63 @@
   {#if moveNote}
     <span class="movenote" data-testid="move-note">{moveNote}</span>
   {/if}
+  {#if research}
+    <span
+      class="research"
+      data-testid="research-readout"
+      title="current research — updates live as you reassign citizens (progress % is banked RP vs the listed cost; the turn estimate uses the research per turn shown here)"
+    >
+      {#if research.sum.researching}
+        🔬 {pretty(research.sum.researching)}{research.sum.researchTarget ? ` → ${pretty(research.sum.researchTarget)}` : ''}
+        · {research.accumRP}/{research.sum.researchListedCost ?? '?'} RP{research.sum.researchProgressPct !== null ? ` (${research.sum.researchProgressPct}%)` : ''}
+        · +{research.sum.researchPerTurn}/turn{research.sum.researchTurnsLeft !== null ? ` · ~${research.sum.researchTurnsLeft}t` : ''}
+      {:else}
+        🔬 <span class="neg">no research selected</span> · +{research.sum.researchPerTurn}/turn banked
+      {/if}
+    </span>
+  {/if}
+</div>
+
+<div class="bar autopilot" data-testid="autopilot-bar">
+  <label title="Slider autopilot: five weights run every colony each turn (jobs, buildings, housing, colony ships, warships) so you only manage research, ships and the map. Your manual queue edits stick until the next turn opens.">
+    <input
+      type="checkbox"
+      data-testid="autopilot-toggle"
+      checked={app.autopilot.enabled}
+      onchange={(e) => {
+        app.autopilot.enabled = (e.target as HTMLInputElement).checked;
+        saveAutopilot();
+      }}
+    />
+    🎚 autopilot
+  </label>
+  {#if app.autopilot.enabled}
+    {#each [
+      { key: 'infra', icon: '🏗', label: 'infrastructure', help: 'buildings, in the winning build order' },
+      { key: 'pop', icon: '👥', label: 'population', help: 'housing emphasis — higher fills planets fuller' },
+      { key: 'research', icon: '🔬', label: 'research', help: 'labs over factories, plus extra scientists' },
+      { key: 'colonyShips', icon: '🚀', label: 'colony ships', help: 'settlement pipeline depth (you sail them)' },
+      { key: 'military', icon: '⚔', label: 'military', help: 'warship quota per colony; high values add a transport lift' },
+    ] as const as s (s.key)}
+      <label class="slider" title={s.help}>
+        {s.icon} {s.label}
+        <!-- onchange (drag release), not oninput: every weight change runs a
+             full governor pass over all colonies -->
+        <input
+          type="range"
+          min="0"
+          max="10"
+          data-testid="slider-{s.key}"
+          value={app.autopilot.weights[s.key]}
+          onchange={(e) => {
+            app.autopilot.weights[s.key] = Number((e.target as HTMLInputElement).value);
+            saveAutopilot();
+          }}
+        />
+        <span class="val">{app.autopilot.weights[s.key]}</span>
+      </label>
+    {/each}
+  {/if}
 </div>
 
 <table data-testid="colony-table">
@@ -578,24 +647,34 @@
               {/if}
               {#each row.groups as grp (grp.race)}
                 {#each Array(grp[job]) as _, i (i)}
-                  <span
-                    class="citizen"
-                    class:foreign={grp.race !== session().playerId}
-                    class:unrest={grp.unrest}
-                    class:sel={isPicked(row, job, grp.race, i)}
-                    style={i > 0 ? `margin-left:-${overlapPx(row.jobs[job])}px` : ''}
-                    draggable="true"
-                    role="button"
-                    tabindex="-1"
-                    title={grp.race !== session().playerId
-                      ? `captured ${grp.raceName} colonist${grp.unrest ? ' — in unrest (−25% output until assimilated)' : ''}`
-                      : grp.unrest
-                        ? 'in unrest (−25% output until assimilated)'
-                        : ''}
-                    onclick={() => pickFrom(row, job, grp.race, i)}
-                    onkeydown={(e) => e.key === 'Enter' && pickFrom(row, job, grp.race, i)}
-                    ondragstart={(e) => onDragStart(row, job, grp.race, i, e)}
-                  >{JOB_ICONS[job]}</span>
+                  {#if grp.race === ANDROID_RACE}
+                    <!-- androids: hardwired to their job, never draggable -->
+                    <span
+                      class="citizen android"
+                      style={i > 0 ? `margin-left:-${overlapPx(row.jobs[job])}px` : ''}
+                      title="android {job.slice(0, -1)} — hardwired to this job for life; consumes 1 production per turn instead of food, immune to morale, houses in compact subterranean compartments"
+                      data-testid="android-{job}-{row.id}"
+                    >🤖</span>
+                  {:else}
+                    <span
+                      class="citizen"
+                      class:foreign={grp.race !== session().playerId}
+                      class:unrest={grp.unrest}
+                      class:sel={isPicked(row, job, grp.race, i)}
+                      style={i > 0 ? `margin-left:-${overlapPx(row.jobs[job])}px` : ''}
+                      draggable="true"
+                      role="button"
+                      tabindex="-1"
+                      title={grp.race !== session().playerId
+                        ? `captured ${grp.raceName} colonist${grp.unrest ? ' — in unrest (−25% output until assimilated)' : ''}`
+                        : grp.unrest
+                          ? 'in unrest (−25% output until assimilated)'
+                          : ''}
+                      onclick={() => pickFrom(row, job, grp.race, i)}
+                      onkeydown={(e) => e.key === 'Enter' && pickFrom(row, job, grp.race, i)}
+                      ondragstart={(e) => onDragStart(row, job, grp.race, i, e)}
+                    >{JOB_ICONS[job]}</span>
+                  {/if}
                 {/each}
               {/each}
             </span>
@@ -738,6 +817,28 @@
     gap: 0.25rem;
     align-items: center;
   }
+  /* slider autopilot bar */
+  .autopilot {
+    font-size: 0.8rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.25rem 0.6rem;
+  }
+  .autopilot .slider {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    white-space: nowrap;
+  }
+  .autopilot input[type='range'] {
+    width: 5.5rem;
+  }
+  .autopilot .val {
+    min-width: 1.1rem;
+    text-align: right;
+    color: var(--accent-soft);
+  }
   .presets button {
     font-size: 0.78rem;
   }
@@ -799,6 +900,11 @@
   .citizen.unrest {
     filter: drop-shadow(0 0 3px var(--bad)) grayscale(0.5);
   }
+  /* androids: teal glow, and a not-allowed cursor — they never change jobs */
+  .citizen.android {
+    cursor: not-allowed;
+    filter: drop-shadow(0 0 2px #22d3ee);
+  }
   .zero {
     color: var(--text-dim);
     opacity: 0.5;
@@ -823,6 +929,14 @@
   .movenote {
     font-size: 0.8rem;
     color: var(--accent-soft);
+  }
+  /* live research readout: pushed to the bar's right edge, always in view
+     while dragging scientists around */
+  .research {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: var(--accent-soft);
+    white-space: nowrap;
   }
   .mini {
     padding: 0 0.35rem;

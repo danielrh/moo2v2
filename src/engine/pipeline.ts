@@ -11,16 +11,16 @@ import { assimilate, isBlockaded, resolveInvasions } from './ground';
 import { leaderEmpireBonuses, leadersUpkeep } from './leaders';
 import { antaranUpkeep, hostileMonsterAt, randomEventsUpkeep } from './npc';
 import { allocId } from './ids';
-import { itemCost, parseDesignItem, parseRefitItem } from './items';
+import { ANDROID_ITEMS, itemCost, parseDesignItem, parseRefitItem } from './items';
 import { commandPoints, inRange, supportStars } from './movement';
 import { availableHulls, defaultDesign, designLoadoutKey } from './shipdesign';
 import { ceilDiv } from './imath';
 import { applyTerraformStep, constructAsBarren, convertiblePlanetsInSystem, terraformCost, unsettledPlanetsInSystem } from './terraform';
-import { busyFreighters, colonyMaxPop, colonyOutput, colonyPopUnits, farmingViable, freeFreighters, groupGrowthK, traitsOf } from './economy';
+import { busyFreighters, colonyMaxPop, colonyOutput, colonyPopUnits, farmingViable, freeFreighters, groupGrowthK, organicUnitsOf, traitsOf } from './economy';
 import { applyFoundingSpecials, normalizeJobsForGroup } from './commands';
 import { rngFor } from './rng';
 import { applyResearch } from './research';
-import type { Colony, GameState, TurnEvent } from './types';
+import { ANDROID_RACE, type Colony, type GameState, type TurnEvent } from './types';
 
 export interface AdvanceResult {
   events: TurnEvent[];
@@ -223,7 +223,9 @@ function s1_population(state: GameState, events: TurnEvent[]): void {
     const totalUnits = colonyPopUnits(colony);
     const capK = maxPop * 1000;
 
-    let colonyPopK = colony.groups.reduce((s, g) => s + g.popK, 0);
+    // androids never occupy organic housing: the climate-cap clamp counts
+    // organics only, matching groupGrowthK and the movement validators
+    let colonyPopK = colony.groups.reduce((s, g) => s + (g.race === ANDROID_RACE ? 0 : g.popK), 0);
     for (const g of colony.groups) {
       const inc = groupGrowthK(state, colony, g, maxPop, totalUnits);
       if (inc > 0) {
@@ -482,6 +484,20 @@ function completeItem(state: GameState, colony: Colony, item: string, events: Tu
     events.push({ visibleTo: colony.owner, kind: 'freighters_built', payload: { colonyId: colony.id } });
     return;
   }
+  if ((ANDROID_ITEMS as readonly string[]).includes(item)) {
+    // one android unit rolls off the line, hardwired to its job for life
+    const job = item.slice('android_'.length) as 'farmers' | 'workers' | 'scientists';
+    let grp = colony.groups.find((g) => g.race === ANDROID_RACE);
+    if (!grp) {
+      grp = { race: ANDROID_RACE, popK: 0, farmers: 0, workers: 0, scientists: 0, unrest: false };
+      colony.groups.push(grp);
+      colony.groups.sort((a, b) => a.race - b.race);
+    }
+    grp.popK += 1000;
+    grp[job] += 1;
+    events.push({ visibleTo: colony.owner, kind: 'android_built', payload: { colonyId: colony.id, job } });
+    return;
+  }
   const refit = parseRefitItem(item);
   if (refit !== null) {
     const ship = state.ships.find((s) => s.id === refit.shipId && s.owner === colony.owner);
@@ -626,7 +642,9 @@ function s6_movement(state: GameState, events: TurnEvent[]): void {
         });
         continue;
       }
-      const room = Math.max(0, colonyMaxPop(state, colony) - colonyPopUnits(colony));
+      // organic units only — validateMoveColonists admits the trip on the
+      // same measure, so a validated transfer always has its room on arrival
+      const room = Math.max(0, colonyMaxPop(state, colony) - organicUnitsOf(colony));
       const landed = Math.min(t.units, room);
       if (landed > 0) {
         let dst = colony.groups.find((g) => g.race === t.race);

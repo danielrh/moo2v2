@@ -107,4 +107,37 @@ describe('job presets vs empire food', () => {
     expect(mine.groups[0]!.farmers).toBe(0);
     expect(home.groups.reduce((n, g) => n + g.farmers, 0)).toBeGreaterThan(0);
   });
+
+  it('fix-food keeps the worker:scientist ratio it found (bugs.md)', () => {
+    const state = newGame();
+    const { home, mine } = stageBreadbasket(state);
+    // 2 workers per scientist and zero farmers: food is broken but the
+    // colony's split is unambiguous — fixing food must not rewrite it
+    for (const g of home.groups) {
+      const units = Math.floor(g.popK / 1000);
+      const sci = Math.floor(units / 3);
+      g.farmers = 0;
+      g.scientists = sci;
+      g.workers = units - sci;
+    }
+    const plan = selectors.fixFoodJobs(state, [home.id, mine.id]);
+    for (const [colonyId, groups] of plan) {
+      const colony = state.colonies.find((c) => c.id === colonyId)!;
+      for (const g of groups) {
+        const target = colony.groups.find((x) => x.race === g.race)!;
+        target.farmers = g.farmers;
+        target.workers = g.workers;
+        target.scientists = g.scientists;
+      }
+    }
+    const net = colonyOutput(state, home).foodNet + colonyOutput(state, mine).foodNet;
+    expect(net).toBeGreaterThanOrEqual(0); // still actually fixes the food
+    const w = home.groups.reduce((n, g) => n + g.workers, 0);
+    const s = home.groups.reduce((n, g) => n + g.scientists, 0);
+    expect(w + s).toBeGreaterThan(0); // farmers must not swallow the colony
+    // ~2:1 survives the farming draft (± rounding on a small population)
+    expect(Math.abs(w - 2 * s)).toBeLessThanOrEqual(2);
+    // the old behavior put EVERYONE on science — guard against regressing
+    expect(w).toBeGreaterThan(s);
+  });
 });

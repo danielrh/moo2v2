@@ -55,6 +55,11 @@ export interface GameSettings {
   /** auto-turn timer: once every player except one has committed, the host
    * advances the turn after this many seconds (0 = off) */
   autoTurnSeconds?: number;
+  /** realtime mode: the turn timer starts ticking the moment the planning
+   * turn OPENS (not when the table is one commit short — that is
+   * autoTurnSeconds). Players may commit sooner but can never wait past the
+   * deadline. 0 = off; takes precedence over autoTurnSeconds when set. */
+  realtimeTurnSeconds?: number;
   /** mirror galaxy: identical rotated wedges, every player on the map edge */
   mirror?: boolean;
   /** home-system sibling world: 'good' = ultra-rich, 'min' = abundant */

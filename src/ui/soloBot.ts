@@ -45,7 +45,7 @@ const PROFILES: Record<BotPersonality, Profile> = {
   techer: { scienceBias: 1, fleetRatio: 0.6, expand: 3, warlike: false, buyEager: false },
   rusher: { scienceBias: 0, fleetRatio: 1.5, expand: 1, warlike: true, buyEager: true },
   industrialist: { scienceBias: 0, fleetRatio: 1, expand: 2, warlike: false, buyEager: true },
-  expander: { scienceBias: 1, fleetRatio: 0.5, expand: 6, warlike: false, buyEager: true },
+  expander: { scienceBias: 1, fleetRatio: 0.7, expand: 6, warlike: false, buyEager: true },
   militarist: { scienceBias: 0, fleetRatio: 2, expand: 2, warlike: true, buyEager: true },
 };
 
@@ -54,7 +54,7 @@ const PERSONALITIES: BotPersonality[] = ['techer', 'rusher', 'industrialist', 'e
 /** building priority for the v2 brain, taken from the opening a winning human
  * game actually played (bugs/moo2v2-SOLO-turn297.moo2save, turns 1–120);
  * anything not listed falls back to cheapest-first */
-const BUILD_ORDER = [
+export const BUILD_ORDER = [
   'automated_factory',
   'research_lab',
   'hydroponic_farm',
@@ -181,6 +181,22 @@ export class SoloBot {
     const bot = state.empires.find((e) => e.id === me);
     if (!bot || !human) return;
     const rand = whim(state.turn, me);
+    const warRel = state.relations.find(
+      (r) => r.a === Math.min(me, human.id) && r.b === Math.max(me, human.id),
+    );
+    const atWar = warRel?.status === 'war';
+    // threat-responsive defense: peacetime fleet appetite is a personality
+    // trait, but an empire at war AND OUTGUNNED keeps a real navy no matter
+    // its temperament — the round-3 tournament fed the expander (fleetRatio
+    // 0.5, ~10 hulls guarding 25 colonies) to anyone who declared: eliminated
+    // twice, last place. Round 4 floored the ratio for anyone merely at war
+    // and that homogenized the personalities (tournament bots declare on turn
+    // 1, so balanced and techer played identical games) and sank every
+    // economy — hence the outgunned gate.
+    const myWarCount = state.ships.filter((s) => s.owner === me && s.shipKind === 'design').length;
+    const theirWarCount = state.ships.filter((s) => s.owner === human.id && s.shipKind === 'design').length;
+    const outgunned = atWar && theirWarCount > myWarCount * 1.2 + 2;
+    const fleetRatio = outgunned ? Math.max(this.profile.fleetRatio, 1.25) : this.profile.fleetRatio;
 
     // ---- concession: wars must be able to END. Bombard spares the last pop
     // unit and invasions grind, so a truly beaten empire offers formal
@@ -195,12 +211,7 @@ export class SoloBot {
     if (state.turn >= 250) {
       const myCol = state.colonies.filter((c) => c.owner === me && !c.outpost).length;
       const theirCol = state.colonies.filter((c) => c.owner === human.id && !c.outpost).length;
-      const myW = state.ships.filter((s) => s.owner === me && s.shipKind === 'design').length;
-      const theirW = state.ships.filter((s) => s.owner === human.id && s.shipKind === 'design').length;
-      const rel = state.relations.find(
-        (r) => r.a === Math.min(me, human.id) && r.b === Math.max(me, human.id),
-      );
-      const hopeless = rel?.status === 'war' && theirCol >= myCol * 2 + 5 && theirW >= myW * 4 + 8;
+      const hopeless = atWar && theirCol >= myCol * 2 + 5 && theirWarCount >= myWarCount * 4 + 8;
       const alreadyOffered = (state.proposals ?? []).some((p) => p.from === me && p.kind === 'surrender');
       if (hopeless && !alreadyOffered) this.submit('diplo_propose', { to: human.id, kind: 'surrender' });
     }
@@ -283,7 +294,7 @@ export class SoloBot {
     // is acceptable while the books are healthy — a hard gate left the
     // militarist with zero warships (personalities distinctness gate)
     const cpHeadroom =
-      cpSummary.cpSources - cpSummary.cpUsage + (prof.warlike && bot.bc > 100 ? 4 : 0);
+      cpSummary.cpSources - cpSummary.cpUsage + ((prof.warlike || outgunned) && bot.bc > 100 ? 4 : 0);
     // v2 walks colonies by production so the shipyards get the military work
     const ordered = v2
       ? [...planned.colonies].sort((a, b) => {
@@ -316,7 +327,10 @@ export class SoloBot {
       // industry/blend presets never freed the labs)
       const buildingShips = !!head0 && (head0.startsWith('design:') || SHIP_BUILDABLES.has(head0));
       const developed = colony.buildings.length >= 5;
-      const techy = v2 && (prof.scienceBias >= 2 || colony.buildings.length >= 4);
+      // high-bias profiles flip to blend a building earlier — from turn 1
+      // ("scienceBias >= 2" unconditionally) fails the 120-turn viability
+      // gate: pure blend before the factory exists starves the whole opening
+      const techy = v2 && colony.buildings.length >= (prof.scienceBias >= 2 ? 3 : 4);
       const preset = v2 && developed && !buildingShips ? 'research' : techy ? 'blend' : 'industry';
       const jobs = selectors.presetJobs(planned, colony.id, preset);
       if (jobs) {
@@ -368,7 +382,7 @@ export class SoloBot {
           const designs = options
             .filter((b) => b.startsWith('design:'))
             .sort((a, b) => (itemCost(planned, me, a, colony) ?? 9999) - (itemCost(planned, me, b, colony) ?? 9999));
-          const wantFleet = Math.ceil(myColonies * prof.fleetRatio);
+          const wantFleet = Math.ceil(myColonies * fleetRatio);
           let item: string | undefined;
           if (warOrders < wantFleet && designs.length && (cpHeadroom > warOrders - myWarships || bot.bc > 500)) {
             // biggest hull this yard can finish in ~12 turns — cheapest-first

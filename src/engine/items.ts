@@ -4,7 +4,7 @@
 
 import { ALWAYS_KNOWN_ITEMS, applicationById, buildableById, FIELD_ROWS, FIELD_SUBJECTS } from './data/index';
 import type { Colony, Empire, GameState, Planet } from './types';
-import { planetOf } from './economy';
+import { androidUnitsOf, planetOf } from './economy';
 import { designStats } from './shipdesign';
 import { canTerraform, convertiblePlanetsInSystem, terraformCost, unsettledPlanetsInSystem } from './terraform';
 
@@ -43,7 +43,20 @@ export const PROJECT_BUILDABLES = new Set([
   'gaia_transformation',
   'colony_base',
   'artificial_planet',
+  'android_farmers',
+  'android_workers',
+  'android_scientists',
 ]);
+
+/** Android units a planet can house — compact subterranean compartments,
+ * independent of the organic population cap (bugs.md). */
+export function androidCap(planet: Planet): number {
+  return 2 * planet.sizeClass;
+}
+
+/** the three buildable android units; the item id doubles as the job name
+ * (android_farmers → farmers) — pipeline completion relies on that */
+export const ANDROID_ITEMS = ['android_farmers', 'android_workers', 'android_scientists'] as const;
 
 /** Buildables intentionally unavailable until later phases (documented). Their
  * effect entries in effectsMap carry matching stub notes. */
@@ -227,6 +240,11 @@ export function canQueue(state: GameState, colony: Colony, itemId: string): stri
   if (itemId === 'spy') {
     const queued = colony.queue.filter((q) => q.item === 'spy').length;
     if (empire.spies.count + queued >= 10) return 'agent roster is full (10)';
+  }
+  if ((ANDROID_ITEMS as readonly string[]).includes(itemId)) {
+    const cap = androidCap(planet);
+    const queued = colony.queue.filter((q) => (ANDROID_ITEMS as readonly string[]).includes(q.item)).length;
+    if (androidUnitsOf(colony) + queued >= cap) return `android compartments full (${cap} per planet of this size)`;
   }
   const isShip = SHIP_BUILDABLES.has(itemId);
   const isProject = PROJECT_BUILDABLES.has(itemId);

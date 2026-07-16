@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appPickableBy, selectors, traitsOf } from '@engine/index';
-  import { applicationsOfField, applicationById, fieldByNum, fieldById } from '@engine/data/index';
+  import { applicationsOfField, applicationById, fieldByNum, fieldById, fieldsOfSubject, type Subject } from '@engine/data/index';
   import { EFFECTS, EFFECT_ALIASES } from '@engine/data/effectsMap';
   import { app, getActive } from '../state.svelte';
 
@@ -47,6 +47,12 @@
   };
 
   let pendingTarget = $state<Record<number, string>>({});
+
+  // full-tree preview per category (bugs.md: "preview the upcoming tech tree
+  // by clicking on the category name"): every field of the subject in
+  // research order, done/current/upcoming marked
+  let previewSubject = $state<string | null>(null);
+  const togglePreview = (subject: string) => (previewSubject = previewSubject === subject ? null : subject);
 
   let researchNote = $state('');
   let researchNoteTimer: ReturnType<typeof setTimeout> | null = null;
@@ -154,7 +160,35 @@
   <div class="subjects">
     {#each bySubject as [subject, fields] (subject)}
       <div class="subject">
-        <h3>{SUBJECT_EMOJI[subject] ?? '🔬'} {subject.replace('_', ' ')}</h3>
+        <h3>
+          <button
+            class="subjecthead"
+            data-testid="subject-{subject}"
+            title="click to preview every technology in this category"
+            onclick={() => togglePreview(subject)}
+          >{SUBJECT_EMOJI[subject] ?? '🔬'} {subject.replace('_', ' ')} <span class="chev">{previewSubject === subject ? '▾' : '▸'}</span></button>
+        </h3>
+        {#if previewSubject === subject}
+          <div class="tree" data-testid="tree-{subject}">
+            {#each fieldsOfSubject(subject as Subject) as f (f.id)}
+              {@const done = empire.completedFields.includes(f.num)}
+              {@const current = empire.research.fieldNum === f.num}
+              {@const offered = fields.some((c) => c.field.num === f.num)}
+              <div class="treefield" class:done class:current class:future={!done && !current && !offered}>
+                <b>{pretty(f.id)}</b>
+                <span class="dim">{f.cost} RP</span>
+                {#if done}<span class="mark" title="field completed">✓</span>
+                {:else if current}<span class="mark" title="researching now">🔬</span>
+                {:else if offered}<span class="mark" title="available to research now">●</span>{/if}
+                <span class="treeapps">
+                  {#each applicationsOfField(f.id) as a (a.id)}
+                    <span class:known={empire.knownApps.includes(a.id)} title={appTitle(a.id)}>{a.name}{empire.knownApps.includes(a.id) ? ' ✓' : ''}</span>
+                  {/each}
+                </span>
+              </div>
+            {/each}
+          </div>
+        {/if}
         {#each fields as choice (choice.field.num)}
           {@const isCurrent = empire.research.fieldNum === choice.field.num}
           <div class="field" class:current={isCurrent}>
@@ -261,6 +295,64 @@
     margin: 0.2rem 0;
     text-transform: capitalize;
     color: var(--accent-soft);
+  }
+  /* the category name is a button now: full-tree preview on click */
+  .subjecthead {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+    padding: 0;
+  }
+  .subjecthead:hover {
+    text-decoration: underline;
+  }
+  .chev {
+    font-size: 0.75em;
+    opacity: 0.7;
+  }
+  .tree {
+    border: 1px solid var(--line-bright, var(--line));
+    border-radius: 8px;
+    padding: 0.4rem 0.6rem;
+    margin-bottom: 0.5rem;
+    background: var(--panel);
+    font-size: 0.8rem;
+  }
+  .treefield {
+    padding: 0.15rem 0;
+    border-bottom: 1px dotted var(--line);
+  }
+  .treefield:last-child {
+    border-bottom: none;
+  }
+  .treefield b {
+    text-transform: capitalize;
+    margin-right: 0.35rem;
+  }
+  .treefield.done {
+    opacity: 0.55;
+  }
+  .treefield.current b {
+    color: var(--good);
+  }
+  .treefield.future {
+    opacity: 0.8;
+  }
+  .mark {
+    margin-left: 0.3rem;
+  }
+  .treeapps {
+    display: block;
+    opacity: 0.8;
+  }
+  .treeapps span {
+    margin-right: 0.6rem;
+  }
+  .treeapps span.known {
+    opacity: 0.5;
   }
   .field {
     border: 1px solid var(--line);

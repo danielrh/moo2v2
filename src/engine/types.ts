@@ -57,9 +57,16 @@ export type Job = 'farmers' | 'workers' | 'scientists';
  * its world (no colonist moves, no transports). */
 export const NATIVE_RACE = -1;
 
+/** PopGroup.race for android units (cybertechnics): built, not grown.
+ * Hardwired to the job they were built for, eat 1 production instead of
+ * food, immune to morale, add no income, and live in compact subterranean
+ * compartments that never crowd organic housing (own cap: 2 per planet
+ * size). Destroyed, never captured, when a colony falls. */
+export const ANDROID_RACE = -2;
+
 /** Population group: colonists of one origin living on a colony. */
 export interface PopGroup {
-  /** empireId of the race, or -1 natives (NATIVE_RACE), -2 androids (later phases) */
+  /** empireId of the race, or -1 natives (NATIVE_RACE), -2 androids (ANDROID_RACE) */
   race: number;
   popK: number; // thousands; 1 colonist unit = 1000k
   /** assigned jobs, in whole colonist units */
