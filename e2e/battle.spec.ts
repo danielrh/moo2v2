@@ -93,17 +93,25 @@ test('war, battle orders dialog, deterministic resolve, replay viewer', async ({
   const hA = await hashOf(a);
   await expect.poll(() => hashOf(b), { timeout: 10_000 }).toBe(hA);
 
-  // replay badge -> watch in the pixi viewer -> skip -> summary
-  await expect(a.getByTestId('new-replays')).toBeVisible({ timeout: 10_000 });
-  await a.getByTestId('new-replays').click();
-  await a.locator('[data-testid^="watch-"]').first().click();
+  // the replay pops up automatically over the map for BOTH combatants
+  // (auto-show, on by default) -> skip -> summary
   await expect(a.getByTestId('battle-viewer')).toBeVisible({ timeout: 15_000 });
+  await expect(b.getByTestId('battle-viewer')).toBeVisible({ timeout: 15_000 });
   await expect(a.locator('[data-testid="battle-viewer"] canvas')).toBeVisible({ timeout: 15_000 });
   await a.getByTestId('battle-skip').click();
   await expect(a.getByTestId('battle-summary')).toBeVisible();
   // a fresh replay re-simulates under the SAME engine that resolved it — the
   // "recorded under an older version" divergence banner must never show here
   await expect(a.getByTestId('battle-diverged')).toHaveCount(0);
+  await a.getByTestId('battle-close').click();
+  await b.getByTestId('battle-close').click();
+
+  // closing marked it watched, so no badge — the archive on Empires still
+  // reopens it on demand
+  await expect(a.getByTestId('new-replays')).toHaveCount(0);
+  await a.getByTestId('tab-empires').click();
+  await a.locator('[data-testid^="watch-"]').first().click();
+  await expect(a.getByTestId('battle-viewer')).toBeVisible({ timeout: 15_000 });
   await a.getByTestId('battle-close').click();
 
   await ctxA.close();

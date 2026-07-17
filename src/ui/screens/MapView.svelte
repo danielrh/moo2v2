@@ -3,10 +3,13 @@
   // fuel-range shading, in-flight fleet markers with travel progress, monster
   // lairs vs Andromedan raids, blockade badges, move ordering with re-routing.
   import { selectors, inRange, isBlockaded, fuelRangeCp, supportStars, areAtWar, shortEntityId } from '@engine/index';
+  import { buildableItems, itemLabel } from '@engine/items';
   import type { StarColor } from '@engine/types';
   import { MAP_SIZE } from '@engine/galaxy';
   import { playerColor, STAR_COLORS } from '../colors';
-  import { app, getActive } from '../state.svelte';
+  import { app, getActive, savePerGame } from '../state.svelte';
+  import { BUILD_HOTKEYS, bestColonyFor, cancelPin, pinBuild, pinnedStatus, resolveHotkeyItem } from '../quickBuild';
+  import AutopilotBar from '../components/AutopilotBar.svelte';
 
   const MAP_BG_CACHE = new Map<string, string>();
 
@@ -491,13 +494,46 @@
   function onMapKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement | null;
     const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-    if (typing || !shipsHere.length) return;
-    if (e.key === 'a' || e.key === 'A') {
+    if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+    const key = e.key.toLowerCase();
+    if (e.key === 'Escape') {
+      if (buildArm) {
+        e.preventDefault();
+        buildArm = false;
+      }
+      return;
+    }
+    // build mode: B arms the selected star, then one key per item queues it
+    // at the best-suited colony there (pinned — autopilot waits for it)
+    if (buildArm && selectedStarId !== null && BUILD_HOTKEYS[key]) {
+      e.preventDefault();
+      queueHotkey(key);
+      return;
+    }
+    if (key === 'b' && selectedStarId !== null && myColonyHere) {
+      e.preventDefault();
+      buildArm = true;
+      return;
+    }
+    if (!shipsHere.length) return;
+    if (key === 'a') {
       e.preventDefault();
       selectAllShips();
     } else if (e.key === 'Backspace') {
       e.preventDefault();
       cycleShipSelection();
+    } else if (key === 'c') {
+      e.preventDefault();
+      hotSettle('colonize');
+    } else if (key === 'o') {
+      e.preventDefault();
+      hotSettle('outpost');
+    } else if (key === 'l') {
+      e.preventDefault();
+      hotTransports('load');
+    } else if (key === 'u') {
+      e.preventDefault();
+      hotTransports('unload');
     }
   }
 
@@ -508,6 +544,123 @@
   function outpost(shipId: number, planetId: number) {
     const res = session().submit('build_outpost', { shipId, planetId });
     if (res.error) showNote(`⛔ ${res.error}`);
+  }
+
+  // ---- fleet hotkeys: C colonizes / O outposts the best open planet here
+  // with a suitable ship; L / U load and unload a transport at the colony ----
+  function hotSettle(kind: 'colonize' | 'outpost') {
+    const pool = selectedShipIds.length ? shipsHere.filter((f) => selectedShipIds.includes(f.ship.id)) : shipsHere;
+    const able = (f: (typeof shipsHere)[number]) => (kind === 'colonize' ? f.canColonizeHere : f.canOutpostHere);
+    const f = pool.find((x) => able(x).length) ?? shipsHere.find((x) => able(x).length);
+    if (!f || !gs) {
+      showNote(`⛔ no ship here can ${kind === 'colonize' ? 'colonize' : 'build an outpost on'} a planet in this system`);
+      return;
+    }
+    // biggest world first — the closest thing to "best" without a dialog
+    const planets = able(f)
+      .map((id) => gs.planets.find((p) => p.id === id))
+      .filter((p) => p !== undefined)
+      .sort((a, b) => b.sizeClass - a.sizeClass || a.id - b.id);
+    const target = planets[0];
+    if (!target) return;
+    if (kind === 'colonize') colonize(f.ship.id, target.id);
+    else outpost(f.ship.id, target.id);
+  }
+  function hotTransports(kind: 'load' | 'unload') {
+    const pool = selectedShipIds.length ? shipsHere.filter((f) => selectedShipIds.includes(f.ship.id)) : shipsHere;
+    const colonyOf = (f: (typeof shipsHere)[number]) =>
+      kind === 'load' ? f.canLoadFromColonyId : f.canUnloadToColonyId;
+    const f = pool.find((x) => colonyOf(x) !== null) ?? shipsHere.find((x) => colonyOf(x) !== null);
+    if (!f) {
+      showNote(`⛔ no transport here can ${kind} colonists at this star`);
+      return;
+    }
+    const res = session().submit(kind === 'load' ? 'load_transports' : 'unload_transports', {
+      colonyId: colonyOf(f),
+      shipId: f.ship.id,
+    });
+    if (res.error) showNote(`⛔ ${res.error}`);
+    else showNote(kind === 'load' ? '🚛 2 colonists aboard' : '🚛 colonists unloaded');
+  }
+
+  // ---- map-view quick builds (pinned): B arms the selected star, item keys
+  // queue at the best-suited colony, the status panel tracks completion ----
+  let buildArm = $state(false);
+  $effect(() => {
+    void selectedStarId;
+    buildArm = false; // a new selection always starts un-armed
+  });
+  const myColonyHere = $derived.by(() => {
+    if (!gs || selectedStarId === null) return false;
+    return gs.colonies.some((c) => {
+      if (c.owner !== me() || c.outpost) return false;
+      const p = gs.planets.find((x) => x.id === c.planetId);
+      return p?.starId === selectedStarId;
+    });
+  });
+  /** strongest yard at the selected star: names the build-mode hint and
+   * feeds the non-hotkey dropdown its buildable list */
+  const bestYardHere = $derived.by(() => {
+    if (!gs || selectedStarId === null || !myColonyHere) return null;
+    const mine = gs.colonies.filter((c) => {
+      if (c.owner !== me() || c.outpost) return false;
+      const p = gs.planets.find((x) => x.id === c.planetId);
+      return p?.starId === selectedStarId;
+    });
+    let best: { colony: (typeof mine)[number]; prod: number } | null = null;
+    for (const colony of mine) {
+      const prod = selectors.colonyRow(gs, colony).output.prodToQueue;
+      if (!best || prod > best.prod) best = { colony, prod };
+    }
+    return best?.colony ?? null;
+  });
+  function queueHotkey(key: string) {
+    if (!gs || selectedStarId === null) return;
+    const spec = BUILD_HOTKEYS[key]!;
+    const resolved = resolveHotkeyItem(gs, me(), key);
+    if ('error' in resolved) {
+      showNote(`⛔ ${resolved.error}`);
+      return;
+    }
+    queuePinnedItem(resolved.item, spec.label, resolved.note);
+  }
+  function queuePinnedItem(item: string, label: string, note?: string) {
+    if (!gs || selectedStarId === null) return;
+    const best = bestColonyFor(gs, me(), selectedStarId, item);
+    if ('error' in best) {
+      showNote(`⛔ ${best.error}`);
+      return;
+    }
+    const res = pinBuild(session(), app.pins, best.colony, item);
+    if (res.error) {
+      showNote(`⛔ ${res.error}`);
+      return;
+    }
+    savePerGame();
+    showNote(`🔨 ${label} queued at ${best.colony.name}${note ? ` — ${note}` : ''}`);
+  }
+  /** dropdown alternative to the hotkeys (same pinning semantics) */
+  const buildOptions = $derived.by(() => {
+    if (!gs || !bestYardHere) return [];
+    return buildableItems(gs, bestYardHere)
+      .filter((id) => id !== 'trade_goods' && !id.startsWith('refit:'))
+      .map((id) => ({ id, label: itemLabel(gs, me(), id) }));
+  });
+  const pinStatuses = $derived.by(() => {
+    void app.version;
+    void app.pins;
+    return gs ? pinnedStatus(gs, me(), app.pins) : [];
+  });
+  function cancelPinnedBuild(colonyId: number, pinIndex: number) {
+    if (!gs) return;
+    const colony = gs.colonies.find((c) => c.id === colonyId);
+    if (!colony) return;
+    const res = cancelPin(session(), app.pins, colony, pinIndex);
+    if (res.error) showNote(`⛔ ${res.error}`);
+    else {
+      savePerGame();
+      showNote(app.autopilot.enabled ? '✕ cancelled — colony returns to autopilot' : '✕ cancelled');
+    }
   }
 
   // ---- star rename (needs a settlement in the system) ----
@@ -667,6 +820,11 @@
 
 <div class="wrap">
   <div class="mapcol">
+    {#if app.autopilot.enabled}
+      <!-- autopilot players live on the map: the same sliders as the colony
+           screen, so weights are adjustable without leaving it -->
+      <AutopilotBar />
+    {/if}
     {#if mapNote}
       <div class="mapnote" data-testid="map-note">{mapNote}</div>
     {/if}
@@ -733,6 +891,7 @@
         {@const scale = v.explored ? 1 : 0.82}
         <g
           class="star"
+          data-testid="star-{v.star.id}"
           role="button"
           tabindex="0"
           onclick={() => clickStar(v.star.id)}
@@ -877,7 +1036,42 @@
       <span>▶ fleet under way (label shows ETA)</span>
       <span>▲ solid = warships · △ hollow = civilians</span>
       <span style="color:#b78bff">┈ wormhole</span>
+      <span class="dimtext" title="select one of your stars and press B, then one key per ship/building">⌨ B = build here</span>
+      <label title="idle scouts fly themselves to the nearest unexplored star in fuel range each turn — ordinary move orders you can re-route or override">
+        <input
+          type="checkbox"
+          data-testid="auto-explore"
+          checked={app.autoExplore}
+          onchange={(e) => {
+            app.autoExplore = (e.target as HTMLInputElement).checked;
+            savePerGame();
+          }}
+        />
+        🔭 auto-explore scouts
+      </label>
     </div>
+    {#if pinStatuses.length}
+      <!-- quick-build status: one bar per pinned item, refreshed every turn -->
+      <div class="pinned" data-testid="pinned-builds">
+        {#each pinStatuses as ps (`${ps.colonyId}:${ps.pinIndex}`)}
+          <div class="pin" data-testid="pinned-{ps.colonyId}-{ps.pinIndex}">
+            <button class="jump" title="show {ps.starName} on the map" onclick={() => (selectedStarId = ps.starId)}>{ps.colonyName}</button>
+            <span class="plabel">{ps.label}</span>
+            <span
+              class="pbar"
+              title="{ps.pct}% built{ps.turns !== null ? ` · ~${ps.turns} turn${ps.turns > 1 ? 's' : ''} to go` : ' · stalled (no production reaches the queue)'}{ps.queuePos > 0 ? ` · waits behind ${ps.queuePos} item${ps.queuePos > 1 ? 's' : ''}` : ''}"
+            ><span class="pfill" style="width:{ps.pct}%"></span></span>
+            <span class="peta">{ps.queuePos > 0 ? `#${ps.queuePos + 1}` : ps.turns !== null ? `~${ps.turns}t` : '⏸'}</span>
+            <button
+              class="pcancel"
+              data-testid="cancel-pin-{ps.colonyId}-{ps.pinIndex}"
+              title="cancel this build — the colony goes back to autobuild"
+              onclick={() => cancelPinnedBuild(ps.colonyId, ps.pinIndex)}
+            >✕</button>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   <aside>
@@ -1068,9 +1262,40 @@
           </li>
         {/each}
       </ul>
+      {#if myColonyHere}
+        {#if buildArm}
+          <div class="buildarm" data-testid="build-arm">
+            🔨 <b>Build at {bestYardHere?.name ?? '…'}</b> — press a key:
+            <span class="keylist">
+              <kbd>C</kbd> colony ship · <kbd>S</kbd> scout · <kbd>F</kbd> frigate · <kbd>D</kbd> destroyer ·
+              <kbd>R</kbd> cruiser · <kbd>B</kbd> battleship · <kbd>T</kbd> titan · <kbd>O</kbd> outpost ship ·
+              <kbd>H</kbd> housing · <kbd>A</kbd> factory · <kbd>L</kbd> research lab · <kbd>K</kbd> supercomputer
+            </span>
+            <button class="mini" onclick={() => (buildArm = false)}>done (Esc)</button>
+          </div>
+        {:else}
+          <p class="dim">🔨 press <b>B</b> to queue builds here by hotkey (ships use your latest designs)</p>
+        {/if}
+        <select
+          class="buildpick"
+          data-testid="quick-build-select"
+          value=""
+          title="queue an item at this system's best-suited colony — it is pinned: autopilot won't touch the yard until it completes (cancel from the build list under the map)"
+          onchange={(e) => {
+            const v = (e.target as HTMLSelectElement).value;
+            if (v && gs) queuePinnedItem(v, itemLabel(gs, me(), v));
+            (e.target as HTMLSelectElement).value = '';
+          }}
+        >
+          <option value="">+ queue a build at the best colony…</option>
+          {#each buildOptions as o (o.id)}
+            <option value={o.id}>{o.label}</option>
+          {/each}
+        </select>
+      {/if}
       {#if shipsHere.length}
         <h4>
-          Your ships here <span class="dim keys" title="hotkeys: A selects all/none · Backspace cycles through single ships (then all)">A=all · ⌫=cycle</span>
+          Your ships here <span class="dim keys" title="hotkeys: A selects all/none · Backspace cycles single ships (then all) · C colonize / O outpost the biggest open planet · L load / U unload a transport at the colony">A=all · ⌫=cycle · C/O=settle · L/U=transports</span>
           <label class="selall" title="select every ship at this system (hotkey: A)">
             <input
               type="checkbox"
@@ -1119,6 +1344,91 @@
   .bodyx {
     font-size: 8px;
     fill: #6a7288;
+  }
+  /* ---- quick-build: armed hint, dropdown, pinned status bars ---- */
+  .buildarm {
+    background: linear-gradient(180deg, #2a3560, #1d2547);
+    border: 1px solid var(--accent-soft, #6c86d8);
+    border-radius: 8px;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+    margin: 0.3rem 0;
+  }
+  .buildarm .keylist {
+    display: block;
+    opacity: 0.85;
+    margin: 0.25rem 0;
+    line-height: 1.5;
+  }
+  .buildarm kbd {
+    background: #101630;
+    border: 1px solid var(--line-bright, #3a4a80);
+    border-radius: 4px;
+    padding: 0 0.28rem;
+    font-size: 0.72rem;
+  }
+  .buildpick {
+    max-width: 100%;
+    margin-bottom: 0.4rem;
+  }
+  .mini {
+    font-size: 0.72rem;
+    padding: 0.05rem 0.35rem;
+  }
+  .pinned {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-top: 0.35rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.3rem 0.55rem;
+    font-size: 0.78rem;
+  }
+  .pin {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+  .pin .jump {
+    background: transparent;
+    border: none;
+    color: var(--accent-soft, #8fa8ff);
+    cursor: pointer;
+    padding: 0;
+    font: inherit;
+    text-decoration: underline dotted;
+    min-width: 7rem;
+    text-align: left;
+  }
+  .pin .plabel {
+    min-width: 10rem;
+  }
+  .pin .pbar {
+    flex: 1;
+    max-width: 14rem;
+    height: 0.5rem;
+    background: #0d1228;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .pin .pfill {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #2c7a4e, var(--good, #5ee08a));
+    transition: width 0.4s ease;
+  }
+  .pin .peta {
+    min-width: 2.6rem;
+    text-align: right;
+    color: var(--text-dim, #9aa3c0);
+    font-variant-numeric: tabular-nums;
+  }
+  .pin .pcancel {
+    font-size: 0.72rem;
+    padding: 0 0.3rem;
   }
   .tipdismiss {
     font-size: 0.72rem;

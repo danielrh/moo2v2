@@ -21,6 +21,59 @@
   let bombard = $state(false);
   let spareNoncombatants = $state(false);
 
+  const STANCES = ['charge', 'hold_range', 'standoff', 'formation', 'passthrough', 'evade_retreat'];
+  const PRIORITIES = ['nearest', 'biggest', 'smallest', 'warships', 'bases', 'deadliest'];
+
+  // the host resolves with default orders when this clock runs out — in
+  // realtime games it is the SAME length as the turn timer (see HostCore),
+  // so battles never stall the cadence. The countdown is client-estimated
+  // from when the dialog opened; the host armed its timer moments earlier.
+  const timeoutMs = (() => {
+    const st = session().getSettings();
+    const rt = st?.realtimeTurnSeconds ?? 0;
+    return rt > 0 ? rt * 1000 : st?.battleOrdersTimeoutMs || 60_000;
+  })();
+  const deadline = Date.now() + timeoutMs;
+  let nowTick = $state(Date.now());
+  $effect(() => {
+    const iv = setInterval(() => (nowTick = Date.now()), 1000);
+    return () => clearInterval(iv);
+  });
+  const secondsLeft = $derived(Math.max(0, Math.ceil((deadline - nowTick) / 1000)));
+
+  // keyboard flow: pick everything without touching the mouse
+  function onKey(e: KeyboardEvent) {
+    if (alreadyOrdered) return;
+    const t = e.target as HTMLElement | null;
+    const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+    const key = e.key.toLowerCase();
+    const cycle = (list: string[], cur: string, dir: number) =>
+      list[(list.indexOf(cur) + dir + list.length) % list.length]!;
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      stance = cycle(STANCES, stance, e.key === 'ArrowDown' ? 1 : -1);
+    } else if (e.key.length === 1 && e.key >= '1' && e.key <= '6') {
+      e.preventDefault();
+      stance = STANCES[Number(e.key) - 1]!;
+    } else if (key === 't') {
+      e.preventDefault();
+      priority = cycle(PRIORITIES, priority, e.shiftKey ? -1 : 1);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      retreatThresholdPct = Math.max(0, Math.min(90, retreatThresholdPct + (e.key === 'ArrowRight' ? 5 : -5)));
+    } else if (key === 'b' && isAttacker) {
+      e.preventDefault();
+      bombard = !bombard;
+    } else if (key === 'n') {
+      e.preventDefault();
+      spareNoncombatants = !spareNoncombatants;
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      submit();
+    }
+  }
+
   const roster = $derived.by(() => {
     void app.version;
     return session().getRoster();
@@ -72,9 +125,16 @@
   }
 </script>
 
+<svelte:window onkeydown={onKey} />
+
 <div class="overlay">
   <div class="dialog" data-testid="battle-dialog">
     <h3>⚔ Battle at {starName}</h3>
+    {#if !alreadyOrdered}
+      <p class="countdown" class:urgent={secondsLeft <= 10} data-testid="battle-countdown">
+        ⏱ auto-resolves with the current strategy in ~{secondsLeft}s
+      </p>
+    {/if}
     <p>
       {nameOf(battle.attacker)} attacks {nameOf(battle.defender)} — you are the
       <b>{isAttacker ? 'attacker' : 'defender'}</b>
@@ -119,7 +179,8 @@
           Spare non-combatant ships if the pass is won
         </label>
       </div>
-      <button data-testid="battle-submit" onclick={submit}>Lock in orders</button>
+      <button data-testid="battle-submit" onclick={submit}>Lock in orders (Enter)</button>
+      <p class="keys">⌨ ↑↓/1-6 stance · T target · ←→ retreat · {isAttacker ? 'B bombard · ' : ''}N spare civilians · Enter lock in</p>
     {/if}
   </div>
 </div>
@@ -156,5 +217,19 @@
     flex-direction: row;
     align-items: center;
     gap: 0.5rem;
+  }
+  .countdown {
+    font-size: 0.85rem;
+    color: var(--text-dim, #9aa3c0);
+    margin: 0.2rem 0 0;
+  }
+  .countdown.urgent {
+    color: var(--bad, #ff7b7b);
+    font-weight: 600;
+  }
+  .keys {
+    font-size: 0.72rem;
+    opacity: 0.65;
+    margin: 0.4rem 0 0;
   }
 </style>

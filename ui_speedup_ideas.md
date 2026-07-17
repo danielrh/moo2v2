@@ -52,12 +52,19 @@ payoff. Items marked ✅ already exist (some shipped with this batch).
 8. **Repeat-last-turn for jobs.** After a colony grows a unit, the new citizen
    lands in `workers`; a "keep last ratio" toggle per colony (client-issued
    `set_jobs` after growth events) removes the most common per-turn fiddling.
-9. **Scout auto-explore.** A client-side order loop: when a scout arrives and
-   the system is charted, automatically issue a move to the nearest unexplored
-   star in fuel range (ordinary `move_ships` commands, cancellable). Exploring
-   is 80% of pre-contact clicks.
-10. **Keyboard flow.** `E` = end turn, `Space` = next alert, `1..7` = tabs.
-    A 60-turn opening at 5 seconds saved per turn is 5 minutes back.
+9. ✅ **Scout auto-explore.** Shipped: 🔭 toggle on the map legend — idle
+   scouts fly to the nearest unexplored star in fuel range each turn
+   (ordinary `move_ships`, re-routable).
+10. ✅ **Keyboard flow.** Shipped: `E` = end turn, `1..7` = tabs; on the map
+    `B` arms build mode (then C/S/F/D/R/B/T/O ships, H/A/L/K buildings at the
+    best-suited colony, pinned with per-turn status bars under the map);
+    fleet keys C colonize / O outpost / L/U transports; battle-orders dialog
+    fully keyboard-driven (arrows/1-6 stance, T target, B bombard, Enter).
+    Also shipped alongside: **research queue** (⏭ on the Research tab,
+    auto-starts each next field), **realtime battle clock** (battle orders run
+    on the realtime turn timer, defaults on timeout), **auto-show replays**
+    (the battle viewer pops up at 2× for both combatants, Esc closes), and a
+    lobby **⚡ Blitz preset** (small · advanced · fast start · 10s realtime).
 
 ## Perceived speed
 

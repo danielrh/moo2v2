@@ -1,9 +1,10 @@
 <script lang="ts">
   import { selectors, gameEngine } from '@engine/index';
   import { FAST_MAX_AHEAD } from '@protocol/messages';
-  import { app, bindActive, getActive, leaveGame, resetGameUiState } from '../state.svelte';
+  import { app, bindActive, getActive, leaveGame, resetGameUiState, savePerGame } from '../state.svelte';
   import { restartSoloGame } from '../net';
   import { governColonies } from '../governor';
+  import { autoExploreScouts, reconcilePins } from '../quickBuild';
   import { syncEmpireColors } from '../colors';
   import { latchEdge, type EdgeLatch, type EdgeLevel } from '../commitEdge';
   import { describeSaveError, downloadRawDatabase, downloadSave } from '../saveload';
@@ -38,17 +39,79 @@
     const s = session().getPlanned();
     return s ? selectors.empireSummary(s, session().playerId) : null;
   });
-  // slider autopilot: run the governor once per (turn, weights) — a repeat
-  // pass with identical inputs would only echo the same commands forever
+  // map-view quick builds: when a new turn opens, drop pins that completed
+  // (or were manually removed) so their yards return to autopilot
+  let reconciledTurn = -1;
+  $effect(() => {
+    const s = gs;
+    if (!s || s.turn === reconciledTurn) return;
+    reconciledTurn = s.turn;
+    if (reconcilePins(s, session().playerId, app.pins)) savePerGame();
+  });
+  // slider autopilot: run the governor once per (turn, weights, pins) — a
+  // repeat pass with identical inputs would only echo the same commands
+  // forever, but a cancelled pin must hand its yard back the same turn
   let governedFp = '';
   $effect(() => {
     const s = gs;
     if (!s || !app.autopilot.enabled || s.phase !== 'planning' || s.winner !== null) return;
-    const fp = `${s.turn}:${JSON.stringify(app.autopilot.weights)}`;
+    const pinnedIds = Object.keys(app.pins).filter((k) => (app.pins[Number(k)]?.length ?? 0) > 0);
+    const fp = `${s.turn}:${JSON.stringify(app.autopilot.weights)}:${pinnedIds.join(',')}`;
     if (fp === governedFp) return;
     governedFp = fp;
-    governColonies(session(), app.autopilot.weights);
+    governColonies(session(), app.autopilot.weights, new Set(pinnedIds.map(Number)));
   });
+  // auto-explore: idle scouts chart the nearest unexplored star in range —
+  // ordinary move_ships orders, one pass per turn, re-routable like any move
+  let exploredFp = -1;
+  $effect(() => {
+    const s = gs;
+    if (!s || !app.autoExplore || s.phase !== 'planning' || s.winner !== null || s.turn === exploredFp) return;
+    exploredFp = s.turn;
+    autoExploreScouts(session());
+  });
+  // research queue: the moment the labs go idle, start the first queued field
+  // that is currently offered (completed entries fall off; not-yet-unlocked
+  // deeper fields stay queued and wait their turn)
+  let researchFp = '';
+  $effect(() => {
+    const s = gs;
+    if (!s || s.phase !== 'planning' || s.winner !== null || !app.researchQueue.length) return;
+    const emp = s.empires.find((e) => e.id === session().playerId);
+    if (!emp || emp.research.fieldNum !== null) return;
+    const fp = `${s.turn}:${app.researchQueue.map((q) => q.fieldNum).join(',')}`;
+    if (fp === researchFp) return;
+    researchFp = fp;
+    startQueuedResearch();
+  });
+  function startQueuedResearch() {
+    const s = session().getPlanned();
+    if (!s) return;
+    const me = session().playerId;
+    const emp = s.empires.find((e) => e.id === me);
+    if (!emp) return;
+    const choices = selectors.researchChoices(s, me);
+    const done = new Set(emp.completedFields);
+    // completed entries drop out; then start the first offered one
+    const queue = app.researchQueue.filter((q) => !done.has(q.fieldNum));
+    app.researchQueue = queue;
+    for (let i = 0; i < queue.length; i++) {
+      const entry = queue[i]!;
+      const choice = choices.find((c) => c.field.num === entry.fieldNum);
+      if (!choice) continue; // deeper field, not unlocked yet — keep waiting
+      const target = choice.grantsAll
+        ? null
+        : (choice.apps.find((a) => a.id === entry.targetApp && !a.known && !a.dead) ??
+            choice.apps.find((a) => !a.known && !a.dead) ??
+            choice.apps.find((a) => !a.known))?.id ?? null;
+      const res = session().submit('set_research', { fieldNum: entry.fieldNum, targetApp: target });
+      app.researchQueue = queue.filter((_, j) => j !== i); // started (or rejected: drop, don't loop)
+      savePerGame();
+      if (res.error) app.rejectedNote = `⛔ research queue: ${res.error}`;
+      return;
+    }
+    savePerGame();
+  }
   const committed = $derived.by(() => {
     void app.version;
     return session().getCommitted();
@@ -337,6 +400,26 @@
     }
   }
 
+  // ---- global hotkeys: 1-7 switch tabs, E ends/commits the turn. Letters
+  // beyond these belong to the screens (the map claims its own build keys). ----
+  const TAB_KEYS = ['colonies', 'map', 'research', 'fleets', 'designer', 'empires', 'reports'] as const;
+  function onShellKey(e: KeyboardEvent) {
+    const t = e.target as HTMLElement | null;
+    const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+    if (typing || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+    // never steal keys from a modal (battle orders, replay, contact)
+    if (myBattle || app.viewing || app.contactFlash || winner !== null) return;
+    if (e.key.length === 1 && e.key >= '1' && e.key <= '7') {
+      e.preventDefault();
+      tab = TAB_KEYS[Number(e.key) - 1]!;
+      if (tab === 'reports') seenReports = app.reports.length;
+    } else if (e.key === 'e' || e.key === 'E') {
+      e.preventDefault();
+      if (fastActive) endTurn();
+      else toggleCommit();
+    }
+  }
+
   let restarting = $state(false);
   async function restartGame() {
     const active = getActive();
@@ -355,6 +438,8 @@
     }
   }
 </script>
+
+<svelte:window onkeydown={onShellKey} />
 
 {#if gs && summary}
   <header>
@@ -676,6 +761,7 @@
         <li><b>Food</b> feeds colonists (2 per unit ×½); shortages starve growth. Freighters move surplus between colonies at 0.5 BC per freighter in use (idle ones are free); civilian charters cover overflow at 1 BC per food. Blockades cut deliveries.</li>
         <li><b>Research</b> works one field at a time; basic fields and Cold Fusion (marked ✦) grant <i>all</i> their applications — Cold Fusion delivers colony ships, outposts, transports and freighters together. Never leave research idle — points bank but nothing finishes.</li>
         <li><b>Ships</b> travel star-to-star within fuel range (unreachable stars are dashed red on the map). Move orders can be re-routed until you commit.</li>
+        <li><b>Hotkeys</b> — <kbd>1</kbd>–<kbd>7</kbd> switch tabs, <kbd>E</kbd> ends/commits the turn. On the map: select your star, <kbd>B</kbd> arms build mode, then <kbd>C</kbd>olony ship / <kbd>S</kbd>cout / <kbd>F</kbd>rigate / <kbd>D</kbd>estroyer / c<kbd>R</kbd>uiser / <kbd>B</kbd>attleship / <kbd>T</kbd>itan / <kbd>O</kbd>utpost ship / <kbd>H</kbd>ousing / f<kbd>A</kbd>ctory / <kbd>L</kbd>ab / supercomputer <kbd>K</kbd> queue at the best-suited colony (progress bars appear under the map; ✕ hands the yard back to autopilot). With a fleet selected: <kbd>C</kbd> colonize · <kbd>O</kbd> outpost · <kbd>L</kbd>/<kbd>U</kbd> load/unload transports · <kbd>A</kbd> select all · <kbd>⌫</kbd> cycle. In a battle dialog: arrows pick the stance, <kbd>T</kbd> targets, <kbd>B</kbd> toggles bombard, <kbd>Enter</kbd> locks in.</li>
         <li><b>Colonists</b> move between stars on transports: build one, "load" at a colony, fly it, "unload" (Fleets tab). Within a system they move freely — drag citizens onto a sibling colony in the spreadsheet (no ships needed); between systems the freighter run flies your <i>second-best</i> drive (the newest engines go to the warfleet). Colony bases settle other planets in the same system.</li>
         <li><b>Battles</b> only happen between empires at <b>war</b> — declare it on the Empires tab. A battle is a single pass; set stance/targeting/retreat before the clash.</li>
         <li><b>☠ stars</b> are guarded by monsters — clear the keeper to colonize. Orion holds the Guardian and the best worlds in the galaxy.</li>

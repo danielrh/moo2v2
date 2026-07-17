@@ -9,7 +9,7 @@
   import { battleToLabSeed, enemySeedsFromReplays, setLabSeed, type LabSeedGroup } from '../labSeed';
   import GroundBattleDialog from '../battle/GroundBattleDialog.svelte';
   import type { GroundBattleEntry } from '../state.svelte';
-  import { app, getActive } from '../state.svelte';
+  import { app, getActive, saveAutoReplay } from '../state.svelte';
   import { addBotForSeat, removeBotForSeat } from '../net';
 
   const session = () => getActive()!.session;
@@ -518,7 +518,21 @@
   {/if}
 
   {#if app.replays.length}
-    <h3>Battle replays</h3>
+    <h3>
+      Battle replays
+      <label class="dim autoreplay" title="pop the replay up over the map the moment one of your battles resolves (plays at 2×)">
+        <input
+          type="checkbox"
+          data-testid="auto-replay-toggle"
+          checked={app.autoReplay}
+          onchange={(e) => {
+            app.autoReplay = (e.target as HTMLInputElement).checked;
+            saveAutoReplay();
+          }}
+        />
+        auto-show my battles
+      </label>
+    </h3>
     <ul>
       {#each app.replays as r (r.battleId)}
         {@const s = r.summary as Record<string, unknown>}

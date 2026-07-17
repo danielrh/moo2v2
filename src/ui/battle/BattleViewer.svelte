@@ -606,7 +606,21 @@
     app.version++;
     onclose();
   }
+  // the viewer pops up on its own after a battle — it must leave on Esc
+  // without hunting for the Close button. Space toggles play while it's up.
+  function onKey(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      if (!playing && frameIdx >= totalFrames - 1) frameIdx = 0;
+      playing = !playing;
+    }
+  }
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <div class="overlay">
   <div class="viewer" data-testid="battle-viewer">
@@ -624,7 +638,7 @@
       }}>{playing ? '⏸ Pause' : '▶ Play'}</button>
       <button onclick={() => (speed = speed === 1 ? 2 : speed === 2 ? 4 : 1)}>{speed}×</button>
       <button data-testid="battle-skip" onclick={skip}>Skip to end</button>
-      <button data-testid="battle-close" onclick={close}>Close</button>
+      <button data-testid="battle-close" title="close (Esc) · Space = play/pause" onclick={close}>Close (Esc)</button>
     </div>
     {#if totalFrames > 1}
       <input class="scrub" type="range" min="0" max={totalFrames - 1} value={Math.min(frameIdx, totalFrames - 1)} oninput={scrub} />

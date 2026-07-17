@@ -632,8 +632,16 @@ export class HostCore<S> {
           this.accept({ turn: this.currentTurn(), playerId: -1, kind: 'resolve_combat', payload: {} });
           this.broadcastCommitStatus();
         }
-      }, this.battleOrdersTimeoutMs);
+      }, this.battleTimeoutMs());
     }
+  }
+
+  /** In realtime games the battle-orders clock is the SAME length as the
+   * turn clock — a battle must never stall the cadence; missing orders fall
+   * back to the engine defaults exactly like an uncommitted turn advances. */
+  private battleTimeoutMs(): number {
+    const rt = this.settings.realtimeTurnSeconds ?? 0;
+    return rt > 0 ? rt * 1000 : this.battleOrdersTimeoutMs;
   }
 
   private onSubmit(from: number, msg: Extract<ClientToHost, { t: 'cmd_submit' }>): void {

@@ -2,7 +2,7 @@
   import { appPickableBy, selectors, traitsOf } from '@engine/index';
   import { applicationsOfField, applicationById, fieldByNum, fieldById, fieldsOfSubject, type Subject } from '@engine/data/index';
   import { EFFECTS, EFFECT_ALIASES } from '@engine/data/effectsMap';
-  import { app, getActive } from '../state.svelte';
+  import { app, getActive, savePerGame } from '../state.svelte';
 
   const session = () => getActive()!.session;
   const gs = $derived.by(() => {
@@ -100,6 +100,27 @@
   function queueExtra(appId: string, remove = false) {
     session().submit('queue_extra_research', { appId, remove });
   }
+
+  // ---- research queue (client-side): when the current field completes, the
+  // shell auto-issues set_research for the first queued field that is offered.
+  // Deeper fields may be queued ahead of time — they wait until unlocked. ----
+  const queuedNums = $derived(new Set(app.researchQueue.map((q) => q.fieldNum)));
+  function enqueue(fieldNum: number, fieldId: string, target: string | null) {
+    if (queuedNums.has(fieldNum)) return;
+    app.researchQueue = [...app.researchQueue, { fieldNum, fieldId, targetApp: target }];
+    savePerGame();
+  }
+  function dequeue(i: number) {
+    app.researchQueue = app.researchQueue.filter((_, j) => j !== i);
+    savePerGame();
+  }
+  function moveUp(i: number) {
+    if (i <= 0) return;
+    const q = [...app.researchQueue];
+    [q[i - 1], q[i]] = [q[i]!, q[i - 1]!];
+    app.researchQueue = q;
+    savePerGame();
+  }
 </script>
 
 {#if empire && summary}
@@ -127,6 +148,19 @@
       — {empire.research.accumRP} RP banked
     {/if}
   </p>
+
+  {#if app.researchQueue.length}
+    <div class="rqueue" data-testid="research-queue">
+      <b title="started automatically as each field completes — fields not yet unlocked wait their turn">⏭ up next:</b>
+      {#each app.researchQueue as q, i (q.fieldNum)}
+        <span class="rq" data-testid="research-queue-{q.fieldNum}">
+          {i + 1}. {pretty(q.fieldId)}{q.targetApp ? ` → ${pretty(q.targetApp)}` : ''}
+          {#if i > 0}<button class="mini" title="research this sooner" onclick={() => moveUp(i)}>↑</button>{/if}
+          <button class="mini" data-testid="research-dequeue-{q.fieldNum}" title="remove from the queue" onclick={() => dequeue(i)}>✕</button>
+        </span>
+      {/each}
+    </div>
+  {/if}
 
   {#if canBuyExtra}
     <div class="field" data-testid="creative-variant">
@@ -180,6 +214,17 @@
                 {#if done}<span class="mark" title="field completed">✓</span>
                 {:else if current}<span class="mark" title="researching now">🔬</span>
                 {:else if offered}<span class="mark" title="available to research now">●</span>{/if}
+                {#if !done && !current}
+                  <button
+                    class="mini"
+                    data-testid="queue-tree-{f.id}"
+                    disabled={queuedNums.has(f.num)}
+                    title={queuedNums.has(f.num)
+                      ? 'already queued'
+                      : 'queue this field — it starts automatically once unlocked and its turn comes'}
+                    onclick={() => enqueue(f.num, f.id, null)}
+                  >⏭</button>
+                {/if}
                 <span class="treeapps">
                   {#each applicationsOfField(f.id) as a (a.id)}
                     <span class:known={empire.knownApps.includes(a.id)} title={appTitle(a.id)}>{a.name}{empire.knownApps.includes(a.id) ? ' ✓' : ''}</span>
@@ -242,6 +287,21 @@
             >
               {isCurrent ? (choice.grantsAll ? 'Researching…' : 'Change target') : 'Research this'}
             </button>
+            {#if !isCurrent}
+              <button
+                data-testid="queue-research-{choice.field.id}"
+                disabled={queuedNums.has(choice.field.num)}
+                title={queuedNums.has(choice.field.num)
+                  ? 'already queued'
+                  : 'add to the research queue — starts automatically when the current field completes'}
+                onclick={() =>
+                  enqueue(
+                    choice.field.num,
+                    choice.field.id,
+                    choice.grantsAll ? null : (pendingTarget[choice.field.num] ?? null),
+                  )}
+              >⏭ queue</button>
+            {/if}
           </div>
         {/each}
       </div>
@@ -269,6 +329,30 @@
     align-items: center;
     gap: 0.5rem;
     flex-wrap: wrap;
+  }
+  .rqueue {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.3rem 0.6rem;
+    margin-bottom: 0.6rem;
+    font-size: 0.85rem;
+  }
+  .rq {
+    text-transform: capitalize;
+    background: rgba(36, 65, 138, 0.35);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.1rem 0.4rem;
+  }
+  .mini {
+    font-size: 0.7rem;
+    padding: 0 0.3rem;
+    margin: 0 0 0 0.15rem;
   }
   .pbar {
     display: inline-block;

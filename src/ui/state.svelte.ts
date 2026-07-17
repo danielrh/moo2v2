@@ -64,6 +64,18 @@ export const app = $state({
     enabled: false,
     weights: { infra: 6, pop: 5, research: 5, colonyShips: 4, military: 3 },
   },
+  /** map-view quick builds: colonyId → player-pinned queue items, in build
+   * order. Autopilot leaves pinned colonies' queues alone (see quickBuild.ts) */
+  pins: {} as Record<number, string[]>,
+  /** research queue: started automatically (client-issued set_research) when
+   * the current field completes; entries validated again at dequeue time */
+  researchQueue: [] as Array<{ fieldNum: number; fieldId: string; targetApp: string | null }>,
+  /** pop the battle viewer up over the map as soon as one of MY battles
+   * resolves (plays at 2×; the Empires-tab replay list keeps the archive) */
+  autoReplay: true,
+  /** idle scouts fly themselves to the nearest unexplored star in fuel range
+   * (ordinary move_ships commands — reroutable like any manual order) */
+  autoExplore: false,
 });
 
 // autopilot settings survive reloads (per browser, not per game)
@@ -97,6 +109,68 @@ export function saveAutopilot(): void {
   }
 }
 
+// auto-replay preference survives reloads (per browser)
+try {
+  app.autoReplay = localStorage.getItem('moo2.autoReplay') !== '0';
+} catch {
+  // defaults stand
+}
+export function saveAutoReplay(): void {
+  try {
+    localStorage.setItem('moo2.autoReplay', app.autoReplay ? '1' : '0');
+  } catch {
+    // private mode: lasts for this tab only
+  }
+}
+
+// ---- per-game UI state (pins / research queue / auto-explore): keyed by the
+// room code so a reload of the same game keeps the player's standing orders.
+// All of it is client-side convenience — losing it never corrupts a game. ----
+let perGameKey = '';
+export function savePerGame(): void {
+  if (!perGameKey) return;
+  try {
+    localStorage.setItem(
+      perGameKey,
+      JSON.stringify({ pins: app.pins, researchQueue: app.researchQueue, autoExplore: app.autoExplore }),
+    );
+  } catch {
+    // private mode: lasts for this tab only
+  }
+}
+function loadPerGame(roomCode: string): void {
+  perGameKey = `moo2.game.${roomCode}`;
+  app.pins = {};
+  app.researchQueue = [];
+  app.autoExplore = false;
+  try {
+    const raw = localStorage.getItem(perGameKey);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Partial<typeof app>;
+    // sanitize: hand-edited storage must not smuggle non-arrays into the UI
+    if (parsed.pins && typeof parsed.pins === 'object') {
+      for (const [k, v] of Object.entries(parsed.pins)) {
+        const id = Number(k);
+        if (Number.isInteger(id) && Array.isArray(v) && v.every((x) => typeof x === 'string')) {
+          app.pins[id] = v;
+        }
+      }
+    }
+    if (Array.isArray(parsed.researchQueue)) {
+      app.researchQueue = parsed.researchQueue.filter(
+        (e) =>
+          e &&
+          typeof e.fieldNum === 'number' &&
+          typeof e.fieldId === 'string' &&
+          (e.targetApp === null || typeof e.targetApp === 'string'),
+      );
+    }
+    app.autoExplore = parsed.autoExplore === true;
+  } catch {
+    // corrupt/absent storage: defaults stand
+  }
+}
+
 let rejectedNoteTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Not reactive on purpose: session/transport are external objects.
@@ -109,6 +183,7 @@ export function getActive(): ActiveGame | null {
 export function bindActive(active: ActiveGame): void {
   activeGame = active;
   app.error = '';
+  loadPerGame(active.params.code);
   app.screen = active.session.isStarted() ? 'game' : 'lobby';
   app.hostConnected = true;
   app.version++;
@@ -198,8 +273,16 @@ function ingestTurnEvents(
       if (e.visibleTo !== -1 && e.visibleTo !== me) continue; // participants only
       const p = e.payload as { battleId: string; seed: string; input: unknown; summary: Record<string, unknown> };
       if (!app.replays.some((r) => r.battleId === p.battleId)) {
-        app.replays.push({ ...p, turn, watched: false });
+        const entry: ReplayEntry = { ...p, turn, watched: false };
+        app.replays.push(entry);
         if (app.replays.length > 20) app.replays.shift();
+        // one of MY battles just resolved: pop the viewer up over the map
+        // right away (participants only — visibleTo === me), playing at 2×.
+        // A battle already on screen keeps priority; the nav badge catches
+        // any extras and the Empires-tab list keeps the full archive.
+        if (app.autoReplay && e.visibleTo === me && !app.viewing) {
+          app.viewing = entry;
+        }
       }
       continue;
     }
@@ -226,6 +309,9 @@ export function resetGameUiState(): void {
   app.hostConnected = true;
   app.contactFlash = null;
   app.focusStarId = null;
+  app.pins = {};
+  app.researchQueue = [];
+  app.autoExplore = false;
   app.version++;
 }
 

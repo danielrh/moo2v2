@@ -45,8 +45,17 @@ export function normalizeWeights(w: Partial<SliderWeights> | null | undefined): 
 }
 
 /** Run one governor pass over every colony the player owns. Idempotent per
- * turn: call it once when a new planning turn opens. */
-export function governColonies(session: GameSession<GameState>, weights: SliderWeights): void {
+ * turn: call it once when a new planning turn opens.
+ *
+ * `pinned` colonies have player-ordered builds outstanding (map-view quick
+ * builds): their queues are untouchable — jobs are still balanced and a
+ * buyable head is still bought out, but the governor neither reorders nor
+ * replaces what the player queued until it completes or is cancelled. */
+export function governColonies(
+  session: GameSession<GameState>,
+  weights: SliderWeights,
+  pinned?: ReadonlySet<number>,
+): void {
   const planned = session.getPlanned();
   if (!planned || planned.winner !== null) return;
   const me = session.playerId;
@@ -111,6 +120,15 @@ export function governColonies(session: GameSession<GameState>, weights: SliderW
         }
       }
       submit('set_jobs', { colonyId: colony.id, groups: jobs });
+    }
+
+    // player-pinned builds outrank the sliders: keep hands off the queue
+    // (still worth buying the head out — it is the player's own order)
+    if (pinned?.has(colony.id)) {
+      if (row.canBuy && row.buyPrice !== null && row.buyPrice <= Math.floor(empire.bc / 2)) {
+        submit('buy_production', { colonyId: colony.id });
+      }
+      continue;
     }
 
     // settling our own system needs no ship and no fuel — but only a yard

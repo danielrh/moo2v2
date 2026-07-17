@@ -272,6 +272,23 @@
 {#if settings && selfId === 0}
   <fieldset class="modes">
     <legend>Game setup (host)</legend>
+    <button
+      class="preset"
+      data-testid="quick-game-preset"
+      title="One click to a game that finishes in well under an hour, with the rules untouched: small galaxy · advanced start (big identical developed empires) · ⚡ fast start (async turns until contact) · ⏱ 10-second realtime turns — battles run on the same 10s clock. Tweak anything below afterwards."
+      onclick={() => {
+        const host = getActive()?.host;
+        if (!host || !settings) return;
+        host.updateSettings({
+          ...settings,
+          galaxySize: 'small',
+          startMode: 'advanced',
+          fastStart: true,
+          realtimeTurnSeconds: 10,
+          autoTurnSeconds: 60,
+        });
+      }}
+    >⚡ Blitz preset (~30-minute game)</button>
     <label>
       Galaxy:
       <select
@@ -392,7 +409,10 @@
         onchange={(e) => updateSetting('realtimeTurnSeconds', Number((e.target as HTMLSelectElement).value))}
       >
         <option value={0}>off</option>
+        <option value={5}>5s per turn (blitz)</option>
         <option value={10}>10s per turn</option>
+        <option value={15}>15s per turn</option>
+        <option value={20}>20s per turn</option>
         <option value={30}>30s per turn</option>
         <option value={60}>60s per turn</option>
       </select>
