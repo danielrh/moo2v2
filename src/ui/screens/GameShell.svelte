@@ -17,6 +17,8 @@
   import Reports from './Reports.svelte';
   import BattleOrdersDialog from '../battle/BattleOrdersDialog.svelte';
   import BattleViewer from '../battle/BattleViewer.svelte';
+  import TimelapseViewer from '../components/TimelapseViewer.svelte';
+  import { generateTimelapse, type TimelapseData } from '../timelapse';
 
   let tab = $state<'colonies' | 'map' | 'research' | 'fleets' | 'designer' | 'empires' | 'reports'>('colonies');
   let seenReports = $state(0);
@@ -270,6 +272,98 @@
     flushTelemetry();
     session().endTurnFast();
   }
+
+  // ---- ⏩ fast-forward: auto-play turns until something needs a DECISION.
+  // With autopilot + the research queue + auto-explore on, quiet stretches
+  // are pure clicking — this turns them into seconds. Every stop names its
+  // reason; battles stop it via their own dialog. ----
+  let ffActive = $state(false);
+  let ffNote = $state('');
+  let ffNoteTimer: ReturnType<typeof setTimeout> | null = null;
+  let ffTimer: ReturnType<typeof setTimeout> | null = null;
+  let ffActedTurn = -1;
+  const emptyQueueCount = $derived.by(() => {
+    if (!gs) return 0;
+    const me = session().playerId;
+    return gs.colonies.filter((c) => c.owner === me && !c.outpost && c.queue.length === 0).length;
+  });
+  function stopFF(reason: string) {
+    ffActive = false;
+    if (ffTimer) {
+      clearTimeout(ffTimer);
+      ffTimer = null;
+    }
+    ffNote = `⏸ auto-play stopped: ${reason}`;
+    if (ffNoteTimer) clearTimeout(ffNoteTimer);
+    ffNoteTimer = setTimeout(() => (ffNote = ''), 8000);
+  }
+  function toggleFF() {
+    if (ffActive) {
+      ffActive = false;
+      if (ffTimer) {
+        clearTimeout(ffTimer);
+        ffTimer = null;
+      }
+      ffNote = '';
+      return;
+    }
+    ffNote = '';
+    ffActedTurn = -1;
+    ffActive = true;
+  }
+  /** what (if anything) needs the player right now — checked at each new
+   * planning turn against fresh state + the just-resolved turn's reports */
+  function ffInterrupt(resolvedTurn: number): string | null {
+    if (winner !== null) return 'the game is decided';
+    if (app.contactFlash) return 'CONTACT';
+    if (app.viewing) return 'a battle replay is up';
+    if (timelapse || timelapseBusy) return 'the campaign timelapse is up';
+    if (researchIdle && app.researchQueue.length === 0) return 'labs idle — pick research';
+    if (leaderOfferCount > 0) return 'a leader awaits your answer';
+    if ((summary?.bc ?? 0) < 0 && !app.autopilot.enabled) return 'treasury is in the red';
+    if (emptyQueueCount > 0 && !app.autopilot.enabled) return 'a colony has an empty build queue';
+    const fresh = app.reports.filter((r) => r.turn === resolvedTurn);
+    if (fresh.some((r) => r.kind === 'colony_ship_arrived')) return 'a colony ship reached an open planet';
+    if (fresh.some((r) => r.kind === 'artifact_tech')) return 'ancient artifacts yielded a technology';
+    if (fresh.some((r) => r.kind === 'splinter_joined')) return 'a splinter colony joined the empire';
+    return null;
+  }
+  $effect(() => {
+    void app.version;
+    const s = gs;
+    if (!ffActive || !s) return;
+    if (s.phase === 'battle_orders') {
+      if (myBattle) stopFF('battle orders needed');
+      return; // spectating someone else's battle: hold, resume after
+    }
+    if (s.phase !== 'planning') return;
+    if (s.turn === ffActedTurn) return; // this turn's end/commit already sent
+    const reason = ffInterrupt(s.turn - 1);
+    if (reason) {
+      stopFF(reason);
+      return;
+    }
+    if (fastActive && (fastBlind || fastAhead >= FAST_MAX_AHEAD)) return; // capped: hold armed, resume as others catch up
+    if (!fastActive && iCommitted) {
+      ffActedTurn = s.turn; // commit-by-default: committed, waiting on the table
+      return;
+    }
+    ffActedTurn = s.turn;
+    // small beat between turns: lets the governor/research-queue/auto-explore
+    // effects act first and keeps the map readable as it advances
+    if (ffTimer) clearTimeout(ffTimer);
+    ffTimer = setTimeout(() => {
+      ffTimer = null;
+      if (!ffActive) return;
+      const now = session().getPlanned();
+      if (!now || now.phase !== 'planning' || now.winner !== null) return;
+      if (fastActive) endTurn();
+      else if (!iCommitted) {
+        flushTelemetry();
+        session().commitTurn();
+      }
+    }, 200);
+  });
   /** colonies idling in a default mode (empty queue / housing / trade goods)
    * instead of actively constructing — drives the Colonies tab badge */
   const defaultBuildCount = $derived.by(() => {
@@ -407,18 +501,62 @@
     const t = e.target as HTMLElement | null;
     const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
     if (typing || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
-    // never steal keys from a modal (battle orders, replay, contact)
-    if (myBattle || app.viewing || app.contactFlash || winner !== null) return;
+    // never steal keys from a modal (battle orders, replay, timelapse, contact)
+    if (myBattle || app.viewing || app.contactFlash || timelapse || winner !== null) return;
     if (e.key.length === 1 && e.key >= '1' && e.key <= '7') {
       e.preventDefault();
       tab = TAB_KEYS[Number(e.key) - 1]!;
       if (tab === 'reports') seenReports = app.reports.length;
+    } else if (e.shiftKey && (e.key === 'E' || e.key === 'e')) {
+      e.preventDefault();
+      toggleFF();
     } else if (e.key === 'e' || e.key === 'E') {
       e.preventDefault();
       if (fastActive) endTurn();
       else toggleCommit();
     }
   }
+
+  // ---- 🎬 campaign timelapse: consent-gated full-history replay. The
+  // engine latches timelapseReadyTurn when every living empire has opted in
+  // (ballot resets — an end-of-session ritual the table can repeat); after a
+  // victory anyone may watch without a vote (Empires tab bumps the request).
+  let timelapse = $state<TimelapseData | null>(null);
+  let timelapseBusy = $state('');
+  let timelapseErr = $state('');
+  let seenTimelapseTurn: number | null | undefined = undefined;
+  let seenTimelapseReq = 0;
+  async function openTimelapse() {
+    if (timelapseBusy) return;
+    timelapseErr = '';
+    timelapseBusy = 'replaying the campaign… 0%';
+    try {
+      timelapse = await generateTimelapse(getActive()!, (pct) => (timelapseBusy = `replaying the campaign… ${pct}%`));
+    } catch (e) {
+      timelapseErr = `🎬 ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+      timelapseBusy = '';
+    }
+  }
+  $effect(() => {
+    const ready = gs?.timelapseReadyTurn ?? null;
+    if (seenTimelapseTurn === undefined) {
+      seenTimelapseTurn = ready; // baseline: a reload must not re-pop an old showing
+      return;
+    }
+    if (ready !== null && ready !== seenTimelapseTurn) {
+      seenTimelapseTurn = ready;
+      void openTimelapse();
+    }
+  });
+  $effect(() => {
+    if (app.timelapseRequest > 0 && app.timelapseRequest !== seenTimelapseReq) {
+      seenTimelapseReq = app.timelapseRequest;
+      void openTimelapse();
+    }
+  });
+  const timelapseVotes = $derived(gs?.timelapseVotes ?? []);
+  const livingEmpires = $derived(gs ? gs.empires.filter((e) => !e.eliminated).length : 0);
 
   let restarting = $state(false);
   async function restartGame() {
@@ -470,6 +608,15 @@
         onclick={toggleCommit}
       >{iCommitted ? 'Committed ✓' : researchIdle ? '⚠ Commit turn' : 'Commit turn'} ({committed.length}/{roster.length})</button>
     {/if}
+    <button
+      class="ff"
+      class:active={ffActive}
+      data-testid="fast-forward"
+      title={ffActive
+        ? 'auto-playing — stops the moment a decision needs you (Shift+E)'
+        : 'auto-play turns until something needs you: battles, idle labs, arrivals, offers… (Shift+E). Best with autopilot + a research queue.'}
+      onclick={toggleFF}
+    >{ffActive ? '⏸' : '⏩'}</button>
     <span class="title">MOO2<span class="v2">v2</span></span>
     <span class="stat" data-testid="my-seat" title="the empire you play (seat #{session().playerId}) — a resumed save matches players to their empire by name">👤 {mySeatName}</span>
     <!-- fixed-width turn stat: tabular digits + the synced turn lives in the
@@ -586,6 +733,29 @@
   {/if}
   <!-- seat problems live on the Empires tab now (bugs.md: the big yellow
        banner must not block the whole main screen); the tab badge points there -->
+  {#if timelapseBusy}
+    <div class="banner dim" data-testid="timelapse-busy">🎬 {timelapseBusy}</div>
+  {:else if timelapseErr}
+    <div class="banner warn" data-testid="timelapse-error">{timelapseErr}</div>
+  {/if}
+  {#if timelapseVotes.length > 0 && winner === null}
+    <div class="banner dim" data-testid="timelapse-ballot">
+      🎬 Campaign-timelapse ballot: {timelapseVotes.length}/{livingEmpires} opted in — it replays the WHOLE game on an
+      unfogged map, so everyone still playing must agree.
+      {#if !timelapseVotes.includes(session().playerId)}
+        <button data-testid="timelapse-vote" onclick={() => session().submit('timelapse_vote', {})}>🎬 opt in</button>
+      {:else}
+        (you opted in — waiting for the others)
+      {/if}
+    </div>
+  {/if}
+  {#if ffActive}
+    <div class="banner dim" data-testid="ff-banner">
+      ⏩ Auto-playing — the turn ends itself until something needs a decision (battle, idle labs, arrival, offer…). Shift+E or ⏸ to stop.
+    </div>
+  {:else if ffNote}
+    <div class="banner warn" data-testid="ff-note">{ffNote}</div>
+  {/if}
   {#if realtimeTurns && autoTurnRemaining !== null}
     <div class="banner {autoTurnRemaining <= 5 && !iCommitted ? 'warn' : 'dim'}" data-testid="auto-turn-banner">
       ⏱ Realtime: turn advances in {autoTurnRemaining}s{iCommitted ? '' : ' — commit your orders'}.
@@ -616,7 +786,12 @@
   {/if}
   {#if winner !== null}
     {@const winLabel = gs.winType === 'council' ? 'is elected supreme ruler of the council' : gs.winType === 'antaran' ? 'has conquered the Andromedan home' : 'wins by conquest'}
-    <div class="banner" data-testid="victory">Victory: {roster.find((p) => p.id === winner)?.name ?? winner} {winLabel}!</div>
+    <div class="banner" data-testid="victory">
+      Victory: {roster.find((p) => p.id === winner)?.name ?? winner} {winLabel}!
+      <button data-testid="timelapse-watch-victory" title="replay the whole campaign on an unfogged map" onclick={() => app.timelapseRequest++}>
+        🎬 watch the campaign timelapse
+      </button>
+    </div>
   {/if}
   <nav>
     <button class:active={tab === 'colonies'} data-testid="tab-colonies" onclick={() => (tab = 'colonies')}>
@@ -726,6 +901,9 @@
   {#if app.viewing}
     <BattleViewer replay={app.viewing} onclose={() => (app.viewing = null)} />
   {/if}
+  {#if timelapse}
+    <TimelapseViewer data={timelapse} onclose={() => (timelapse = null)} />
+  {/if}
   {#if memoryOnly && !memoryNoteDismissed}
     <div class="banner warn" data-testid="memory-only">
       ⚠ Make sure to 💾 save every turn — the browser database is not accessible, so this tab won't survive a reload on its own.
@@ -761,7 +939,7 @@
         <li><b>Food</b> feeds colonists (2 per unit ×½); shortages starve growth. Freighters move surplus between colonies at 0.5 BC per freighter in use (idle ones are free); civilian charters cover overflow at 1 BC per food. Blockades cut deliveries.</li>
         <li><b>Research</b> works one field at a time; basic fields and Cold Fusion (marked ✦) grant <i>all</i> their applications — Cold Fusion delivers colony ships, outposts, transports and freighters together. Never leave research idle — points bank but nothing finishes.</li>
         <li><b>Ships</b> travel star-to-star within fuel range (unreachable stars are dashed red on the map). Move orders can be re-routed until you commit.</li>
-        <li><b>Hotkeys</b> — <kbd>1</kbd>–<kbd>7</kbd> switch tabs, <kbd>E</kbd> ends/commits the turn. On the map: select your star, <kbd>B</kbd> arms build mode, then <kbd>C</kbd>olony ship / <kbd>S</kbd>cout / <kbd>F</kbd>rigate / <kbd>D</kbd>estroyer / c<kbd>R</kbd>uiser / <kbd>B</kbd>attleship / <kbd>T</kbd>itan / <kbd>O</kbd>utpost ship / <kbd>H</kbd>ousing / f<kbd>A</kbd>ctory / <kbd>L</kbd>ab / supercomputer <kbd>K</kbd> queue at the best-suited colony (progress bars appear under the map; ✕ hands the yard back to autopilot). With a fleet selected: <kbd>C</kbd> colonize · <kbd>O</kbd> outpost · <kbd>L</kbd>/<kbd>U</kbd> load/unload transports · <kbd>A</kbd> select all · <kbd>⌫</kbd> cycle. In a battle dialog: arrows pick the stance, <kbd>T</kbd> targets, <kbd>B</kbd> toggles bombard, <kbd>Enter</kbd> locks in.</li>
+        <li><b>Hotkeys</b> — <kbd>1</kbd>–<kbd>7</kbd> switch tabs, <kbd>E</kbd> ends/commits the turn, <kbd>Shift+E</kbd> = ⏩ auto-play until something needs a decision. On the map: select your star, <kbd>B</kbd> arms build mode, then <kbd>C</kbd>olony ship / <kbd>S</kbd>cout / <kbd>F</kbd>rigate / <kbd>D</kbd>estroyer / c<kbd>R</kbd>uiser / <kbd>B</kbd>attleship / <kbd>T</kbd>itan / <kbd>O</kbd>utpost ship / <kbd>H</kbd>ousing / f<kbd>A</kbd>ctory / <kbd>L</kbd>ab / supercomputer <kbd>K</kbd> queue at the best-suited colony (progress bars appear under the map; ✕ hands the yard back to autopilot). With a fleet selected: <kbd>C</kbd> colonize · <kbd>O</kbd> outpost · <kbd>L</kbd>/<kbd>U</kbd> load/unload transports · <kbd>A</kbd> select all · <kbd>⌫</kbd> cycle. In a battle dialog: arrows pick the stance, <kbd>T</kbd> targets, <kbd>B</kbd> toggles bombard, <kbd>Enter</kbd> locks in.</li>
         <li><b>Colonists</b> move between stars on transports: build one, "load" at a colony, fly it, "unload" (Fleets tab). Within a system they move freely — drag citizens onto a sibling colony in the spreadsheet (no ships needed); between systems the freighter run flies your <i>second-best</i> drive (the newest engines go to the warfleet). Colony bases settle other planets in the same system.</li>
         <li><b>Battles</b> only happen between empires at <b>war</b> — declare it on the Empires tab. A battle is a single pass; set stance/targeting/retreat before the clash.</li>
         <li><b>☠ stars</b> are guarded by monsters — clear the keeper to colonize. Orion holds the Guardian and the best worlds in the galaxy.</li>
@@ -829,6 +1007,19 @@
     border-color: var(--gold);
     color: var(--gold);
     animation: pulse-warn 1.6s ease-in-out infinite;
+  }
+  .ff {
+    font-size: 1rem;
+    padding: 0.15rem 0.5rem;
+  }
+  .ff.active {
+    background: linear-gradient(180deg, #2c7a4e, #1d5236);
+    border-color: var(--good, #5ee08a);
+    animation: idlepulse 1.6s ease-in-out infinite;
+  }
+  @keyframes idlepulse {
+    0%, 100% { box-shadow: 0 0 0 rgba(94, 224, 138, 0); }
+    50% { box-shadow: 0 0 10px rgba(94, 224, 138, 0.5); }
   }
   .commit {
     font-weight: 700;

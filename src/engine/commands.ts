@@ -1195,6 +1195,35 @@ interface TelemetryPayload {
   screens: Record<string, number>;
 }
 
+// ---- campaign-timelapse opt-in (types.ts timelapseVotes): the replay shows
+// the whole map's history, so every living empire must consent. The last
+// vote latches timelapseReadyTurn and resets the ballot — the group can run
+// it again at the next session's end.
+const validateTimelapseVote: Validator = (state, cmd) => {
+  const empire = state.empires.find((e) => e.id === cmd.playerId);
+  if (!empire) return 'no empire';
+  if (empire.eliminated) return 'eliminated empires cannot vote';
+  if ((state.timelapseVotes ?? []).includes(cmd.playerId)) return 'already opted in';
+  return null;
+};
+
+const applyTimelapseVote: Applier = (state, cmd, events) => {
+  const votes = [...(state.timelapseVotes ?? []), cmd.playerId].sort((a, b) => a - b);
+  const living = state.empires.filter((e) => !e.eliminated).map((e) => e.id);
+  if (living.every((id) => votes.includes(id))) {
+    state.timelapseVotes = [];
+    state.timelapseReadyTurn = state.turn;
+    events?.push({ visibleTo: -1, kind: 'timelapse_ready', payload: { turn: state.turn } });
+  } else {
+    state.timelapseVotes = votes;
+    events?.push({
+      visibleTo: -1,
+      kind: 'timelapse_vote',
+      payload: { empireId: cmd.playerId, count: votes.length, needed: living.length },
+    });
+  }
+};
+
 const validateTelemetry: Validator = (state, cmd) => {
   const p = cmd.payload as TelemetryPayload;
   if (!p || typeof p.screens !== 'object' || p.screens === null || Array.isArray(p.screens)) return 'bad payload';
@@ -1572,6 +1601,7 @@ export const COMMANDS: Record<string, { validate: Validator; apply: Applier }> =
   move_colonists: { validate: validateMoveColonists, apply: applyMoveColonists },
   trait_reassignment: { validate: validateTraitReassign, apply: applyTraitReassign },
   record_telemetry: { validate: validateTelemetry, apply: applyTelemetry },
+  timelapse_vote: { validate: validateTimelapseVote, apply: applyTimelapseVote },
   rename_star: { validate: validateRenameStar, apply: applyRenameStar },
   rename_colony: { validate: validateRenameColony, apply: applyRenameColony },
   set_colony_tags: { validate: validateSetColonyTags, apply: applySetColonyTags },

@@ -74,5 +74,22 @@ test('map hotkey builds, status bars, autopilot bar and research queue', async (
   await page.getByTestId('tab-map').click();
   await expect(page.getByTestId('pinned-builds').locator('.pin')).toHaveCount(1);
 
+  // --- ⏩ fast-forward: auto-plays turns until an interrupt (or Shift+E).
+  // It either sails past turn 4 or legitimately stops early (leader offer,
+  // arrival…) with a named reason — both are correct behavior. ---
+  await page.getByTestId('fast-forward').click();
+  await expect(page.getByTestId('ff-banner')).toBeVisible();
+  await expect
+    .poll(
+      async () => {
+        const t = Number((await page.getByTestId('turn').textContent())?.replace(/\D/g, '') ?? '0');
+        return t > 4 || (await page.getByTestId('ff-note').count()) > 0;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+  if (await page.getByTestId('ff-banner').count()) await page.keyboard.press('Shift+E');
+  await expect(page.getByTestId('ff-banner')).toHaveCount(0);
+
   await ctx.close();
 });

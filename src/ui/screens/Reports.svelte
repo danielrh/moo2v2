@@ -111,6 +111,8 @@
       case 'natives_joined': return `natives joined ${colonyOf(p['colonyId'])} — they will work the farms (${p['units']} pop)`;
       case 'splinter_joined': return `🏠 a splinter colony at ${starOf(p['starId'])} has joined our empire — ${p['units']} native farmer${Number(p['units']) === 1 ? '' : 's'} (they never relocate)`;
       case 'artifact_tech': return `🏺 ancient artifacts at ${starOf(p['starId'])} yield a technology: ${String(p['appId'] ?? '').replaceAll('_', ' ')}`;
+      case 'timelapse_vote': return `🎬 ${nameOf(p['empireId'])} opted into the campaign timelapse (${p['count']}/${p['needed']})`;
+      case 'timelapse_ready': return `🎬 every empire opted in — the campaign timelapse plays (ballot reset)`;
       default: return `${kind} ${JSON.stringify(p)}`;
     }
   }

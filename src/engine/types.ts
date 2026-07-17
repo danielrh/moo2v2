@@ -375,6 +375,13 @@ export interface GameState {
   popTransits?: PopTransit[];
   winner: number | null;
   winType: 'conquest' | 'council' | 'antaran' | null;
+  /** campaign-timelapse opt-in (empire ids, sorted). The timelapse replays
+   * the WHOLE game on an unfogged map, so it is consent-gated: when every
+   * living empire has voted, timelapseReadyTurn latches to the current turn
+   * and the votes reset — a repeatable end-of-session ritual.
+   * Optional-additive for save compatibility. */
+  timelapseVotes?: number[];
+  timelapseReadyTurn?: number | null;
 }
 
 export interface PopTransit {

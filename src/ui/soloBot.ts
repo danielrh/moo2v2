@@ -198,6 +198,10 @@ export class SoloBot {
       this.orderBattles(state);
       return;
     }
+    // campaign timelapse: a bot has no secrets — the moment any human opts
+    // in, the bot seconds the motion so tables only ever wait on humans
+    const votes = state.timelapseVotes ?? [];
+    if (votes.length > 0 && !votes.includes(this.session.playerId)) this.submit('timelapse_vote', {});
     if (state.turn === this.lastPlayedTurn) return;
     this.lastPlayedTurn = state.turn;
     this.orderedBattles.clear();

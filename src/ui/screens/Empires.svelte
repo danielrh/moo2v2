@@ -517,6 +517,38 @@
     <GroundBattleDialog battle={viewingGround} onclose={() => (viewingGround = null)} />
   {/if}
 
+  <h3>Campaign timelapse</h3>
+  <p class="dim">
+    Replays the entire game so far on an unfogged map — every border shift and battle, one frame per turn.
+    {#if gs.winner === null}
+      Because it reveals everyone's history, every empire still playing must opt in; once all agree it plays for the
+      whole table and the ballot resets (a fine end-of-session ritual).
+    {:else}
+      The war is decided — no ballot needed.
+    {/if}
+  </p>
+  {#if gs.winner !== null}
+    <button data-testid="timelapse-watch" onclick={() => app.timelapseRequest++}>🎬 watch the campaign timelapse</button>
+  {:else}
+    {@const votes = gs.timelapseVotes ?? []}
+    {@const living = gs.empires.filter((e) => !e.eliminated)}
+    {#if votes.includes(selfId)}
+      <p class="dim">🎬 you opted in ({votes.length}/{living.length}) — waiting for
+        {living.filter((e) => !votes.includes(e.id)).map((e) => e.name).join(', ')}</p>
+    {:else}
+      <button
+        data-testid="timelapse-optin"
+        disabled={!getActive()?.store}
+        title={getActive()?.store
+          ? votes.length
+            ? `${votes.length}/${living.length} opted in — add your consent`
+            : 'start the ballot: the timelapse plays for everyone once all empires opt in'
+          : 'needs the stored game record — persistence unavailable in this tab'}
+        onclick={() => session().submit('timelapse_vote', {})}
+      >🎬 opt in to the campaign timelapse{votes.length ? ` (${votes.length}/${living.length})` : ''}</button>
+    {/if}
+  {/if}
+
   {#if app.replays.length}
     <h3>
       Battle replays

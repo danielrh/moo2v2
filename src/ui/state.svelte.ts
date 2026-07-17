@@ -76,6 +76,9 @@ export const app = $state({
   /** idle scouts fly themselves to the nearest unexplored star in fuel range
    * (ordinary move_ships commands — reroutable like any manual order) */
   autoExplore: false,
+  /** bumped to ask the shell to generate+open the campaign timelapse (used
+   * by the Empires tab; the shell owns the viewer so it can pop on any tab) */
+  timelapseRequest: 0,
 });
 
 // autopilot settings survive reloads (per browser, not per game)
@@ -312,6 +315,7 @@ export function resetGameUiState(): void {
   app.pins = {};
   app.researchQueue = [];
   app.autoExplore = false;
+  app.timelapseRequest = 0;
   app.version++;
 }
 
