@@ -58,9 +58,13 @@ export interface ActiveGame {
   soloSetup: SoloSetup | null;
 }
 
+/** lobby-level bot choice: the two SoloBot modes plus the OnionAI doctrine
+ * (a fair-mode bot running the constraint-driven onion brain) */
+export type LobbyBotMode = BotMode | 'onion';
+
 export interface SoloSetup {
   name: string;
-  botMode: BotMode;
+  botMode: LobbyBotMode;
   specs: SoloBotSpec[];
   /** room code the campaign persists under (default SOLO) */
   code: string;
@@ -260,7 +264,7 @@ export interface SoloBotSpec {
  * keep their stable names (Bot, Bot 2, ...) so resume re-seats them. */
 export async function enterSoloGame(
   name: string,
-  botMode: BotMode = 'parity',
+  botMode: LobbyBotMode = 'parity',
   personality: BotPersonality | 'auto' = 'militarist',
   botSpecs?: SoloBotSpec[],
   opts?: {
@@ -316,7 +320,8 @@ export async function enterSoloGame(
     });
     return new SoloBot({
       session: botSession,
-      mode: botMode,
+      mode: botMode === 'onion' ? 'fair' : botMode,
+      ...(botMode === 'onion' ? { brain: 'onion' as const } : {}),
       personality: spec.personality ?? personality,
       ...(spec.race ? { race: spec.race } : {}),
       ...(spec.color ? { color: spec.color } : {}),

@@ -2,6 +2,7 @@
   // Pre-battle orders: the only input combat takes. The pass itself is an
   // automatic cinematic once both sides have ordered (or the timeout fires).
   import type { PendingBattle } from '@engine/types';
+  import { fleetBombardDamage, planetShieldBlock } from '@engine/battles';
   import { ownerName } from '../colors';
   import { app, getActive } from '../state.svelte';
 
@@ -122,6 +123,25 @@
     return holdings.length > 0 && holdings.every((c) => c.outpost);
   });
 
+  // preview the barrage with the engine's own bombardment math so a fleet
+  // that cannot hurt the colony is warned up front instead of the order
+  // silently doing nothing after the win. null = no populated colony to bomb.
+  const bombardPreview = $derived.by(() => {
+    const gs = session().getState();
+    if (!gs || battle.defender < 0) return null;
+    const colony = gs.colonies.find(
+      (c) =>
+        c.owner === battle.defender &&
+        !c.outpost &&
+        gs.planets.some((p) => p.id === c.planetId && p.starId === battle.starId),
+    );
+    if (!colony) return null;
+    return {
+      damage: fleetBombardDamage(gs, battle.attacker, battle.starId, planetShieldBlock(colony)),
+      unshielded: fleetBombardDamage(gs, battle.attacker, battle.starId, 0),
+    };
+  });
+
   function submit() {
     session().submit('battle_orders', {
       battleId: battle.id,
@@ -184,6 +204,15 @@
             <input type="checkbox" data-testid="battle-bombard" bind:checked={bombard} />
             {outpostTarget ? '💥 Destroy the outpost if the pass is won' : 'Bombard the colony if the pass is won'}
           </label>
+          {#if !outpostTarget && bombardPreview !== null}
+            {#if bombardPreview.damage === 0 && bombardPreview.unshielded === 0}
+              <p class="warn" data-testid="battle-no-bombs">⚠ This fleet mounts no weapons capable of orbital bombardment — the barrage will do no damage. Land transports to invade instead.</p>
+            {:else if bombardPreview.damage === 0}
+              <p class="warn" data-testid="battle-no-bombs">⚠ The colony's planetary shield blocks every hit this fleet can land — the barrage will do no damage. Bring heavier or shield-piercing weapons, or invade.</p>
+            {:else}
+              <p class="hint" data-testid="battle-bombard-preview">expected barrage: ~{bombardPreview.damage} damage (≈{Math.floor(bombardPreview.damage / 20)} pop/building hit{Math.floor(bombardPreview.damage / 20) === 1 ? '' : 's'})</p>
+            {/if}
+          {/if}
         {/if}
         <label class="row" title="if you win the field, the enemy's unarmed ships (colony/outpost ships, transports) are normally captured and destroyed — check to let them go">
           <input type="checkbox" data-testid="battle-spare" bind:checked={spareNoncombatants} />
@@ -242,5 +271,15 @@
     font-size: 0.72rem;
     opacity: 0.65;
     margin: 0.4rem 0 0;
+  }
+  .warn {
+    font-size: 0.78rem;
+    color: var(--bad, #ff7b7b);
+    margin: -0.35rem 0 0;
+  }
+  .hint {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    margin: -0.35rem 0 0;
   }
 </style>
