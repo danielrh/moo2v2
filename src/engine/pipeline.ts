@@ -7,7 +7,7 @@
 import { detectBattles, resolveBattle, retreatDestination } from './battles';
 import { diplomacyUpkeep } from './diplomacy';
 import { resolveEspionage } from './espionage';
-import { assimilate, isBlockaded, resolveInvasions } from './ground';
+import { assimilate, isBlockaded, landInvasion, resolveInvasions, trainMarines } from './ground';
 import { leaderEmpireBonuses, leadersUpkeep } from './leaders';
 import { antaranUpkeep, hostileMonsterAt, randomEventsUpkeep } from './npc';
 import { allocId } from './ids';
@@ -16,7 +16,7 @@ import { commandPoints, inRange, supportStars } from './movement';
 import { availableHulls, defaultDesign, designLoadoutKey } from './shipdesign';
 import { ceilDiv } from './imath';
 import { applyTerraformStep, constructAsBarren, convertiblePlanetsInSystem, terraformCost, unsettledPlanetsInSystem } from './terraform';
-import { busyFreighters, colonyMaxPop, colonyOutput, colonyPopUnits, farmingViable, freeFreighters, groupGrowthK, maxPopulation, organicUnitsOf, traitsOf } from './economy';
+import { busyFreighters, colonyMaxPop, colonyOutput, colonyPopUnits, farmingViable, freeFreighters, groupGrowthK, MARINES_PER_TRANSPORT, marinesOf, maxPopulation, organicUnitsOf, traitsOf } from './economy';
 import { applyFoundingSpecials, normalizeJobsForGroup } from './commands';
 import { rngFor } from './rng';
 import { applyResearch, appPickableBy, availableFields, grantApp } from './research';
@@ -63,21 +63,40 @@ export function advanceTurn(state: GameState): AdvanceResult {
  * when no battles were pending). */
 export function resolveCombat(state: GameState): AdvanceResult {
   const events: TurnEvent[] = [];
+  // empires that fought at a star this turn made their landing decision in
+  // the battle-orders dialog — S10 must not auto-land behind it
+  const foughtAt = new Set<string>();
   for (const battle of state.pendingBattles) {
-    resolveBattle(state, battle, events);
+    const resolved = resolveBattle(state, battle, events);
+    for (const side of [battle.attacker, battle.defender]) {
+      if (side >= 0) foughtAt.add(`${side}:${battle.starId}`);
+    }
+    // the invade order: a victorious attacker lands its marine transports
+    // right after the (optional) bombardment
+    const ordersA = battle.ordersA as { invade?: boolean } | null;
+    if (resolved.result.winner === 0 && ordersA?.invade === true && battle.defender >= 0) {
+      const colony = state.colonies.find(
+        (c) =>
+          c.owner === battle.defender &&
+          !c.outpost &&
+          state.planets.some((p) => p.id === c.planetId && p.starId === battle.starId),
+      );
+      if (colony) landInvasion(state, colony, battle.attacker, events);
+    }
   }
   state.pendingBattles = [];
   state.phase = 'planning';
-  finishTurn(state, events);
+  finishTurn(state, events, foughtAt);
   return { events };
 }
 
-function finishTurn(state: GameState, events: TurnEvent[]): void {
-  resolveInvasions(state, events); // S10 ground operations
+function finishTurn(state: GameState, events: TurnEvent[], foughtAt: ReadonlySet<string> = new Set()): void {
+  resolveInvasions(state, events, foughtAt); // S10 ground operations
   s10_strandedRetreat(state, events); // ships beyond fuel range limp home
   s10_shipUpkeep(state, events);
   s11_diplomacyUpkeep(state); // peace handshakes
   assimilate(state, events); // S11 conquered populations settle in
+  trainMarines(state); // S11 barracks drill new garrison squads
   resolveEspionage(state, events); // S11 spies act
   leadersUpkeep(state, events); // S11 leader offers, salaries, XP
   antaranUpkeep(state, events); // S11 raid cadence + withdrawals
@@ -549,6 +568,14 @@ function completeItem(state: GameState, colony: Colony, item: string, events: Tu
     return;
   }
   if (item === 'colony_ship' || item === 'outpost_ship' || item === 'transport' || item === 'construction_ship') {
+    // a transport ships out with a marine squad boarded from the garrison
+    // (canQueue gates the queue on a full squad being available; a garrison
+    // thinned mid-build sends what it still has)
+    let marines = 0;
+    if (item === 'transport') {
+      marines = Math.min(MARINES_PER_TRANSPORT, marinesOf(colony));
+      colony.marines = marinesOf(colony) - marines;
+    }
     state.ships.push({
       id: allocId(state, colony.owner),
       owner: colony.owner,
@@ -559,6 +586,7 @@ function completeItem(state: GameState, colony: Colony, item: string, events: Tu
       cargoRace: colony.owner,
       dmgStructure: 0,
       dmgArmor: 0,
+      ...(marines > 0 ? { marines } : {}),
     });
     events.push({
       visibleTo: colony.owner,

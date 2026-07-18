@@ -161,7 +161,7 @@ export function runHeadlessGame(opts: {
             kind: 'battle_orders',
             payload: {
               battleId: battle.id,
-              orders: { stance: side === battle.attacker ? 'charge' : 'hold_range', priority: 'nearest', retreatThresholdPct: 25, bombard: false },
+              orders: { stance: side === battle.attacker ? 'charge' : 'hold_range', priority: 'nearest', retreatThresholdPct: 25, bombard: false, invade: side === battle.attacker },
             },
           };
           if (validateCommand(state, cmd) === null) {

@@ -756,6 +756,7 @@ const validateBattleOrders: Validator = (state, cmd) => {
     return 'bad retreat threshold';
   }
   if (typeof o.bombard !== 'boolean') return 'bad bombard flag';
+  if (o.invade !== undefined && typeof o.invade !== 'boolean') return 'bad invade flag';
   if (o.spareNoncombatants !== undefined && typeof o.spareNoncombatants !== 'boolean') return 'bad spare flag';
   return null;
 };
@@ -772,6 +773,7 @@ const applyBattleOrders: Applier = (state, cmd) => {
     priority: p.orders.priority,
     retreatThresholdPct: p.orders.retreatThresholdPct,
     bombard: cmd.playerId === battle.attacker ? p.orders.bombard : false,
+    invade: cmd.playerId === battle.attacker && p.orders.invade === true,
     spareNoncombatants: p.orders.spareNoncombatants === true,
   };
   if (cmd.playerId === battle.attacker) battle.ordersA = orders;

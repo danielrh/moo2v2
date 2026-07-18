@@ -3,6 +3,7 @@
   // automatic cinematic once both sides have ordered (or the timeout fires).
   import type { PendingBattle } from '@engine/types';
   import { fleetBombardDamage, planetShieldBlock } from '@engine/battles';
+  import { colonyPopUnits, marinesOf, shipMarines } from '@engine/economy';
   import { ownerName } from '../colors';
   import { app, getActive } from '../state.svelte';
 
@@ -20,6 +21,7 @@
   let priority = $state('nearest');
   let retreatThresholdPct = $state(25);
   let bombard = $state(false);
+  let invade = $state(false);
   let spareNoncombatants = $state(false);
 
   const STANCES = ['charge', 'hold_range', 'standoff', 'formation', 'passthrough', 'evade_retreat'];
@@ -66,6 +68,9 @@
     } else if (key === 'b' && isAttacker) {
       e.preventDefault();
       bombard = !bombard;
+    } else if (key === 'i' && isAttacker && invadePreview !== null) {
+      e.preventDefault();
+      invade = !invade;
     } else if (key === 'n') {
       e.preventDefault();
       spareNoncombatants = !spareNoncombatants;
@@ -142,6 +147,31 @@
     };
   });
 
+  // marine landing: only offered when the attacker actually has marines in
+  // orbit and the defender has a populated colony to take
+  const invadePreview = $derived.by(() => {
+    const gs = session().getState();
+    if (!gs || !isAttacker || battle.defender < 0) return null;
+    const colony = gs.colonies.find(
+      (c) =>
+        c.owner === battle.defender &&
+        !c.outpost &&
+        gs.planets.some((p) => p.id === c.planetId && p.starId === battle.starId),
+    );
+    if (!colony) return null;
+    const marines = gs.ships
+      .filter(
+        (s) =>
+          s.owner === battle.attacker &&
+          s.shipKind === 'transport' &&
+          s.location.kind === 'star' &&
+          s.location.starId === battle.starId,
+      )
+      .reduce((n, s) => n + shipMarines(s), 0);
+    if (marines === 0) return null;
+    return { marines, defenders: marinesOf(colony) + Math.ceil(colonyPopUnits(colony) / 2) };
+  });
+
   function submit() {
     session().submit('battle_orders', {
       battleId: battle.id,
@@ -150,6 +180,7 @@
         priority,
         retreatThresholdPct,
         bombard: isAttacker ? bombard : false,
+        invade: isAttacker && invadePreview !== null ? invade : false,
         spareNoncombatants,
       },
     });
@@ -206,13 +237,19 @@
           </label>
           {#if !outpostTarget && bombardPreview !== null}
             {#if bombardPreview.damage === 0 && bombardPreview.unshielded === 0}
-              <p class="warn" data-testid="battle-no-bombs">⚠ This fleet mounts no weapons capable of orbital bombardment — the barrage will do no damage. Land transports to invade instead.</p>
+              <p class="warn" data-testid="battle-no-bombs">⚠ This fleet mounts no weapons capable of orbital bombardment — the barrage will do no damage. Bring marine transports and invade instead.</p>
             {:else if bombardPreview.damage === 0}
-              <p class="warn" data-testid="battle-no-bombs">⚠ The colony's planetary shield blocks every hit this fleet can land — the barrage will do no damage. Bring heavier or shield-piercing weapons, or invade.</p>
+              <p class="warn" data-testid="battle-no-bombs">⚠ The colony's planetary shield blocks every hit this fleet can land — the barrage will do no damage. Bring heavier or shield-piercing weapons, or marines to invade.</p>
             {:else}
               <p class="hint" data-testid="battle-bombard-preview">expected barrage: ~{bombardPreview.damage} damage (≈{Math.floor(bombardPreview.damage / 20)} pop/building hit{Math.floor(bombardPreview.damage / 20) === 1 ? '' : 's'})</p>
             {/if}
           {/if}
+        {/if}
+        {#if isAttacker && invadePreview !== null}
+          <label class="row" title="a monumental step: your marine transports land after the pass is won — the landing force is spent whether or not the colony falls">
+            <input type="checkbox" data-testid="battle-invade" bind:checked={invade} />
+            🪖 Invade the colony if the pass is won ({invadePreview.marines} marine{invadePreview.marines === 1 ? '' : 's'} vs ~{invadePreview.defenders} defender{invadePreview.defenders === 1 ? '' : 's'})
+          </label>
         {/if}
         <label class="row" title="if you win the field, the enemy's unarmed ships (colony/outpost ships, transports) are normally captured and destroyed — check to let them go">
           <input type="checkbox" data-testid="battle-spare" bind:checked={spareNoncombatants} />
@@ -220,7 +257,7 @@
         </label>
       </div>
       <button data-testid="battle-submit" onclick={submit}>Lock in orders (Enter)</button>
-      <p class="keys">⌨ ↑↓/1-6 stance · T target · ←→ retreat · {isAttacker ? (outpostTarget ? 'B destroy outpost · ' : 'B bombard · ') : ''}N spare civilians · Enter lock in</p>
+      <p class="keys">⌨ ↑↓/1-6 stance · T target · ←→ retreat · {isAttacker ? (outpostTarget ? 'B destroy outpost · ' : 'B bombard · ') : ''}{isAttacker && invadePreview !== null ? 'I invade · ' : ''}N spare civilians · Enter lock in</p>
     {/if}
   </div>
 </div>

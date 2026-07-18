@@ -14,7 +14,7 @@
 // All tunables live in the tables at the top — the tournament improvement
 // loop edits weights, not control flow.
 
-import { selectors, starDistance } from '@engine/index';
+import { marinesOf, selectors, shipMarines, starDistance } from '@engine/index';
 import { itemCost, SHIP_BUILDABLES, PROJECT_BUILDABLES } from '@engine/items';
 import { leaderById } from '@engine/leaders';
 import type { Empire, GameState, Planet } from '@engine/types';
@@ -1131,50 +1131,26 @@ function runInvasions(ctx: OnionCtx, intel: Intel): void {
     .map((c) => {
       const sid = starOf(c.planetId);
       const pop = c.groups.reduce((n, g) => n + Math.floor(g.popK / 1000), 0);
-      const militia = Math.ceil(pop / 2) + (c.buildings.includes('marine_barracks') ? 2 : 0);
+      const militia = marinesOf(c) + Math.ceil(pop / 2);
       return { starId: sid, militia };
     })
     .filter((t): t is { starId: number; militia: number } => t.starId !== null && myWarAt.has(t.starId) && !theirGuardAt.has(t.starId))
     .sort((a, b) => a.militia - b.militia || a.starId - b.starId);
   const best = cleared[0] ?? null;
-  const targetStars = new Set(cleared.map((t) => t.starId));
 
-  const transports = planned.ships.filter((s) => s.owner === me && s.shipKind === 'transport');
-  const loadedIdle = transports.filter(
-    (t) => t.cargoPopUnits > 0 && t.location.kind === 'star' && !targetStars.has(t.location.starId),
-  );
-  const waveTroops = loadedIdle.reduce((n, t) => n + t.cargoPopUnits, 0);
+  // transports launch pre-boarded with a marine squad — no loading step;
+  // the invade battle order (below) lands them after a won pass
+  const transports = planned.ships.filter((s) => s.owner === me && s.shipKind === 'transport' && shipMarines(s) > 0);
+  const readyWave = transports.filter((t) => t.location.kind === 'star');
+  const waveTroops = readyWave.reduce((n, t) => n + shipMarines(t), 0);
   if (best && waveTroops > best.militia + 2) {
-    for (const t of loadedIdle) {
+    for (const t of readyWave) {
       if (t.location.kind === 'star' && t.location.starId === best.starId) continue;
       session.submit('move_ships', { shipIds: [t.id], destStarId: best.starId });
     }
   }
-  for (const t of transports) {
-    if (t.location.kind !== 'star' || t.cargoPopUnits > 0) continue;
-    const here = t.location.starId;
-    const source = planned.colonies.find((c) => {
-      if (c.owner !== me || c.outpost || starOf(c.planetId) !== here) return false;
-      const own = c.groups.find((g) => g.race === me && !g.unrest);
-      return !!own && Math.floor(own.popK / 1000) > 6;
-    });
-    if (source) {
-      session.submit('load_transports', { colonyId: source.id, shipId: t.id });
-      continue;
-    }
-    const dest = selectors.moveOptions(planned, me, here).find(
-      (o) =>
-        o.reachable &&
-        planned.colonies.some((c) => {
-          if (c.owner !== me || c.outpost || starOf(c.planetId) !== o.starId) return false;
-          const own = c.groups.find((g) => g.race === me && !g.unrest);
-          return !!own && Math.floor(own.popK / 1000) > 6;
-        }),
-    );
-    if (dest) session.submit('move_ships', { shipIds: [t.id], destStarId: dest.starId });
-  }
 
-  const wantLift = Math.min(8, Math.max(3, Math.ceil(((best?.militia ?? 8) + 3) / 2)));
+  const wantLift = Math.min(8, Math.max(2, Math.ceil(((best?.militia ?? 8) + 3) / 4)));
   const queued = intel.rows.reduce((n, r) => n + r.queue.filter((q) => q === 'transport').length, 0);
   if (intel.myWar < 4 || transports.length + queued >= wantLift) return;
   const yard = intel.rows.find((r) => r.buildable.includes('transport') && !r.queue.includes('transport'));
@@ -1209,6 +1185,7 @@ export function onionBattleOrders(
   priority: string;
   retreatThresholdPct: number;
   bombard: boolean;
+  invade: boolean;
 } {
   const foe = battle.attacker === me ? battle.defender : battle.attacker;
   const hullsAt = (owner: number) =>
@@ -1225,5 +1202,7 @@ export function onionBattleOrders(
     priority: advantage >= 1.5 ? 'deadliest' : 'nearest',
     retreatThresholdPct: personality === 'militarist' || personality === 'rusher' ? 15 : 25,
     bombard: !doomed && battle.attacker === me,
+    // marines in orbit always land on a win — the lift was sent to invade
+    invade: !doomed && battle.attacker === me,
   };
 }

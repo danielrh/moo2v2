@@ -3,7 +3,7 @@
 // from here so alternate front ends and headless bots agree exactly.
 
 import { fieldByNum, applicationsOfField, FIELD_SUBJECTS, type FieldRow } from './data/index';
-import { busyFreighters, buyCost, colonyMaxPop, colonyOutput, colonyPopUnits, farmingViable, freeFreighters, groupGrowthK, type ColonyOutput } from './economy';
+import { busyFreighters, buyCost, colonyMaxPop, colonyOutput, colonyPopUnits, farmingViable, freeFreighters, groupGrowthK, marineCap, marinesOf, shipMarines, type ColonyOutput } from './economy';
 import { buildableItems, itemCost, refitCost, SHIPYARD_BASES } from './items';
 import { empireAccum } from './effects';
 import { isBlockaded } from './ground';
@@ -63,6 +63,9 @@ export interface ColonyRow {
   tags: string[];
   /** false when farmers can produce no food here (barren etc.) */
   farmable: boolean;
+  /** trained marine garrison / barracks training cap (0/0 = no barracks) */
+  marines: number;
+  marineCap: number;
 }
 
 /** Project this turn's food distribution (mirrors the pipeline: surpluses
@@ -164,6 +167,8 @@ export function colonyRow(state: GameState, colony: Colony, projectedFoodLack?: 
     popUnits: colonyPopUnits(colony),
     popK,
     maxPop: colony.outpost ? 0 : colonyMaxPop(state, colony),
+    marines: marinesOf(colony),
+    marineCap: marineCap(colony),
     jobs,
     leaderName: (() => {
       const hired = empire.leaders.find((l) => l.colonyId === colony.id);
@@ -739,6 +744,9 @@ export function fleetRows(state: GameState, empireId: number): FleetRow[] {
     if (ship.shipKind === 'design' && ship.designId !== null) {
       const design = empire?.designs.find((d) => d.id === ship.designId);
       name = design ? design.name : 'Warship';
+    }
+    if (ship.shipKind === 'transport' && shipMarines(ship) > 0) {
+      name = `Transport 🪖${shipMarines(ship)}`;
     }
     const colonyHere = (need: 'load' | 'unload'): number | null => {
       if (ship.shipKind !== 'transport' || atStarId === null) return null;

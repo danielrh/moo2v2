@@ -90,6 +90,10 @@ export interface BattleOrders {
   retreatThresholdPct: number;
   /** attacker only: bombard the colony after winning the pass */
   bombard: boolean;
+  /** attacker only: land marine transports on the colony after winning the
+   * pass. Invasion is a deliberate order — transports never auto-land after
+   * a battle. Optional for wire/save compatibility; absent = false. */
+  invade?: boolean;
   /** winner-side mercy: leave the loser's unarmed ships (colony/outpost
    * ships, transports) alive instead of capturing-and-scuttling them.
    * Optional for wire/save compatibility; absent = false (classic behavior). */

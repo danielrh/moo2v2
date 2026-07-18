@@ -52,6 +52,37 @@ export function colonyPopUnits(colony: Colony): number {
   return units;
 }
 
+// ---------- marines ----------
+// Marines are trained garrison counters (no food, no jobs): barracks train
+// one per MARINE_TRAIN_TURNS up to MARINE_CAP_PER_BARRACKS each; a transport
+// boards a full squad of MARINES_PER_TRANSPORT at build time and invasions
+// are fought marines-vs-marines (ground.ts).
+
+export const BARRACKS_BUILDINGS = ['marine_barracks', 'armor_barracks'] as const;
+export const MARINES_PER_TRANSPORT = 4;
+export const MARINE_TRAIN_TURNS = 5;
+export const MARINE_CAP_PER_BARRACKS = 4;
+
+export function barracksCount(colony: Colony): number {
+  return BARRACKS_BUILDINGS.filter((b) => colony.buildings.includes(b)).length;
+}
+
+export function marineCap(colony: Colony): number {
+  return MARINE_CAP_PER_BARRACKS * barracksCount(colony);
+}
+
+/** Trained marines garrisoned at the colony. Saves from before the marine
+ * system default to one full squad per standing barracks — an old fortified
+ * colony loads defended, not stripped. */
+export function marinesOf(colony: Colony): number {
+  return colony.marines ?? MARINES_PER_TRANSPORT * barracksCount(colony);
+}
+
+/** Marines aboard a transport (older saves carried none). */
+export function shipMarines(ship: { marines?: number }): number {
+  return ship.marines ?? 0;
+}
+
 export function groupUnits(g: PopGroup): number {
   return floorDiv(g.popK, 1000);
 }
