@@ -15,6 +15,7 @@ export interface ReplayEntry {
 
 export interface GroundBattleEntry {
   turn: number;
+  watched: boolean;
   payload: {
     colonyId: number;
     colonyName: string;
@@ -25,6 +26,12 @@ export interface GroundBattleEntry {
     civilianLosses: number;
     startTroops: number;
     startMilitia: number;
+    /** trained marines in the defending garrison at the start (rest of
+     * startMilitia is civilian militia); optional on pre-0.20 replay feeds */
+    startGarrison?: number;
+    /** playback scenery facts (optional on pre-0.20 replay feeds) */
+    climate?: string;
+    farming?: boolean;
     rounds: Array<{ t: number; m: number }>;
   };
 }
@@ -45,6 +52,9 @@ export const app = $state({
   groundBattles: [] as GroundBattleEntry[],
   /** replay currently open in the battle viewer */
   viewing: null as ReplayEntry | null,
+  /** invasion playback queued/open over the map (waits for the ship-battle
+   * viewer to close: the landing is watched after the pass that won it) */
+  viewingGround: null as GroundBattleEntry | null,
   /** turn-event feed visible to this player (newest last) */
   reports: [] as ReportEntry[],
   /** host peer connectivity (clients only; host is always true) */
@@ -267,8 +277,13 @@ function ingestTurnEvents(
       if (e.visibleTo !== me) continue; // participants only
       const gp = e.payload as GroundBattleEntry['payload'];
       if (!app.groundBattles.some((g) => g.turn === turn && g.payload.colonyId === gp.colonyId)) {
-        app.groundBattles.push({ turn, payload: gp });
+        const entry: GroundBattleEntry = { turn, payload: gp, watched: false };
+        app.groundBattles.push(entry);
         if (app.groundBattles.length > 20) app.groundBattles.shift();
+        // my invasion just resolved: queue the playback over the map. It
+        // renders once no ship-battle replay is up (the shell hides it behind
+        // app.viewing), so a landing that followed a battle plays second.
+        if (app.autoReplay && !app.viewingGround) app.viewingGround = entry;
       }
       continue;
     }
@@ -308,6 +323,7 @@ export function resetGameUiState(): void {
   app.groundBattles = [];
   app.reports = [];
   app.viewing = null;
+  app.viewingGround = null;
   app.rejectedNote = '';
   app.hostConnected = true;
   app.contactFlash = null;

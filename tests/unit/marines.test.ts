@@ -138,6 +138,15 @@ describe('invade battle order', () => {
     const { colonyId } = stageBattle(state);
     const events = fightWith(state, true);
     expect(events.some((e) => e.kind === 'ground_battle')).toBe(true);
+    // the playback payload carries scenery + garrison facts for the viewer
+    const gp = events.find((e) => e.kind === 'ground_battle')!.payload as {
+      climate?: string;
+      farming?: boolean;
+      startGarrison?: number;
+    };
+    expect(typeof gp.climate).toBe('string');
+    expect(typeof gp.farming).toBe('boolean');
+    expect(gp.startGarrison).toBeGreaterThanOrEqual(0);
     const colony = state.colonies.find((c) => c.id === colonyId)!;
     expect(colony.owner).toBe(0); // 40 marines vs a starting garrison
     expect(colony.marines).toBeGreaterThan(0); // survivors garrison the prize

@@ -507,8 +507,14 @@
       {#each app.groundBattles as gb, gi (gi)}
         <li>
           Turn {gb.turn} — {gb.payload.captured ? '🏳' : '🛡'} {gb.payload.colonyName}:
-          {gb.payload.startTroops} troops vs {gb.payload.startMilitia} militia
-          <button data-testid="ground-watch-{gi}" onclick={() => (viewingGround = gb)}>▶ watch</button>
+          {gb.payload.startTroops} marines vs {gb.payload.startMilitia} defenders
+          {#if !gb.watched}<span class="newdot" title="not watched yet">●</span>{/if}
+          <button
+            data-testid="ground-watch-{gi}"
+            onclick={() => {
+              gb.watched = true;
+              viewingGround = gb;
+            }}>▶ watch</button>
         </li>
       {/each}
     </ul>
@@ -609,6 +615,11 @@
 {/if}
 
 <style>
+  .newdot {
+    color: var(--gold, #ffd75e);
+    font-size: 0.7rem;
+    vertical-align: middle;
+  }
   .appearance {
     border: 1px solid #26304f;
     border-radius: 10px;

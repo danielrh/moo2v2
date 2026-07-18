@@ -17,6 +17,7 @@
   import Reports from './Reports.svelte';
   import BattleOrdersDialog from '../battle/BattleOrdersDialog.svelte';
   import BattleViewer from '../battle/BattleViewer.svelte';
+  import GroundBattleDialog from '../battle/GroundBattleDialog.svelte';
   import TimelapseViewer from '../components/TimelapseViewer.svelte';
   import { generateTimelapse, type TimelapseData } from '../timelapse';
 
@@ -317,6 +318,7 @@
     if (winner !== null) return 'the game is decided';
     if (app.contactFlash) return 'CONTACT';
     if (app.viewing) return 'a battle replay is up';
+    if (app.viewingGround) return 'an invasion playback is up';
     if (timelapse || timelapseBusy) return 'the campaign timelapse is up';
     if (researchIdle && app.researchQueue.length === 0) return 'labs idle — pick research';
     if (leaderOfferCount > 0) return 'a leader awaits your answer';
@@ -502,7 +504,7 @@
     const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
     if (typing || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
     // never steal keys from a modal (battle orders, replay, timelapse, contact)
-    if (myBattle || app.viewing || app.contactFlash || timelapse || winner !== null) return;
+    if (myBattle || app.viewing || app.viewingGround || app.contactFlash || timelapse || winner !== null) return;
     if (e.key.length === 1 && e.key >= '1' && e.key <= '7') {
       e.preventDefault();
       tab = TAB_KEYS[Number(e.key) - 1]!;
@@ -900,6 +902,18 @@
   {/if}
   {#if app.viewing}
     <BattleViewer replay={app.viewing} onclose={() => (app.viewing = null)} />
+  {:else if app.viewingGround}
+    <!-- the invasion playback waits its turn behind the ship-battle replay
+         (the pass is watched first, then the landing it enabled) -->
+    {#key `${app.viewingGround.turn}:${app.viewingGround.payload.colonyId}`}
+      <GroundBattleDialog
+        battle={app.viewingGround}
+        onclose={() => {
+          if (app.viewingGround) app.viewingGround.watched = true;
+          app.viewingGround = null;
+        }}
+      />
+    {/key}
   {/if}
   {#if timelapse}
     <TimelapseViewer data={timelapse} onclose={() => (timelapse = null)} />
@@ -941,7 +955,7 @@
         <li><b>Ships</b> travel star-to-star within fuel range (unreachable stars are dashed red on the map). Move orders can be re-routed until you commit.</li>
         <li><b>Hotkeys</b> — <kbd>1</kbd>–<kbd>7</kbd> switch tabs, <kbd>E</kbd> ends/commits the turn, <kbd>Shift+E</kbd> = ⏩ auto-play until something needs a decision. On the map: select your star, <kbd>B</kbd> arms build mode, then <kbd>C</kbd>olony ship / <kbd>S</kbd>cout / <kbd>F</kbd>rigate / <kbd>D</kbd>estroyer / c<kbd>R</kbd>uiser / <kbd>B</kbd>attleship / <kbd>T</kbd>itan / <kbd>O</kbd>utpost ship / <kbd>H</kbd>ousing / f<kbd>A</kbd>ctory / <kbd>L</kbd>ab / supercomputer <kbd>K</kbd> queue at the best-suited colony (progress bars appear under the map; ✕ hands the yard back to autopilot). With a fleet selected: <kbd>C</kbd> colonize · <kbd>O</kbd> outpost · <kbd>L</kbd>/<kbd>U</kbd> load/unload transports · <kbd>A</kbd> select all · <kbd>⌫</kbd> cycle. In a battle dialog: arrows pick the stance, <kbd>T</kbd> targets, <kbd>B</kbd> toggles bombard, <kbd>Enter</kbd> locks in.</li>
         <li><b>Colonists</b> move between stars on transports: build one, "load" at a colony, fly it, "unload" (Fleets tab). Within a system they move freely — drag citizens onto a sibling colony in the spreadsheet (no ships needed); between systems the freighter run flies your <i>second-best</i> drive (the newest engines go to the warfleet). Colony bases settle other planets in the same system.</li>
-        <li><b>Battles</b> only happen between empires at <b>war</b> — declare it on the Empires tab. A battle is a single pass; set stance/targeting/retreat before the clash. Bombardment after a win uses every weapon's strategic power (bombs and missiles hit hardest, beams at half strength; planetary shields block weak hits outright) but can never wipe out a colony's last population unit. Capturing a colony takes an <b>invasion</b>: barracks train 🪖 marines (1 per 5 turns, 4 boarding each transport you build), and a won battle offers the invade order — the defenders' own marines and militia decide whether the landing succeeds. Undefended outposts fall to any winning fleet.</li>
+        <li><b>Battles</b> only happen between empires at <b>war</b> — declare it on the Empires tab. A battle is a single pass; set stance/targeting/retreat before the clash. Bombardment after a win uses every weapon's strategic power (bombs and missiles hit hardest, beams at half strength; planetary shields block weak hits outright) but can never wipe out a colony's last population unit. Capturing a colony takes an <b>invasion</b>: barracks train 🪖 marines (1 per 5 turns, 4 boarding each transport you build), and a won battle offers the invade order — the defenders' own marines and militia decide whether the landing succeeds, and the assault plays back automatically over the map (rewatch it on the Empires tab, or stage one in the Battle Lab's ground assault preview). Undefended outposts fall to any winning fleet.</li>
         <li><b>☠ stars</b> are guarded by monsters — clear the keeper to colonize. Orion holds the Guardian and the best worlds in the galaxy.</li>
         <li><b>Leaders</b> offer their services on the Empires tab; colony leaders boost one colony, ship officers the whole fleet.</li>
         <li><b>Victory</b>: conquer everyone, win the council vote (⅔ of population), or build the dimensional portal and beat the Andromedans at home.</li>

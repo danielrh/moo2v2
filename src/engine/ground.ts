@@ -20,7 +20,7 @@
 
 import { rngFor } from './rng';
 import { ceilDiv } from './imath';
-import { barracksCount, colonyPopUnits, marineCap, MARINE_TRAIN_TURNS, marinesOf, shipMarines, traitsOf } from './economy';
+import { barracksCount, colonyPopUnits, farmingViable, marineCap, MARINE_TRAIN_TURNS, marinesOf, shipMarines, traitsOf } from './economy';
 import { leaderEmpireBonuses } from './leaders';
 import { areAtWar } from './battles';
 import { normalizeJobsForGroup } from './commands';
@@ -105,6 +105,9 @@ export function landInvasion(state: GameState, colony: Colony, attackerId: numbe
 
   const startTroops = troops;
   const startMilitia = defMarines + militia;
+  const startGarrison = defMarines;
+  // scenery facts for the invasion playback (judged before any losses)
+  const farming = farmingViable(state, colony);
   let civilianLosses = 0;
   // round-by-round record for the ground-battle replay (participants only)
   const roundsLog: Array<{ t: number; m: number }> = [{ t: troops, m: defMarines + militia }];
@@ -163,6 +166,9 @@ export function landInvasion(state: GameState, colony: Colony, attackerId: numbe
         civilianLosses,
         startTroops,
         startMilitia,
+        startGarrison,
+        climate: planet.climate,
+        farming,
         rounds,
       },
     });
