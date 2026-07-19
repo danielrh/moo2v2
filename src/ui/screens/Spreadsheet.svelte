@@ -147,8 +147,9 @@
   });
   const growthLabel = (k: number) => {
     const v = k / 1000;
-    // tiny-but-nonzero growth still reads as growth (+0.04, not +0.0)
-    const s = v !== 0 && Math.abs(v) < 0.1 ? v.toFixed(2) : v.toFixed(1);
+    // consistent precision below 1.0: "+0.09" vs "+0.05" must not render as
+    // "+0.1" vs "+0.05" (mixed precision made small dips look like halvings)
+    const s = v !== 0 && Math.abs(v) < 1 ? v.toFixed(2) : v.toFixed(1);
     return `${v >= 0 ? '+' : ''}${s}`;
   };
 
@@ -482,10 +483,109 @@
   {#if moveNote}
     <span class="movenote" data-testid="move-note">{moveNote}</span>
   {/if}
+  {#if !singleColony && research}
+    <span
+      class="research"
+      data-testid="research-readout"
+      title="current research — updates live as you reassign citizens. '% of base' is banked RP vs the listed cost; the real discovery point hides between 1× and 2× that, so once the base is covered this switches to the actual chance of discovering by next turn"
+    >
+      {#if research.sum.researching}
+        🔬 {pretty(research.sum.researching)}{research.sum.researchTarget ? ` → ${pretty(research.sum.researchTarget)}` : ''}
+        · {research.accumRP}/{research.sum.researchListedCost ?? '?'} RP{research.sum.researchOddsPct > 0
+          ? ` (${research.sum.researchOddsPct}% chance)`
+          : research.sum.researchProgressPct !== null
+            ? ` (${research.sum.researchProgressPct}% of base)`
+            : ''}
+        · +{research.sum.researchPerTurn}/turn{research.sum.researchTurnsLeft !== null ? ` · ~${research.sum.researchTurnsLeft}t` : ''}
+      {:else}
+        🔬 <span class="neg">no research selected</span> · +{research.sum.researchPerTurn}/turn banked
+      {/if}
+    </span>
+  {/if}
 </div>
 
-{#if singleColony && singleRow}
-  {@const row = singleRow}
+{#if !singleColony && (app.autopilot.enabled || (selectableRows.length > 0 && selectableRows.every((r) => selected.has(r.id))))}
+  <AutopilotBar />
+{/if}
+
+{#snippet citizenIcon(row: selectors.ColonyRow, grp: selectors.ColonyRow['groups'][number], job: Job, i: number, overlapCount: number)}
+  {#if grp.race === ANDROID_RACE}
+    <span
+      class="citizen android"
+      style={i > 0 ? `margin-left:-${overlapPx(overlapCount)}px` : ''}
+      title="android {job.slice(0, -1)} — hardwired to this job for life; consumes 1 production per turn instead of food, immune to morale, houses in compact subterranean compartments"
+      data-testid="android-{job}-{row.id}"
+    >🤖</span>
+  {:else}
+    <span
+      class="citizen"
+      class:foreign={grp.race !== session().playerId}
+      class:unrest={grp.unrest}
+      class:sel={isPicked(row, job, grp.race, i)}
+      style={i > 0 ? `margin-left:-${overlapPx(overlapCount)}px` : ''}
+      draggable="true"
+      role="button"
+      tabindex="-1"
+      title={grp.race !== session().playerId
+        ? `captured ${grp.raceName} colonist${grp.unrest ? ' — in unrest (−25% output until assimilated)' : ''}`
+        : grp.unrest
+          ? 'in unrest (−25% output until assimilated)'
+          : ''}
+      onclick={() => pickFrom(row, job, grp.race, i)}
+      onkeydown={(e) => e.key === 'Enter' && pickFrom(row, job, grp.race, i)}
+      ondragstart={(e) => onDragStart(row, job, grp.race, i, e)}
+    >{JOB_ICONS[job]}</span>
+  {/if}
+{/snippet}
+
+{#snippet citizenStack(
+  row: selectors.ColonyRow,
+  groups: selectors.ColonyRow['groups'],
+  job: Job,
+  stackCount: number,
+  stackTitle: string,
+)}
+  <span
+    class="citizens"
+    role="group"
+    data-testid="{job}-{row.id}"
+    data-count={stackCount}
+    title={stackTitle}
+  >
+    {#if job === 'farmers' && !row.farmable}
+      <span class="zero" title="nothing grows here — farming is impossible on this world">🚫</span>
+    {:else if stackCount === 0}
+      <span class="zero">0</span>
+    {/if}
+    {#each groups as grp (grp.race)}
+      {#each Array(grp[job]) as _, i (i)}
+        {@render citizenIcon(row, grp, job, i, stackCount)}
+      {/each}
+    {/each}
+  </span>
+{/snippet}
+
+{#snippet buildPicker(row: selectors.ColonyRow, showOptionTitles: boolean)}
+  <select
+    data-testid="build-{row.id}"
+    value={row.activeItem ?? ''}
+    title={row.activeItem ? `${label(row.activeItem)} — ${describeItem(row.activeItem)}` : 'Choose what this colony should build next.'}
+    onchange={(e) => setBuild(row, (e.target as HTMLSelectElement).value)}
+  >
+    <option value="" disabled>— build —</option>
+    {#if row.activeItem && !row.buildable.includes(row.activeItem)}
+      <option value={row.activeItem} title={showOptionTitles ? describeItem(row.activeItem) : undefined}>{label(row.activeItem)}</option>
+    {/if}
+    {#each row.queue.slice(1).filter((q) => !row.buildable.includes(q)) as q, qi (qi)}
+      <option value={q} title={showOptionTitles ? describeItem(q) : undefined}>{label(q)} (queued)</option>
+    {/each}
+    {#each row.buildable as item (item)}
+      <option value={item} title={showOptionTitles ? describeItem(item) : undefined}>{label(item)}</option>
+    {/each}
+  </select>
+{/snippet}
+
+{#snippet singleColonyPanel(row: selectors.ColonyRow)}
   {@const ex = explain(row.id)}
   <div class="singleColony" data-testid="single-colony-view">
     <section class="singleHero panelBox">
@@ -592,23 +692,7 @@
         <label class="fieldBlock">
           <span class="fieldLabel">Active build</span>
           <small class="fieldHelp">Choose the active build. Picking a queued item moves it to the front.</small>
-          <select
-            data-testid="build-{row.id}"
-            value={row.activeItem ?? ''}
-            title={row.activeItem ? `${label(row.activeItem)} — ${describeItem(row.activeItem)}` : 'Choose what this colony should build next.'}
-            onchange={(e) => setBuild(row, (e.target as HTMLSelectElement).value)}
-          >
-            <option value="" disabled>— build —</option>
-            {#if row.activeItem && !row.buildable.includes(row.activeItem)}
-              <option value={row.activeItem}>{label(row.activeItem)}</option>
-            {/if}
-            {#each row.queue.slice(1).filter((q) => !row.buildable.includes(q)) as q, qi (qi)}
-              <option value={q}>{label(q)} (queued)</option>
-            {/each}
-            {#each row.buildable as item (item)}
-              <option value={item}>{label(item)}</option>
-            {/each}
-          </select>
+          {@render buildPicker(row, false)}
           {#if row.activeItem}
             <small class="fieldInfo">{describeItem(row.activeItem)}</small>
           {/if}
@@ -721,39 +805,7 @@
                   }}
                 >
                   <div class="jobExplainHead">{job === 'farmers' ? '🌱 Farmers' : job === 'workers' ? '⚒ Workers' : '⚗ Scientists'}</div>
-                  <span
-                    class="citizens"
-                    role="group"
-                    data-testid="{job}-{row.id}"
-                    data-count={grp[job]}
-                    title="{grp[job]} {job} for {grp.raceName}"
-                  >
-                    {#if job === 'farmers' && !row.farmable}
-                      <span class="zero" title="nothing grows here — farming is impossible on this world">🚫</span>
-                    {:else if grp[job] === 0}
-                      <span class="zero">0</span>
-                    {/if}
-                    {#each Array(grp[job]) as _, i (i)}
-                      <span
-                        class="citizen"
-                        class:foreign={grp.race !== session().playerId}
-                        class:unrest={grp.unrest}
-                        class:sel={isPicked(row, job, grp.race, i)}
-                        style={i > 0 ? `margin-left:-${overlapPx(grp[job])}px` : ''}
-                        draggable="true"
-                        role="button"
-                        tabindex="-1"
-                        title={grp.race !== session().playerId
-                          ? `captured ${grp.raceName} colonist${grp.unrest ? ' — in unrest (−25% output until assimilated)' : ''}`
-                          : grp.unrest
-                            ? 'in unrest (−25% output until assimilated)'
-                            : ''}
-                        onclick={() => pickFrom(row, job, grp.race, i)}
-                        onkeydown={(e) => e.key === 'Enter' && pickFrom(row, job, grp.race, i)}
-                        ondragstart={(e) => onDragStart(row, job, grp.race, i, e)}
-                      >{JOB_ICONS[job]}</span>
-                    {/each}
-                  </span>
+                  {@render citizenStack(row, [grp], job, grp[job], `${grp[job]} ${job} for ${grp.raceName}`)}
                 </div>
               {/each}
             </div>
@@ -788,6 +840,14 @@
       </div>
     </section>
   </div>
+{/snippet}
+
+{#if singleColony}
+  {#if singleRow}
+    {@render singleColonyPanel(singleRow)}
+  {:else}
+    <div class="panelBox dim" data-testid="single-colony-missing">This colony is no longer available.</div>
+  {/if}
 {:else}
 <table data-testid="colony-table">
   <thead>
@@ -916,41 +976,13 @@
               onDrop(row, job);
             }}
           >
-            <span
-              class="citizens"
-              role="group"
-              data-testid="{job}-{row.id}"
-              data-count={row.jobs[job]}
-              title="{row.jobs[job]} {job} — click a citizen to grab them plus everyone to their right, then drag onto another job or any other colony (freighters carry them between systems)"
-            >
-              {#if job === 'farmers' && !row.farmable}
-                <span class="zero" title="nothing grows here — farming is impossible on this world">🚫</span>
-              {:else if row.jobs[job] === 0}
-                <span class="zero">0</span>
-              {/if}
-              {#each row.groups as grp (grp.race)}
-                {#each Array(grp[job]) as _, i (i)}
-                  <span
-                    class="citizen"
-                    class:foreign={grp.race !== session().playerId}
-                    class:unrest={grp.unrest}
-                    class:sel={isPicked(row, job, grp.race, i)}
-                    style={i > 0 ? `margin-left:-${overlapPx(row.jobs[job])}px` : ''}
-                    draggable="true"
-                    role="button"
-                    tabindex="-1"
-                    title={grp.race !== session().playerId
-                      ? `captured ${grp.raceName} colonist${grp.unrest ? ' — in unrest (−25% output until assimilated)' : ''}`
-                      : grp.unrest
-                        ? 'in unrest (−25% output until assimilated)'
-                        : ''}
-                    onclick={() => pickFrom(row, job, grp.race, i)}
-                    onkeydown={(e) => e.key === 'Enter' && pickFrom(row, job, grp.race, i)}
-                    ondragstart={(e) => onDragStart(row, job, grp.race, i, e)}
-                  >{JOB_ICONS[job]}</span>
-                {/each}
-              {/each}
-            </span>
+              {@render citizenStack(
+                row,
+                row.groups,
+                job,
+                row.jobs[job],
+                `${row.jobs[job]} ${job} — click a citizen to grab them plus everyone to their right, then drag onto another job or any other colony (freighters carry them between systems)`,
+              )}
           </td>
         {/each}
         <td
@@ -968,26 +1000,7 @@
         <td title={ex.bc}>{row.output.bcIncome}</td>
         <td class:neg={row.output.pollution > 0} title="production lost to pollution">{row.output.pollution}</td>
         <td>
-          <select
-            data-testid="build-{row.id}"
-            value={row.activeItem ?? ''}
-            title={row.activeItem ? `${label(row.activeItem)} — ${describeItem(row.activeItem)}` : 'Choose what this colony should build next.'}
-            onchange={(e) => setBuild(row, (e.target as HTMLSelectElement).value)}
-          >
-            <option value="" disabled>— build —</option>
-            {#if row.activeItem && !row.buildable.includes(row.activeItem)}
-              <option value={row.activeItem} title={describeItem(row.activeItem)}>{label(row.activeItem)}</option>
-            {/if}
-            <!-- keyed by index: the same non-buildable item can legitimately
-                 appear twice (repeat refits, spy past the roster cap) and a
-                 duplicate string key crashes the whole table -->
-            {#each row.queue.slice(1).filter((q) => !row.buildable.includes(q)) as q, qi (qi)}
-              <option value={q} title={describeItem(q)}>{label(q)} (queued)</option>
-            {/each}
-            {#each row.buildable as item (item)}
-              <option value={item} title={describeItem(item)}>{label(item)}</option>
-            {/each}
-          </select>
+            {@render buildPicker(row, true)}
         </td>
         <td data-testid="progress-{row.id}">
           {#if row.activeItem === 'housing' || row.activeItem === 'trade_goods'}
@@ -1019,26 +1032,19 @@
               title="{label(q)} — click ✕ to remove, or pick it in the build column to build it now"
               onclick={() => removeQueued(row, qi + 1)}
             >{label(q)} ✕</button>
-          {/each}
-          <div class="queueAddInline">
-            <select data-testid="queue-add-{row.id}" value={queueCandidate(row.id)} title="Choose another item to add to this colony's queue." onchange={(e) => setQueueCandidate(row.id, (e.target as HTMLSelectElement).value)}>
-              <option value="">+ queue</option>
-              {#each row.buildable as item (item)}
-                <option value={item}>{label(item)}</option>
-              {/each}
-            </select>
-            <button class="mini" disabled={!queueCandidate(row.id)} onclick={() => commitQueueCandidate(row)}>Add</button>
-          </div>
-          {#if queueCandidate(row.id)}
-            <div class="queueHelp">{describeItem(queueCandidate(row.id))}</div>
-          {/if}
-        </td>
-        <td>
-          {#if row.buildings.length}
-            <button class="mini" data-testid="buildings-{row.id}" onclick={() => toggleBuildings(row.id)}>
-              🏛{row.buildings.length}
-            </button>
-          {/if}
+            {/each}
+            <div class="queueAddInline">
+              <select data-testid="queue-add-{row.id}" value={queueCandidate(row.id)} title="Choose another item to add to this colony's queue." onchange={(e) => setQueueCandidate(row.id, (e.target as HTMLSelectElement).value)}>
+                <option value="">+ queue</option>
+                {#each row.buildable as item (item)}
+                  <option value={item}>{label(item)}</option>
+                {/each}
+              </select>
+              <button class="mini" disabled={!queueCandidate(row.id)} onclick={() => commitQueueCandidate(row)}>Add</button>
+            </div>
+            {#if queueCandidate(row.id)}
+              <div class="queueHelp">{describeItem(queueCandidate(row.id))}</div>
+            {/if}
         </td>
       </tr>
       {#if openBuildings.has(row.id)}
@@ -1335,6 +1341,10 @@
   .citizen.unrest {
     filter: drop-shadow(0 0 3px var(--bad)) grayscale(0.5);
   }
+  .citizen.android {
+    cursor: not-allowed;
+    filter: drop-shadow(0 0 2px #22d3ee);
+  }
   .zero {
     color: var(--text-dim);
     opacity: 0.5;
@@ -1359,6 +1369,12 @@
   .movenote {
     font-size: 0.8rem;
     color: var(--accent-soft);
+  }
+  .research {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: var(--accent-soft);
+    white-space: nowrap;
   }
   .mini {
     padding: 0 0.35rem;
