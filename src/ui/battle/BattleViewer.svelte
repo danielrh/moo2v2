@@ -32,8 +32,8 @@
   let ready = $state(false);
   let simError = $state('');
 
-  const input = replay.input as BattleInput;
-  const summary = replay.summary;
+  const input = $derived(replay.input as BattleInput);
+  const summary = $derived(replay.summary);
 
   const gs = () => getActive()?.session.getState() ?? null;
   function nameOf(id: unknown): string {

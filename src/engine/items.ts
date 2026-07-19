@@ -281,6 +281,17 @@ const EXTRA_LABELS: Record<string, string> = {
   gaia_transformation: 'Gaia Transformation',
 };
 
+const EXTRA_DESCRIPTIONS: Record<string, string> = {
+  capitol: 'Adds +10 morale to the colony and acts as the empire\'s assimilation hub for conquered populations.',
+  freighter_fleet: 'Adds five freighters to your empire-wide shipping pool.',
+  colony_base: 'Settles one uncolonized planet in this star system when completed.',
+  housing: 'Converts this colony\'s production into population growth support every turn.',
+  trade_goods: 'Converts this colony\'s production into BC every turn instead of building something.',
+  spy: 'Trains one additional agent, up to the empire roster limit.',
+  terraforming: 'Improves this planet by one terraforming step, if its climate can still be improved.',
+  gaia_transformation: 'Transforms a terran world into a gaia world.',
+};
+
 function titleCase(id: string): string {
   return id
     .split('_')
@@ -307,6 +318,15 @@ export function itemLabel(state: GameState, ownerId: number, itemId: string): st
   if (extra) return extra;
   const app = applicationById.get(itemId) ?? applicationById.get(BUILDABLE_APP_ALIAS[itemId] ?? '');
   return app?.name ?? titleCase(itemId);
+}
+
+/** Tooltip/description text for buildable queue items. Uses the technology
+ * effect summary when available, with short curated text for special projects. */
+export function itemDescription(itemId: string): string {
+  const extra = EXTRA_DESCRIPTIONS[itemId];
+  if (extra) return extra;
+  const app = applicationById.get(itemId) ?? applicationById.get(BUILDABLE_APP_ALIAS[itemId] ?? '');
+  return app?.effectSummary ?? titleCase(itemId);
 }
 
 /** True when the application exists (guards against typo'd ids in commands). */

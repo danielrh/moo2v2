@@ -9,9 +9,10 @@
 // (use sparingly; every use should have a comment explaining why it is safe).
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { join, relative, resolve, dirname, sep } from 'node:path';
 
-const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const srcRoot = join(root, 'src');
 
 /** Allowed import targets per layer. Keys checked against module specifiers. */

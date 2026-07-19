@@ -1,15 +1,26 @@
 <script lang="ts">
   // The system-wide colonies spreadsheet: the primary way to run your empire.
   // Every edit is an optimistic command; dirty cells resolve on host accept.
-  import { selectors, itemLabel, explainOutput, COLONY_TAGS, ANDROID_RACE } from '@engine/index';
+  // The colonies tab renders the full empire table; other callers (for
+  // example, the map's colony modal) can scope it to one colony via the
+  // optional colonyId prop.
+  import { selectors, itemLabel, itemDescription, explainOutput, COLONY_TAGS, ANDROID_RACE } from '@engine/index';
   import { app, getActive } from '../state.svelte';
   import AutopilotBar from '../components/AutopilotBar.svelte';
 
+  type Props = {
+    colonyId?: number | null;
+  };
+
+  let { colonyId = null }: Props = $props();
+
   const session = () => getActive()!.session;
+  const singleColony = $derived(colonyId !== null);
   const allRowsWithOutposts = $derived.by(() => {
     void app.version;
     const s = session().getPlanned();
-    return s ? selectors.colonyRows(s, session().playerId) : [];
+    const rows = s ? selectors.colonyRows(s, session().playerId) : [];
+    return colonyId === null ? rows : rows.filter((r) => r.id === colonyId);
   });
   // outposts are fuel stops, not economies: they live on the map, not here
   const allRows = $derived(allRowsWithOutposts.filter((r) => !r.outpost));
@@ -34,6 +45,7 @@
     const s = session().getPlanned();
     return s ? itemLabel(s, session().playerId, item) : item;
   };
+  const describeItem = (item: string | null | undefined) => (item ? itemDescription(item) : '');
   const pretty = (id: string) => id.replaceAll('_', ' ');
 
   /** what each planet feature means for production (hover on the planet cell) */
@@ -118,6 +130,7 @@
       return c !== 0 ? c * sortDir : a.id - b.id;
     });
   });
+  const singleRow = $derived(singleColony ? (rows[0] ?? null) : null);
   const totals = $derived.by(() => {
     const t = { pop: 0, growthK: 0, food: 0, prod: 0, sci: 0, bc: 0, pollution: 0 };
     for (const r of allRows) {
@@ -134,9 +147,8 @@
   });
   const growthLabel = (k: number) => {
     const v = k / 1000;
-    // consistent precision below 1.0: "+0.09" vs "+0.05" must not render as
-    // "+0.1" vs "+0.05" (mixed precision made small dips look like halvings)
-    const s = v !== 0 && Math.abs(v) < 1 ? v.toFixed(2) : v.toFixed(1);
+    // tiny-but-nonzero growth still reads as growth (+0.04, not +0.0)
+    const s = v !== 0 && Math.abs(v) < 0.1 ? v.toFixed(2) : v.toFixed(1);
     return `${v >= 0 ? '+' : ''}${s}`;
   };
 
@@ -152,6 +164,18 @@
       sci: ex.sci.join('\n'),
       bc: ex.bc.join('\n'),
     };
+  }
+
+  let pendingQueueAdd = $state<Record<number, string>>({});
+  const queueCandidate = (rowId: number): string => pendingQueueAdd[rowId] ?? '';
+  function setQueueCandidate(rowId: number, item: string) {
+    pendingQueueAdd = { ...pendingQueueAdd, [rowId]: item };
+  }
+  function commitQueueCandidate(row: selectors.ColonyRow) {
+    const item = queueCandidate(row.id);
+    if (!item) return;
+    appendBuild(row, item);
+    pendingQueueAdd = { ...pendingQueueAdd, [row.id]: '' };
   }
 
   // ---- bulk ops ----
@@ -219,8 +243,8 @@
     if (!s) return;
     const ids = rows.filter((r) => selected.has(r.id) && !r.outpost).map((r) => r.id);
     const plan = selectors.fixFoodJobs(s, ids);
-    for (const [colonyId, groups] of plan) {
-      session().submit('set_jobs', { colonyId, groups });
+    for (const [targetColonyId, groups] of plan) {
+      session().submit('set_jobs', { colonyId: targetColonyId, groups });
     }
   }
 
@@ -390,18 +414,22 @@
 </script>
 
 <div class="bar">
-  <input data-testid="colony-filter" placeholder="filter colonies or tags…" bind:value={filter} style="width:12rem" />
-  <button data-testid="select-filtered" title="select every colony matching the current filter" onclick={selectAllFiltered}>
-    select all ({selectableRows.length})
-  </button>
-  <button
-    class="mini"
-    class:dimoff={!showTags}
-    data-testid="toggle-tags"
-    title={showTags ? 'hide colony tags' : 'show colony tags'}
-    onclick={toggleTags}
-  >🏷</button>
-  {#if selected.size > 0}
+  {#if !singleColony}
+    <input data-testid="colony-filter" placeholder="filter colonies or tags…" bind:value={filter} style="width:12rem" />
+    <button data-testid="select-filtered" title="select every colony matching the current filter" onclick={selectAllFiltered}>
+      select all ({selectableRows.length})
+    </button>
+  {/if}
+  {#if !singleColony}
+    <button
+      class="mini"
+      class:dimoff={!showTags}
+      data-testid="toggle-tags"
+      title={showTags ? 'hide colony tags' : 'show colony tags'}
+      onclick={toggleTags}
+    >🏷</button>
+  {/if}
+  {#if !singleColony && selected.size > 0}
     <span>{selected.size} selected:</span>
     <select
       data-testid="bulk-build"
@@ -445,7 +473,7 @@
       <button data-testid="preset-feed" title="fix food production: concentrate the empire's farming on the most productive food worlds among the selected colonies" onclick={applyFixFood}>🌾 fix food</button>
     </span>
     <button onclick={() => (selected = new Set())}>clear selection</button>
-  {:else if showCitizensTip}
+  {:else if !singleColony && showCitizensTip}
     <span class="dim" data-testid="citizens-tip">
       💡 drag citizens between jobs or onto another colony · ☑ tick rows for bulk builds &amp; presets
       <button class="tipdismiss" data-testid="citizens-tip-dismiss" onclick={dismissCitizensTip}>got it ✕</button>
@@ -454,35 +482,313 @@
   {#if moveNote}
     <span class="movenote" data-testid="move-note">{moveNote}</span>
   {/if}
-  {#if research}
-    <span
-      class="research"
-      data-testid="research-readout"
-      title="current research — updates live as you reassign citizens. '% of base' is banked RP vs the listed cost; the real discovery point hides between 1× and 2× that, so once the base is covered this switches to the actual chance of discovering by next turn"
-    >
-      {#if research.sum.researching}
-        🔬 {pretty(research.sum.researching)}{research.sum.researchTarget ? ` → ${pretty(research.sum.researchTarget)}` : ''}
-        · {research.accumRP}/{research.sum.researchListedCost ?? '?'} RP{research.sum.researchOddsPct > 0
-          ? ` (${research.sum.researchOddsPct}% chance)`
-          : research.sum.researchProgressPct !== null
-            ? ` (${research.sum.researchProgressPct}% of base)`
-            : ''}
-        · +{research.sum.researchPerTurn}/turn{research.sum.researchTurnsLeft !== null ? ` · ~${research.sum.researchTurnsLeft}t` : ''}
-      {:else}
-        🔬 <span class="neg">no research selected</span> · +{research.sum.researchPerTurn}/turn banked
-      {/if}
-    </span>
-  {/if}
 </div>
 
-<!-- bugs.md: the autopilot bar cluttered every visit to the colony screen.
-     It appears only alongside a full select-all (its scope is every colony
-     anyway) — but once ENABLED it stays visible so it can always be seen,
-     adjusted and switched off. -->
-{#if app.autopilot.enabled || (selectableRows.length > 0 && selectableRows.every((r) => selected.has(r.id)))}
-  <AutopilotBar />
-{/if}
+{#if singleColony && singleRow}
+  {@const row = singleRow}
+  {@const ex = explain(row.id)}
+  <div class="singleColony" data-testid="single-colony-view">
+    <section class="singleHero panelBox">
+      <div class="singleHeroHead">
+        <div>
+          {#if renaming === row.id}
+            <input
+              class="rename"
+              data-testid="rename-input-{row.id}"
+              bind:value={renameText}
+              use:focusNow
+              onkeydown={(e) => {
+                if (e.key === 'Enter') commitRename(row);
+                else if (e.key === 'Escape') renaming = null;
+              }}
+              onblur={() => commitRename(row)}
+              maxlength="24"
+            />
+          {:else}
+            <h2 class="singleTitle">
+              <span
+                role="button"
+                tabindex="-1"
+                ondblclick={() => startRename(row)}
+                data-testid="colony-name-{row.id}">{row.name}</span>
+              <button class="mini ghost" data-testid="rename-{row.id}" title="rename colony" onclick={() => startRename(row)}>✏️</button>
+            </h2>
+          {/if}
+          <p class="singleSub" title={planetTitle(row)}>
+            {#if row.planet.special && SPECIAL_INFO[row.planet.special]}{SPECIAL_INFO[row.planet.special]!.icon} {/if}
+            {row.starName} · {row.planet.climate} world · size {row.planet.sizeClass} · {pretty(row.planet.minerals)} minerals · {row.planet.gravity}-g
+          </p>
+          <p class="singleMeta">
+            {#if row.leaderName}Governor: <span class="leader">{row.leaderName}</span>{/if}
+            {#if showTags}
+              <span class="tagsline singleMetaTags">
+                {#each row.tags as t (t)}
+                  <button class="tag" data-testid="tag-{row.id}-{t}" title="remove tag {t}" onclick={() => setTags(row, row.tags.filter((x) => x !== t))}>{t}✕</button>
+                {/each}
+                <select
+                  class="tagadd"
+                  data-testid="tag-add-{row.id}"
+                  value=""
+                  title="tag this colony"
+                  onchange={(e) => {
+                    const t = (e.target as HTMLSelectElement).value;
+                    if (t) setTags(row, [...row.tags, t]);
+                    (e.target as HTMLSelectElement).value = '';
+                  }}
+                >
+                  <option value="">+ tag</option>
+                  {#each COLONY_TAGS.filter((t) => !row.tags.includes(t)) as t (t)}
+                    <option value={t}>{t}</option>
+                  {/each}
+                </select>
+              </span>
+            {/if}
+          </p>
+        </div>
+        <div class="singleStatRail">
+          <div><span>Population</span><strong data-testid="pop-{row.id}">{row.popUnits}/{row.maxPop}</strong><small class:neg={row.growthK < 0}>{growthLabel(row.growthK)} next turn</small></div>
+          <div><span>Morale</span><strong>{row.output.moralePct}%</strong><small>affects food, production and research</small></div>
+        </div>
+      </div>
+    </section>
 
+    <section class="singleGrid">
+      <div class="panelBox metricGrid">
+        <h3>Colony output</h3>
+        <div class="metricCard" title={ex.farm}>
+          <span class="metricLabel">Net food</span>
+          <strong class:neg={row.output.foodNet < 0}>{row.output.foodNet >= 0 ? '+' : ''}{row.output.foodNet}</strong>
+          <small>After consumption; negative food slows growth unless imports cover it.</small>
+        </div>
+        <div class="metricCard" title={ex.prod}>
+          <span class="metricLabel">Queue production</span>
+          <strong>{row.output.prodToQueue || row.output.prod}</strong>
+          <small>Production reaching the current build after losses.</small>
+        </div>
+        <div class="metricCard" title={ex.sci}>
+          <span class="metricLabel">Research</span>
+          <strong>{row.output.research}</strong>
+          <small>Research points contributed each turn.</small>
+        </div>
+        <div class="metricCard" title={ex.bc}>
+          <span class="metricLabel">Income</span>
+          <strong>{row.output.bcIncome}</strong>
+          <small>BC after maintenance, trade goods and tax effects.</small>
+        </div>
+        <div class="metricCard">
+          <span class="metricLabel">Pollution</span>
+          <strong class:neg={row.output.pollution > 0}>{row.output.pollution}</strong>
+          <small>Production lost before the queue.</small>
+        </div>
+        <div class="metricCard">
+          <span class="metricLabel">Notes</span>
+          <strong>{row.farmable ? 'Farmable' : 'No farming'}</strong>
+          <small>{row.farmable ? 'This world can grow food.' : 'Current tech cannot grow food here.'}</small>
+        </div>
+      </div>
+
+      <div class="panelBox">
+        <h3>Build queue</h3>
+        <label class="fieldBlock">
+          <span class="fieldLabel">Active build</span>
+          <small class="fieldHelp">Choose the active build. Picking a queued item moves it to the front.</small>
+          <select
+            data-testid="build-{row.id}"
+            value={row.activeItem ?? ''}
+            title={row.activeItem ? `${label(row.activeItem)} — ${describeItem(row.activeItem)}` : 'Choose what this colony should build next.'}
+            onchange={(e) => setBuild(row, (e.target as HTMLSelectElement).value)}
+          >
+            <option value="" disabled>— build —</option>
+            {#if row.activeItem && !row.buildable.includes(row.activeItem)}
+              <option value={row.activeItem}>{label(row.activeItem)}</option>
+            {/if}
+            {#each row.queue.slice(1).filter((q) => !row.buildable.includes(q)) as q, qi (qi)}
+              <option value={q}>{label(q)} (queued)</option>
+            {/each}
+            {#each row.buildable as item (item)}
+              <option value={item}>{label(item)}</option>
+            {/each}
+          </select>
+          {#if row.activeItem}
+            <small class="fieldInfo">{describeItem(row.activeItem)}</small>
+          {/if}
+        </label>
+
+        <div class="fieldBlock">
+          <span class="fieldLabel">Progress</span>
+          <small class="fieldHelp">Stored production already invested.</small>
+          <div data-testid="progress-{row.id}">
+            {#if row.activeItem === 'housing' || row.activeItem === 'trade_goods'}
+              <strong>∞</strong>
+              <small class="fieldHelp">This project converts production every turn.</small>
+            {:else if row.activeItem}
+              <div class="progressLine">
+                <span class="cellbar" title="{row.storedProd}/{row.activeCost}">
+                  <span class="cellfill" style="width:{row.activeCost > 0 ? Math.min(100, Math.floor((row.storedProd * 100) / row.activeCost)) : 0}%"></span>
+                </span>
+                <span>{row.storedProd}/{row.activeCost}{row.turnsLeft !== null ? ` (${row.turnsLeft}t)` : ''}</span>
+              </div>
+            {:else}
+              <strong>Idle</strong>
+              <small class="fieldHelp">This colony has no active build selected.</small>
+            {/if}
+            {#if stickyMode && parked(row)}
+              <span class="parked" title="sticky build: production parked on switched-away items" data-testid="parked-{row.id}">⏸ {parked(row)}</span>
+            {/if}
+          </div>
+        </div>
+
+        {#if row.buyPrice !== null}
+          <div class="fieldBlock inlineField">
+            <div>
+              <span class="fieldLabel">Rush buy</span>
+              <small class="fieldHelp">Spend BC to finish the remaining production immediately.</small>
+            </div>
+            <button data-testid="buy-{row.id}" disabled={!row.canBuy} onclick={() => buy(row)}>{row.buyPrice} BC</button>
+          </div>
+        {/if}
+
+        <div class="fieldBlock">
+          <span class="fieldLabel">Queued next</span>
+          <small class="fieldHelp">Items after the active build. Click a chip to remove it.</small>
+          <div class="queueList">
+            {#each row.queue.slice(1) as q, qi (qi)}
+              <button
+                class="queuechip"
+                data-testid="queued-{row.id}-{qi + 1}"
+                title="{label(q)} — click ✕ to remove, or pick it in the build column to build it now"
+                onclick={() => removeQueued(row, qi + 1)}
+              >{label(q)} ✕</button>
+            {/each}
+            {#if row.queue.length <= 1}<span class="dim">Nothing queued after the current build.</span>{/if}
+          </div>
+          <div class="queueAddRow">
+            <select data-testid="queue-add-{row.id}" value={queueCandidate(row.id)} title="Choose another item to add to this colony's queue." onchange={(e) => setQueueCandidate(row.id, (e.target as HTMLSelectElement).value)}>
+              <option value="">+ queue another item</option>
+              {#each row.buildable as item (item)}
+                <option value={item}>{label(item)}</option>
+              {/each}
+            </select>
+            <button class="mini" disabled={!queueCandidate(row.id)} onclick={() => commitQueueCandidate(row)}>Add</button>
+          </div>
+          {#if queueCandidate(row.id)}
+            <small class="fieldInfo">{describeItem(queueCandidate(row.id))}</small>
+          {/if}
+        </div>
+      </div>
+
+      <div class="panelBox citizenPanel">
+        <h3>Population assignment</h3>
+        <p class="fieldHelp compactNote">Drag citizens between jobs here. Cross-colony moves still use the main colonies screen.</p>
+        <div class="jobExplainGrid">
+          <div>
+            <div class="jobExplainHead">🌱 Farmers</div>
+            <small>Produce food.</small>
+          </div>
+          <div>
+            <div class="jobExplainHead">⚒ Workers</div>
+            <small>Generate production.</small>
+          </div>
+          <div>
+            <div class="jobExplainHead">⚗ Scientists</div>
+            <small>Contribute research.</small>
+          </div>
+        </div>
+        {#each row.groups as grp (grp.race)}
+          <div class="groupBlock">
+            <div class="groupHead">
+              <strong>{grp.raceName}</strong>
+              <span class="dim">{grp.units} population unit{grp.units === 1 ? '' : 's'}{grp.unrest ? ' · unrest (-25% output)' : ''}</span>
+            </div>
+            <div class="singleJobs">
+              {#each ['farmers', 'workers', 'scientists'] as const as job (job)}
+                <div
+                  class="singleJobCell jobs"
+                  role="group"
+                  class:dropping={dragOver?.colonyId === row.id && dragOver?.job === job}
+                  ondragover={(e) => {
+                    if (drag?.colonyId === row.id && (job !== 'farmers' || row.farmable)) {
+                      e.preventDefault();
+                      dragOver = { colonyId: row.id, job };
+                    }
+                  }}
+                  ondragleave={() => {
+                    if (dragOver?.colonyId === row.id && dragOver?.job === job) dragOver = null;
+                  }}
+                  ondrop={(e) => {
+                    e.preventDefault();
+                    onDrop(row, job);
+                  }}
+                >
+                  <div class="jobExplainHead">{job === 'farmers' ? '🌱 Farmers' : job === 'workers' ? '⚒ Workers' : '⚗ Scientists'}</div>
+                  <span
+                    class="citizens"
+                    role="group"
+                    data-testid="{job}-{row.id}"
+                    data-count={grp[job]}
+                    title="{grp[job]} {job} for {grp.raceName}"
+                  >
+                    {#if job === 'farmers' && !row.farmable}
+                      <span class="zero" title="nothing grows here — farming is impossible on this world">🚫</span>
+                    {:else if grp[job] === 0}
+                      <span class="zero">0</span>
+                    {/if}
+                    {#each Array(grp[job]) as _, i (i)}
+                      <span
+                        class="citizen"
+                        class:foreign={grp.race !== session().playerId}
+                        class:unrest={grp.unrest}
+                        class:sel={isPicked(row, job, grp.race, i)}
+                        style={i > 0 ? `margin-left:-${overlapPx(grp[job])}px` : ''}
+                        draggable="true"
+                        role="button"
+                        tabindex="-1"
+                        title={grp.race !== session().playerId
+                          ? `captured ${grp.raceName} colonist${grp.unrest ? ' — in unrest (−25% output until assimilated)' : ''}`
+                          : grp.unrest
+                            ? 'in unrest (−25% output until assimilated)'
+                            : ''}
+                        onclick={() => pickFrom(row, job, grp.race, i)}
+                        onkeydown={(e) => e.key === 'Enter' && pickFrom(row, job, grp.race, i)}
+                        ondragstart={(e) => onDragStart(row, job, grp.race, i, e)}
+                      >{JOB_ICONS[job]}</span>
+                    {/each}
+                  </span>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/each}
+      </div>
+
+      <div class="panelBox">
+        <h3>Buildings</h3>
+        <p class="fieldHelp">Built structures on this colony. Selling refunds half the original cost, once per turn.</p>
+        <div class="chips">
+          {#each row.sellables as s (s.id)}
+            <span class="chip singleChip">
+              <strong>{pretty(s.id)}</strong>
+              <small>{s.refund > 0 ? `${s.refund} BC refund` : 'cannot be sold for BC'}</small>
+              <button
+                class="mini sellbtn"
+                disabled={!row.canSell || s.refund <= 0}
+                title={row.canSell ? `sell for ${s.refund} BC (one sale per colony per turn)` : 'already sold a building here this turn'}
+                data-testid="sell-{row.id}-{s.id}"
+                onclick={() => sell(row, s.id)}
+              >sell</button>
+            </span>
+          {/each}
+          {#if !row.sellables.length}
+            <span class="dim">No buildings completed yet.</span>
+          {/if}
+          {#if !row.canSell}
+            <span class="dim">One sale per colony per turn — already used here this turn.</span>
+          {/if}
+        </div>
+      </div>
+    </section>
+  </div>
+{:else}
 <table data-testid="colony-table">
   <thead>
     <tr>
@@ -624,34 +930,24 @@
               {/if}
               {#each row.groups as grp (grp.race)}
                 {#each Array(grp[job]) as _, i (i)}
-                  {#if grp.race === ANDROID_RACE}
-                    <!-- androids: hardwired to their job, never draggable -->
-                    <span
-                      class="citizen android"
-                      style={i > 0 ? `margin-left:-${overlapPx(row.jobs[job])}px` : ''}
-                      title="android {job.slice(0, -1)} — hardwired to this job for life; consumes 1 production per turn instead of food, immune to morale, houses in compact subterranean compartments"
-                      data-testid="android-{job}-{row.id}"
-                    >🤖</span>
-                  {:else}
-                    <span
-                      class="citizen"
-                      class:foreign={grp.race !== session().playerId}
-                      class:unrest={grp.unrest}
-                      class:sel={isPicked(row, job, grp.race, i)}
-                      style={i > 0 ? `margin-left:-${overlapPx(row.jobs[job])}px` : ''}
-                      draggable="true"
-                      role="button"
-                      tabindex="-1"
-                      title={grp.race !== session().playerId
-                        ? `captured ${grp.raceName} colonist${grp.unrest ? ' — in unrest (−25% output until assimilated)' : ''}`
-                        : grp.unrest
-                          ? 'in unrest (−25% output until assimilated)'
-                          : ''}
-                      onclick={() => pickFrom(row, job, grp.race, i)}
-                      onkeydown={(e) => e.key === 'Enter' && pickFrom(row, job, grp.race, i)}
-                      ondragstart={(e) => onDragStart(row, job, grp.race, i, e)}
-                    >{JOB_ICONS[job]}</span>
-                  {/if}
+                  <span
+                    class="citizen"
+                    class:foreign={grp.race !== session().playerId}
+                    class:unrest={grp.unrest}
+                    class:sel={isPicked(row, job, grp.race, i)}
+                    style={i > 0 ? `margin-left:-${overlapPx(row.jobs[job])}px` : ''}
+                    draggable="true"
+                    role="button"
+                    tabindex="-1"
+                    title={grp.race !== session().playerId
+                      ? `captured ${grp.raceName} colonist${grp.unrest ? ' — in unrest (−25% output until assimilated)' : ''}`
+                      : grp.unrest
+                        ? 'in unrest (−25% output until assimilated)'
+                        : ''}
+                    onclick={() => pickFrom(row, job, grp.race, i)}
+                    onkeydown={(e) => e.key === 'Enter' && pickFrom(row, job, grp.race, i)}
+                    ondragstart={(e) => onDragStart(row, job, grp.race, i, e)}
+                  >{JOB_ICONS[job]}</span>
                 {/each}
               {/each}
             </span>
@@ -675,20 +971,21 @@
           <select
             data-testid="build-{row.id}"
             value={row.activeItem ?? ''}
+            title={row.activeItem ? `${label(row.activeItem)} — ${describeItem(row.activeItem)}` : 'Choose what this colony should build next.'}
             onchange={(e) => setBuild(row, (e.target as HTMLSelectElement).value)}
           >
             <option value="" disabled>— build —</option>
             {#if row.activeItem && !row.buildable.includes(row.activeItem)}
-              <option value={row.activeItem}>{label(row.activeItem)}</option>
+              <option value={row.activeItem} title={describeItem(row.activeItem)}>{label(row.activeItem)}</option>
             {/if}
             <!-- keyed by index: the same non-buildable item can legitimately
                  appear twice (repeat refits, spy past the roster cap) and a
                  duplicate string key crashes the whole table -->
             {#each row.queue.slice(1).filter((q) => !row.buildable.includes(q)) as q, qi (qi)}
-              <option value={q}>{label(q)} (queued)</option>
+              <option value={q} title={describeItem(q)}>{label(q)} (queued)</option>
             {/each}
             {#each row.buildable as item (item)}
-              <option value={item}>{label(item)}</option>
+              <option value={item} title={describeItem(item)}>{label(item)}</option>
             {/each}
           </select>
         </td>
@@ -723,12 +1020,18 @@
               onclick={() => removeQueued(row, qi + 1)}
             >{label(q)} ✕</button>
           {/each}
-          <select data-testid="queue-add-{row.id}" value="" onchange={(e) => { appendBuild(row, (e.target as HTMLSelectElement).value); (e.target as HTMLSelectElement).value = ''; }}>
-            <option value="">+ queue</option>
-            {#each row.buildable as item (item)}
-              <option value={item}>{label(item)}</option>
-            {/each}
-          </select>
+          <div class="queueAddInline">
+            <select data-testid="queue-add-{row.id}" value={queueCandidate(row.id)} title="Choose another item to add to this colony's queue." onchange={(e) => setQueueCandidate(row.id, (e.target as HTMLSelectElement).value)}>
+              <option value="">+ queue</option>
+              {#each row.buildable as item (item)}
+                <option value={item}>{label(item)}</option>
+              {/each}
+            </select>
+            <button class="mini" disabled={!queueCandidate(row.id)} onclick={() => commitQueueCandidate(row)}>Add</button>
+          </div>
+          {#if queueCandidate(row.id)}
+            <div class="queueHelp">{describeItem(queueCandidate(row.id))}</div>
+          {/if}
         </td>
         <td>
           {#if row.buildings.length}
@@ -763,23 +1066,26 @@
       {/if}
     {/each}
   </tbody>
-  <tfoot>
-    <tr data-testid="totals">
-      <td></td>
-      <td class="name">Σ {allRows.length} colonies{outpostCount > 0 ? ` · ${outpostCount} outpost${outpostCount > 1 ? 's' : ''} (map)` : ''}</td>
-      <td></td>
-      <td>{totals.pop} <span class="growth" class:neg={totals.growthK < 0}>{growthLabel(totals.growthK)}</span></td>
-      <td></td>
-      <td colspan="3"></td>
-      <td class:neg={totals.food < 0}>{totals.food >= 0 ? '+' : ''}{totals.food}</td>
-      <td>{totals.prod}</td>
-      <td>{totals.sci}</td>
-      <td>{totals.bc}</td>
-      <td class:neg={totals.pollution > 0}>{totals.pollution}</td>
-      <td colspan="5"></td>
-    </tr>
-  </tfoot>
+  {#if !singleColony}
+    <tfoot>
+      <tr data-testid="totals">
+        <td></td>
+        <td class="name">Σ {allRows.length} colonies{outpostCount > 0 ? ` · ${outpostCount} outpost${outpostCount > 1 ? 's' : ''} (map)` : ''}</td>
+        <td></td>
+        <td>{totals.pop} <span class="growth" class:neg={totals.growthK < 0}>{growthLabel(totals.growthK)}</span></td>
+        <td></td>
+        <td colspan="3"></td>
+        <td class:neg={totals.food < 0}>{totals.food >= 0 ? '+' : ''}{totals.food}</td>
+        <td>{totals.prod}</td>
+        <td>{totals.sci}</td>
+        <td>{totals.bc}</td>
+        <td class:neg={totals.pollution > 0}>{totals.pollution}</td>
+        <td colspan="5"></td>
+      </tr>
+    </tfoot>
+  {/if}
 </table>
+{/if}
 
 <style>
   .bar {
@@ -796,6 +1102,180 @@
   }
   .presets button {
     font-size: 0.78rem;
+  }
+  .panelBox {
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    padding: 0.6rem;
+  }
+  .panelBox h3 {
+    margin: 0 0 0.35rem;
+    font-size: 0.94rem;
+  }
+  .singleColony {
+    display: grid;
+    gap: 0.65rem;
+  }
+  .singleHeroHead {
+    display: flex;
+    gap: 0.7rem;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .singleTitle {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .singleSub,
+  .singleMeta {
+    margin: 0.15rem 0 0;
+    color: var(--text-dim);
+    font-size: 0.82rem;
+  }
+  .singleStatRail {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(9rem, 1fr));
+    gap: 0.45rem;
+    min-width: min(100%, 21rem);
+  }
+  .singleStatRail div {
+    display: grid;
+    gap: 0.12rem;
+    background: var(--panel-3);
+    border: 1px solid var(--line);
+    padding: 0.42rem 0.52rem;
+  }
+  .singleStatRail span,
+  .metricLabel,
+  .fieldLabel {
+    color: var(--text-dim);
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .singleStatRail strong,
+  .metricCard strong {
+    font-size: 1.08rem;
+  }
+  .singleStatRail small,
+  .fieldHelp,
+  .metricCard small {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    line-height: 1.22;
+  }
+  .singleMetaTags {
+    margin-left: 0.5rem;
+  }
+  .singleGrid {
+    display: grid;
+    gap: 0.65rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .metricGrid {
+    display: grid;
+    gap: 0.45rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+  }
+  .metricGrid h3 {
+    grid-column: 1 / -1;
+  }
+  .metricCard {
+    display: grid;
+    gap: 0.15rem;
+    background: var(--panel-3);
+    border: 1px solid var(--line);
+    padding: 0.48rem;
+  }
+  .fieldBlock {
+    display: grid;
+    gap: 0.22rem;
+    margin-top: 0.55rem;
+  }
+  .fieldInfo,
+  .queueHelp {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    line-height: 1.25;
+  }
+  .queueAddRow,
+  .queueAddInline {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .fieldBlock:first-of-type {
+    margin-top: 0;
+  }
+  .inlineField {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+  .progressLine {
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .queueList {
+    display: flex;
+    gap: 0.22rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .citizenPanel,
+  .panelBox:last-child {
+    grid-column: 1 / -1;
+  }
+  .jobExplainGrid,
+  .singleJobs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+  .jobExplainHead {
+    font-weight: 600;
+    margin-bottom: 0.08rem;
+    font-size: 0.82rem;
+  }
+  .groupBlock {
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--line);
+  }
+  .groupBlock:first-of-type {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+  .groupHead {
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+    flex-wrap: wrap;
+    margin-bottom: 0.3rem;
+  }
+  .singleJobCell {
+    display: grid;
+    gap: 0.22rem;
+    background: var(--panel-3);
+    border: 1px solid var(--line);
+    padding: 0.42rem;
+    min-height: 3.5rem;
+    align-content: start;
+  }
+  .compactNote {
+    margin: 0 0 0.3rem;
+  }
+  .singleChip {
+    display: inline-grid;
+    gap: 0.2rem;
+    align-items: start;
   }
   table {
     border-collapse: collapse;
@@ -855,11 +1335,6 @@
   .citizen.unrest {
     filter: drop-shadow(0 0 3px var(--bad)) grayscale(0.5);
   }
-  /* androids: teal glow, and a not-allowed cursor — they never change jobs */
-  .citizen.android {
-    cursor: not-allowed;
-    filter: drop-shadow(0 0 2px #22d3ee);
-  }
   .zero {
     color: var(--text-dim);
     opacity: 0.5;
@@ -871,8 +1346,8 @@
   }
   .queuechip {
     font-size: 0.72rem;
-    padding: 0 0.3rem;
-    margin-right: 0.15rem;
+    padding: 0 0.24rem;
+    margin-right: 0.08rem;
     background: var(--panel-3);
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -885,31 +1360,12 @@
     font-size: 0.8rem;
     color: var(--accent-soft);
   }
-  /* live research readout: pushed to the bar's right edge, always in view
-     while dragging scientists around */
-  .research {
-    margin-left: auto;
-    font-size: 0.8rem;
-    color: var(--accent-soft);
-    white-space: nowrap;
-  }
   .mini {
     padding: 0 0.35rem;
     margin: 0 0.1rem;
   }
   .neg {
     color: var(--bad);
-  }
-  /* uncovered food shortage: starvation is imminent, shout louder than a
-     plain deficit that freighters are quietly covering */
-  td.starving {
-    font-weight: 700;
-    text-decoration: underline wavy var(--bad);
-  }
-  .fed {
-    color: var(--good, #5ee08a);
-    font-size: 0.75em;
-    margin-left: 0.15em;
   }
   .growth {
     font-size: 0.75rem;
@@ -924,6 +1380,17 @@
     color: var(--bad);
     margin-left: 0.25rem;
     opacity: 0.9;
+  }
+  /* uncovered food shortage: starvation is imminent, shout louder than a
+     plain deficit that freighters are quietly covering */
+  td.starving {
+    font-weight: 700;
+    text-decoration: underline wavy var(--bad);
+  }
+  .fed {
+    color: var(--good, #5ee08a);
+    font-size: 0.75em;
+    margin-left: 0.15em;
   }
   .cellbar {
     display: inline-block;
@@ -1034,5 +1501,20 @@
   .sellbtn {
     margin-left: 0.35rem;
     font-size: 0.75rem;
+  }
+  @media (max-width: 980px) {
+    .singleGrid,
+    .metricGrid,
+    .jobExplainGrid,
+    .singleJobs {
+      grid-template-columns: 1fr;
+    }
+    .singleStatRail {
+      grid-template-columns: 1fr;
+      width: 100%;
+    }
+    .inlineField {
+      grid-template-columns: 1fr;
+    }
   }
 </style>
