@@ -10,8 +10,9 @@
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve, dirname, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const srcRoot = join(root, 'src');
 
 /** Allowed import targets per layer. Keys checked against module specifiers. */
