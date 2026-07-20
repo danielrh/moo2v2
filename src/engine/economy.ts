@@ -152,13 +152,59 @@ export function foodPerFarmerBase(climate: Climate, aquatic: boolean): number {
   }
 }
 
-const MINERAL_PROD: Record<Minerals, number> = {
+export const MINERAL_PROD: Record<Minerals, number> = {
   ultra_poor: 1,
   poor: 2,
   abundant: 3,
   rich: 5,
   ultra_rich: 8,
 };
+
+/** display text for each mineral tier's per-worker production — derived from
+ * MINERAL_PROD so it can never drift out of sync with the actual math */
+const MINERAL_PROD_INFO: Record<Minerals, string> = Object.fromEntries(
+  Object.entries(MINERAL_PROD).map(([mineral, prod]) => [mineral, `${prod} production per worker`]),
+) as Record<Minerals, string>;
+
+/** tooltip text for a mineral tier's per-worker production. */
+export function mineralProdInfo(mineral: Minerals): string {
+  return MINERAL_PROD_INFO[mineral];
+}
+
+// ---------- planet specials: bonus amounts + curated display text ----------
+// named here so the tooltip text in planetSpecialInfo can never drift from
+// the actual bonus math below (both read the same constants).
+export const GOLD_DEPOSITS_BC = 5;
+export const GEM_DEPOSITS_BC = 10;
+export const ARTIFACT_SCI_BONUS = 2;
+
+export interface PlanetSpecialInfo {
+  icon: string;
+  text: string;
+}
+
+const PLANET_SPECIAL_INFO: Record<string, PlanetSpecialInfo> = {
+  gold_deposits: { icon: '🥇', text: `gold deposits: +${GOLD_DEPOSITS_BC} BC per turn` },
+  gem_deposits: { icon: '💎', text: `gem deposits: +${GEM_DEPOSITS_BC} BC per turn` },
+  ancient_artifacts: { icon: '🏺', text: `ancient artifacts: +${ARTIFACT_SCI_BONUS} research per scientist` },
+};
+
+/** icon + tooltip text for a planet special, or null if it has none / is unrecognized. */
+export function planetSpecialInfo(special: string | null | undefined): PlanetSpecialInfo | null {
+  return special ? (PLANET_SPECIAL_INFO[special] ?? null) : null;
+}
+
+/** hover text for the planet cell: every static feature affecting output */
+export function planetTitle(planet: Planet): string {
+  const lines = [
+    `${planet.climate} · size ${planet.sizeClass}`,
+    `${planet.minerals.replaceAll('_', ' ')} minerals — ${mineralProdInfo(planet.minerals)}`,
+    planet.gravity === 'normal' ? 'normal gravity' : `${planet.gravity} gravity — −25% output per step without a gravity generator`,
+  ];
+  const special = planetSpecialInfo(planet.special);
+  if (special) lines.push(`${special.icon} ${special.text}`);
+  return lines.join('\n');
+}
 
 
 // ---------- F10: morale ----------
@@ -281,7 +327,7 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
       }
       androidFood += aFood;
       androidProd += aProd;
-      androidSci += g.scientists * (Math.max(1, 3 + acc.sciCoeff) + 3 + (planet.special === 'ancient_artifacts' ? 2 : 0));
+      androidSci += g.scientists * (Math.max(1, 3 + acc.sciCoeff) + 3 + (planet.special === 'ancient_artifacts' ? ARTIFACT_SCI_BONUS : 0));
       prodNeedHalves += units * 2; // 1 production per unit keeps them spry
       continue;
     }
@@ -293,7 +339,7 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
     const farmHalves = farmCoeffHalves(effClim, gTraits, acc.farmCoeff);
     const prodCoeff = Math.max(1, MINERAL_PROD[planet.minerals] + gTraits.industry + acc.prodCoeff);
     let sciCoeff = Math.max(1, 3 + gTraits.science + acc.sciCoeff);
-    if (planet.special === 'ancient_artifacts') sciCoeff += 2;
+    if (planet.special === 'ancient_artifacts') sciCoeff += ARTIFACT_SCI_BONUS;
 
     const gFarm = floorDiv(g.farmers * farmHalves, 2);
     const gProd = g.workers * prodCoeff;
@@ -365,7 +411,7 @@ function computeOutput(state: GameState, colony: Colony, planet: Planet): Colony
   const research = Math.max(0, sciWorker) + acc.sciFlat + androidSci;
 
   // ---------- F7 money ----------
-  const special = planet.special === 'gem_deposits' ? 10 : planet.special === 'gold_deposits' ? 5 : 0;
+  const special = planet.special === 'gem_deposits' ? GEM_DEPOSITS_BC : planet.special === 'gold_deposits' ? GOLD_DEPOSITS_BC : 0;
   // androids generate no income (data effect text): only organics pay taxes
   const popIncome = roundDiv((popUnits - androidUnits) * (2 + ownerTraits.bcHalves), 2);
   let bonusIncome = 0;
@@ -468,7 +514,7 @@ export function explainOutput(state: GameState, colony: Colony): OutputExplain {
       // coefficients, no morale/gravity, upkeep shown as its own line below
       const farmHalves = farmCoeffHalves(effClim, NEUTRAL_TRAITS, acc.farmCoeff) + 6;
       const prodC = Math.max(1, MINERAL_PROD[planet.minerals] + acc.prodCoeff) + 3;
-      const sciC = Math.max(1, 3 + acc.sciCoeff) + 3 + (planet.special === 'ancient_artifacts' ? 2 : 0);
+      const sciC = Math.max(1, 3 + acc.sciCoeff) + 3 + (planet.special === 'ancient_artifacts' ? ARTIFACT_SCI_BONUS : 0);
       if (g.farmers) out.farm.push(`${g.farmers} android farmer${g.farmers === 1 ? '' : 's'} × ${farmHalves / 2} (+3 android)`);
       if (g.workers) out.prod.push(`${g.workers} android worker${g.workers === 1 ? '' : 's'} × ${prodC} (+3 android)`);
       if (g.scientists) out.sci.push(`${g.scientists} android scientist${g.scientists === 1 ? '' : 's'} × ${sciC} (+3 android)`);
@@ -488,9 +534,9 @@ export function explainOutput(state: GameState, colony: Colony): OutputExplain {
       `${g.workers} worker${g.workers === 1 ? '' : 's'} × ${prodCoeff} (${MINERAL_PROD[planet.minerals]} ${planet.minerals}${gTraits.industry ? `, ${gTraits.industry > 0 ? '+' : ''}${gTraits.industry} race` : ''}${acc.prodCoeff ? `, +${acc.prodCoeff} tech/buildings` : ''})`,
     );
     let sciCoeff = Math.max(1, 3 + gTraits.science + acc.sciCoeff);
-    if (planet.special === 'ancient_artifacts') sciCoeff += 2;
+    if (planet.special === 'ancient_artifacts') sciCoeff += ARTIFACT_SCI_BONUS;
     out.sci.push(
-      `${g.scientists} scientist${g.scientists === 1 ? '' : 's'} × ${sciCoeff} (3 base${gTraits.science ? `, ${gTraits.science > 0 ? '+' : ''}${gTraits.science} race` : ''}${acc.sciCoeff ? `, +${acc.sciCoeff} tech/buildings` : ''}${planet.special === 'ancient_artifacts' ? ', +2 artifacts' : ''})`,
+      `${g.scientists} scientist${g.scientists === 1 ? '' : 's'} × ${sciCoeff} (3 base${gTraits.science ? `, ${gTraits.science > 0 ? '+' : ''}${gTraits.science} race` : ''}${acc.sciCoeff ? `, +${acc.sciCoeff} tech/buildings` : ''}${planet.special === 'ancient_artifacts' ? `, +${ARTIFACT_SCI_BONUS} artifacts` : ''})`,
     );
     if (gravPen > 0) {
       const line = `−${gravPen}% ${planet.gravity} gravity penalty`;
@@ -523,8 +569,8 @@ export function explainOutput(state: GameState, colony: Colony): OutputExplain {
   out.farm.push(`− ${o.foodConsumed} eaten = net ${o.foodNet >= 0 ? '+' : ''}${o.foodNet}`);
   const taxpayers = o.popUnits - androidUnitsOf(colony); // androids pay no taxes
   out.bc.push(`${taxpayers} pop × ${(2 + ownerTraits.bcHalves) / 2} BC`);
-  if (planet.special === 'gem_deposits') out.bc.push('+10 gem deposits');
-  if (planet.special === 'gold_deposits') out.bc.push('+5 gold deposits');
+  if (planet.special === 'gem_deposits') out.bc.push(`+${GEM_DEPOSITS_BC} gem deposits`);
+  if (planet.special === 'gold_deposits') out.bc.push(`+${GOLD_DEPOSITS_BC} gold deposits`);
   if (o.tradeBC) out.bc.push(`+${o.tradeBC} trade goods`);
   if (o.taxBC) out.bc.push(`+${o.taxBC} tax (${owner.taxRatePct ?? 0}%)`);
   if (o.maintenance) out.bc.push(`−${o.maintenance} building maintenance`);

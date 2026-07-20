@@ -21,6 +21,16 @@ import { ANDROID_RACE, type Colony, type GameState, type Ship, type TurnEvent } 
 
 export const TROOPS_PER_TRANSPORT = 2;
 
+/** Ground defense troop count for a colony (militia raised from population,
+ * plus barracks garrisons) — shown to the player and used to resolve
+ * invasions. */
+export function colonyMilitia(colony: Colony): number {
+  let militia = ceilDiv(colonyPopUnits(colony), 2);
+  if (colony.buildings.includes('marine_barracks')) militia += 2;
+  if (colony.buildings.includes('armor_barracks')) militia += 2;
+  return militia;
+}
+
 function groundStrength(state: GameState, empireId: number, defending: boolean, colony?: Colony): number {
   const empire = state.empires.find((e) => e.id === empireId);
   let str = 20;
@@ -67,9 +77,7 @@ export function resolveInvasions(state: GameState, events: TurnEvent[]): void {
     const force = invaders.filter((s) => s.owner === attackerId);
     let troops = force.reduce((sum, s) => sum + s.cargoPopUnits, 0);
     const pop = colonyPopUnits(colony);
-    let militia = ceilDiv(pop, 2);
-    if (colony.buildings.includes('marine_barracks')) militia += 2;
-    if (colony.buildings.includes('armor_barracks')) militia += 2;
+    let militia = colonyMilitia(colony);
 
     const atkStr = groundStrength(state, attackerId, false);
     const defStr = groundStrength(state, colony.owner, true, colony);

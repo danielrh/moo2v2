@@ -1,22 +1,17 @@
 <script lang="ts">
   // The system-wide colonies spreadsheet: the primary way to run your empire.
   // Every edit is an optimistic command; dirty cells resolve on host accept.
-  import { selectors, itemLabel, itemDescription, explainOutput, COLONY_TAGS, ANDROID_RACE } from '@engine/index';
+  import { selectors, itemLabel, itemDescription, explainOutput, COLONY_TAGS, planetTitle, planetSpecialInfo } from '@engine/index';
   import { app, getActive } from '../state.svelte';
   import AutopilotBar from '../components/AutopilotBar.svelte';
-
-  type Props = {
-    colonyId?: number | null;
-  };
-
-  let { colonyId = null }: Props = $props();
+  import CitizenStack from '../components/CitizenStack.svelte';
+  import type { Job } from '@engine/types';
 
   const session = () => getActive()!.session;
   const allRowsWithOutposts = $derived.by(() => {
     void app.version;
     const s = session().getPlanned();
-    const rows = s ? selectors.colonyRows(s, session().playerId) : [];
-    return colonyId === null ? rows : rows.filter((r) => r.id === colonyId);
+    return s ? selectors.colonyRows(s, session().playerId) : [];
   });
   // outposts are fuel stops, not economies: they live on the map, not here
   const allRows = $derived(allRowsWithOutposts.filter((r) => !r.outpost));
@@ -41,32 +36,8 @@
     const s = session().getPlanned();
     return s ? itemLabel(s, session().playerId, item) : item;
   };
-  const describeItem = (item: string | null | undefined) => (item ? itemDescription(item) : '');
+  const describeItem = (item: string | null | undefined): string => (item ? itemDescription(item) : '');
   const pretty = (id: string) => id.replaceAll('_', ' ');
-
-  /** what each planet feature means for production (hover on the planet cell) */
-  const MINERAL_PROD_INFO: Record<string, string> = {
-    ultra_poor: '1 production per worker',
-    poor: '2 production per worker',
-    abundant: '3 production per worker',
-    rich: '5 production per worker',
-    ultra_rich: '8 production per worker',
-  };
-  const SPECIAL_INFO: Record<string, { icon: string; text: string }> = {
-    gold_deposits: { icon: '🥇', text: 'gold deposits: +5 BC per turn' },
-    gem_deposits: { icon: '💎', text: 'gem deposits: +10 BC per turn' },
-    ancient_artifacts: { icon: '🏺', text: 'ancient artifacts: +2 research per scientist' },
-  };
-  function planetTitle(row: selectors.ColonyRow): string {
-    const p = row.planet;
-    const lines = [
-      `${p.climate} · size ${p.sizeClass}`,
-      `${pretty(p.minerals)} minerals — ${MINERAL_PROD_INFO[p.minerals] ?? ''}`,
-      p.gravity === 'normal' ? 'normal gravity' : `${p.gravity} gravity — −25% output per step without a gravity generator`,
-    ];
-    if (p.special && SPECIAL_INFO[p.special]) lines.push(`${SPECIAL_INFO[p.special]!.icon} ${SPECIAL_INFO[p.special]!.text}`);
-    return lines.join('\n');
-  }
 
   // ---- filter + sort ----
   let filter = $state('');
@@ -232,7 +203,6 @@
     }
   }
 
-  type Job = 'farmers' | 'workers' | 'scientists';
   /** reassign within ONE race group — captured colonists keep their own
    * group, so a multi-race colony never gets its groups overwritten */
   function moveJob(row: selectors.ColonyRow, race: number, fromJob: Job, toJob: Job, count = 1) {
@@ -252,7 +222,6 @@
   // Clicking citizen i selects it AND everyone to its right in its own race
   // group; a drag then carries the whole selection (dragging without clicking
   // first does the same from the grabbed icon).
-  const JOB_ICONS: Record<Job, string> = { farmers: '🌾', workers: '🔨', scientists: '🧪' };
   let picked = $state<{ colonyId: number; job: Job; race: number; from: number } | null>(null);
   function pickFrom(row: selectors.ColonyRow, job: Job, race: number, i: number) {
     if (picked && picked.colonyId === row.id && picked.job === job && picked.race === race && picked.from === i) {
@@ -591,8 +560,8 @@
         </td>
         <td
           class="dim planet"
-          title={planetTitle(row)}
-        >{#if row.planet.special && SPECIAL_INFO[row.planet.special]}{SPECIAL_INFO[row.planet.special]!.icon} {/if}{row.planet.climate} {pretty(row.planet.minerals)} {row.planet.gravity}-g s{row.planet.sizeClass}</td>
+          title={planetTitle(row.planet)}
+        >{#if planetSpecialInfo(row.planet.special)}{planetSpecialInfo(row.planet.special)!.icon} {/if}{row.planet.climate} {pretty(row.planet.minerals)} {row.planet.gravity}-g s{row.planet.sizeClass}</td>
         <td data-testid="pop-{row.id}" title="projected growth next turn: {growthLabel(row.growthK)}">
           {row.popUnits}/{row.maxPop}
           {#if !row.outpost}
@@ -618,51 +587,19 @@
               onDrop(row, job);
             }}
           >
-            <span
-              class="citizens"
-              role="group"
-              data-testid="{job}-{row.id}"
-              data-count={row.jobs[job]}
-              title="{row.jobs[job]} {job} — click a citizen to grab them plus everyone to their right, then drag onto another job or any other colony (freighters carry them between systems)"
-            >
-              {#if job === 'farmers' && !row.farmable}
-                <span class="zero" title="nothing grows here — farming is impossible on this world">🚫</span>
-              {:else if row.jobs[job] === 0}
-                <span class="zero">0</span>
-              {/if}
-              {#each row.groups as grp (grp.race)}
-                {#each Array(grp[job]) as _, i (i)}
-                  {#if grp.race === ANDROID_RACE}
-                    <!-- androids: hardwired to their job, never draggable -->
-                    <span
-                      class="citizen android"
-                      style={i > 0 ? `margin-left:-${overlapPx(row.jobs[job])}px` : ''}
-                      title="android {job.slice(0, -1)} — hardwired to this job for life; consumes 1 production per turn instead of food, immune to morale, houses in compact subterranean compartments"
-                      data-testid="android-{job}-{row.id}"
-                    >🤖</span>
-                  {:else}
-                    <span
-                      class="citizen"
-                      class:foreign={grp.race !== session().playerId}
-                      class:unrest={grp.unrest}
-                      class:sel={isPicked(row, job, grp.race, i)}
-                      style={i > 0 ? `margin-left:-${overlapPx(row.jobs[job])}px` : ''}
-                      draggable="true"
-                      role="button"
-                      tabindex="-1"
-                      title={grp.race !== session().playerId
-                        ? `captured ${grp.raceName} colonist${grp.unrest ? ' — in unrest (−25% output until assimilated)' : ''}`
-                        : grp.unrest
-                          ? 'in unrest (−25% output until assimilated)'
-                          : ''}
-                      onclick={() => pickFrom(row, job, grp.race, i)}
-                      onkeydown={(e) => e.key === 'Enter' && pickFrom(row, job, grp.race, i)}
-                      ondragstart={(e) => onDragStart(row, job, grp.race, i, e)}
-                    >{JOB_ICONS[job]}</span>
-                  {/if}
-                {/each}
-              {/each}
-            </span>
+            <CitizenStack
+              rowId={row.id}
+              {job}
+              farmable={row.farmable}
+              count={row.jobs[job]}
+              groups={row.groups}
+              playerId={session().playerId}
+              title={`${row.jobs[job]} ${job} — click a citizen to grab them plus everyone to their right, then drag onto another job or any other colony (freighters carry them between systems)`}
+              {overlapPx}
+              isPicked={(j, race, i) => isPicked(row, j, race, i)}
+              onPick={(j, race, i) => pickFrom(row, j, race, i)}
+              onDragStart={(j, race, i, ev) => onDragStart(row, j, race, i, ev)}
+            />
           </td>
         {/each}
         <td
@@ -832,47 +769,6 @@
   .jobs.dropping {
     background: rgba(94, 224, 138, 0.18);
     outline: 1px dashed var(--good);
-  }
-  .citizens {
-    display: inline-flex;
-    align-items: center;
-    gap: 0;
-    min-width: 1.3rem;
-    justify-content: center;
-  }
-  .citizen {
-    cursor: grab;
-    font-size: 0.85rem;
-    line-height: 1;
-    position: relative;
-  }
-  .citizen:hover {
-    transform: scale(1.25);
-    z-index: 2;
-  }
-  .citizen.sel {
-    filter: drop-shadow(0 0 3px var(--accent)) brightness(1.3);
-    z-index: 1;
-  }
-  /* captured colonists of another race: violet ring so they stand apart */
-  .citizen.foreign {
-    filter: drop-shadow(0 0 2px #c084fc) hue-rotate(45deg);
-  }
-  .citizen.foreign.sel {
-    filter: drop-shadow(0 0 3px var(--accent)) hue-rotate(45deg) brightness(1.3);
-  }
-  .citizen.unrest {
-    filter: drop-shadow(0 0 3px var(--bad)) grayscale(0.5);
-  }
-  /* androids: teal glow, and a not-allowed cursor — they never change jobs */
-  .citizen.android {
-    cursor: not-allowed;
-    filter: drop-shadow(0 0 2px #22d3ee);
-  }
-  .zero {
-    color: var(--text-dim);
-    opacity: 0.5;
-    padding: 0 0.2rem;
   }
   .name.shipok {
     background: rgba(110, 168, 255, 0.16);

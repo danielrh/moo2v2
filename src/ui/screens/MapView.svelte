@@ -6,13 +6,14 @@
   import { buildableItems, itemLabel } from '@engine/items';
   import type { StarColor } from '@engine/types';
   import { MAP_SIZE } from '@engine/galaxy';
-  import Spreadsheet from './Spreadsheet.svelte';
+  import PlanetModalScreen from './PlanetModalScreen.svelte';
   import { playerColor, STAR_COLORS } from '../colors';
   import { app, getActive, savePerGame } from '../state.svelte';
   import { BUILD_HOTKEYS, bestColonyFor, cancelPin, pinBuild, pinnedStatus, resolveHotkeyItem } from '../quickBuild';
   import AutopilotBar from '../components/AutopilotBar.svelte';
 
   const MAP_BG_CACHE = new Map<string, string>();
+  const prettify = (id: string): string => id.replaceAll('_', ' ');
 
   function hashText(s: string): number {
     let h = 2166136261 >>> 0;
@@ -841,7 +842,6 @@
   function starSpikeStroke(color: StarColor): string {
     return mixHex(STAR_COLORS[color], '#ffffff', color === 'blue' ? 0.62 : 0.5);
   }
-  const prettify = (id: string) => id.replaceAll('_', ' ');
 </script>
 
 <svelte:window onkeydown={onMapKey} />
@@ -1395,19 +1395,7 @@
   </aside>
 
   {#if colonyModal}
-    <div class="overlay" role="dialog" tabindex="-1" aria-label="colony management" onclick={(e) => {
-      if (e.currentTarget === e.target) closePlanetColony();
-    }} onkeydown={(e) => {
-      if (e.key === 'Escape') closePlanetColony();
-    }}>
-      <div class="colonyModal">
-        <header class="modalHead">
-          <h3>{colonyModal.name} <span class="dim">at {selected?.star.name ?? 'selected star'}</span></h3>
-          <button class="mini" onclick={closePlanetColony}>Close</button>
-        </header>
-        <Spreadsheet colonyId={colonyModal.id} />
-      </div>
-    </div>
+    <PlanetModalScreen colonyId={colonyModal.id} onSelectPlanet={openPlanetColony} onClose={closePlanetColony} />
   {/if}
 </div>
 
@@ -1794,34 +1782,6 @@
   }
   .planetrowlabel {
     color: inherit;
-  }
-  .overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(3, 6, 15, 0.7);
-    display: grid;
-    place-items: center;
-    padding: 1rem;
-    z-index: 25;
-  }
-  .colonyModal {
-    width: min(96vw, 1400px);
-    max-height: 90vh;
-    overflow: auto;
-    background: #07111f;
-    border: 1px solid #45516b;
-    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
-    padding: 0.8rem;
-  }
-  .modalHead {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.8rem;
-    margin-bottom: 0.6rem;
-  }
-  .modalHead h3 {
-    margin: 0;
   }
   .legend .monster,
   .legend .raid {
