@@ -3,6 +3,7 @@ dist/
 .vite/
 test-results/
 playwright-report/
+docker-output/
 *.local
 *.log
 .DS_Store

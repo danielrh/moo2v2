@@ -1,0 +1,13 @@
+# Normalize all text files to LF on checkout (including on Windows), so
+# generated/checked-in output (e.g. src/engine/data/generated.ts) matches
+# byte-for-byte regardless of platform, and shell scripts don't break under
+# `set -euo pipefail` due to stray \r characters.
+* text=auto eol=lf
+
+# Binary assets: never touch line endings.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+
