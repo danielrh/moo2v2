@@ -6,12 +6,14 @@
   import { buildableItems, itemLabel } from '@engine/items';
   import type { StarColor } from '@engine/types';
   import { MAP_SIZE } from '@engine/galaxy';
+  import PlanetModalScreen from './PlanetModalScreen.svelte';
   import { playerColor, STAR_COLORS } from '../colors';
   import { app, getActive, savePerGame } from '../state.svelte';
   import { BUILD_HOTKEYS, bestColonyFor, cancelPin, pinBuild, pinnedStatus, resolveHotkeyItem } from '../quickBuild';
   import AutopilotBar from '../components/AutopilotBar.svelte';
 
   const MAP_BG_CACHE = new Map<string, string>();
+  const prettify = (id: string): string => id.replaceAll('_', ' ');
 
   function hashText(s: string): number {
     let h = 2166136261 >>> 0;
@@ -365,6 +367,7 @@
 
   let selectedStarId = $state<number | null>(null);
   let selectedShipIds = $state<number[]>([]);
+  let colonyModalColonyId = $state<number | null>(null);
   // colony-ship arrival alert: "View on map" hands us the star to select
   $effect(() => {
     if (app.focusStarId !== null) {
@@ -380,6 +383,10 @@
   }
 
   const selected = $derived(view.find((v) => v.star.id === selectedStarId) ?? null);
+  const colonyModal = $derived.by(() => {
+    if (!gs || colonyModalColonyId === null) return null;
+    return gs.colonies.find((c) => c.id === colonyModalColonyId) ?? null;
+  });
   const shipsHere = $derived(fleets.filter((f) => f.atStarId === selectedStarId));
   /** wormhole partner of the selected star: always a valid move target —
    * but only shown once the wormhole itself is known (visited/scanned) */
@@ -544,6 +551,28 @@
   function outpost(shipId: number, planetId: number) {
     const res = session().submit('build_outpost', { shipId, planetId });
     if (res.error) showNote(`⛔ ${res.error}`);
+  }
+
+  function openPlanetColony(planetId: number) {
+    if (!gs) return;
+    const colony = gs.colonies.find((c) => c.planetId === planetId) ?? null;
+    if (!colony) {
+      showNote('⛔ no colony on that planet yet');
+      return;
+    }
+    if (colony.outpost) {
+      showNote('⛔ outposts are managed from the map, not the colony screen');
+      return;
+    }
+    if (colony.owner !== me()) {
+      showNote('⛔ you can only manage your own colonies');
+      return;
+    }
+    colonyModalColonyId = colony.id;
+  }
+
+  function closePlanetColony() {
+    colonyModalColonyId = null;
   }
 
   // ---- fleet hotkeys: C colonizes / O outposts the best open planet here
@@ -813,7 +842,6 @@
   function starSpikeStroke(color: StarColor): string {
     return mixHex(STAR_COLORS[color], '#ffffff', color === 'blue' ? 0.62 : 0.5);
   }
-  const prettify = (id: string) => id.replaceAll('_', ' ');
 </script>
 
 <svelte:window onkeydown={onMapKey} />
@@ -1009,7 +1037,7 @@
               {@const bx = (bi - (bodies.length - 1) / 2) * 9}
               {#if p.body === 'planet'}
                 {@const col = v.colonies.find((c) => gs?.colonies.find((x) => x.id === c.id)?.planetId === p.id)}
-                <circle cx={bx} cy="50" r="2.4" fill={col ? playerColor(col.owner) : '#6a7288'}>
+                <circle cx={bx} cy="50" r="2.4" fill={col ? playerColor(col.owner) : '#6a7288'} class:planetpick={!!col}>
                   <title>{p.climate} planet{col ? ` — ${col.name}` : ' (uncolonized)'}</title>
                 </circle>
               {:else}
@@ -1176,6 +1204,7 @@
                 {@const ring = mineralRing(p.minerals)}
                 {@const look = worldLook(p)}
                 {@const pr = 4 + p.sizeClass * 1.8}
+                {@const canOpenPlanet = selected.colonies.some((c) => gs?.colonies.find((x) => x.id === c.id)?.planetId === p.id)}
                 <defs>
                   <radialGradient id="pg-{p.id}" cx="0.35" cy="0.3" r="1.05">
                     <stop offset="0%" stop-color={look.light} />
@@ -1184,6 +1213,7 @@
                   </radialGradient>
                   <clipPath id="clip-{p.id}"><circle cx={px} cy="46" r={pr} /></clipPath>
                 </defs>
+                <g class:planetpick={canOpenPlanet}>
                 <circle cx={px} cy="46" r={pr} fill="url(#pg-{p.id})" />
                 <g clip-path="url(#clip-{p.id})">
                   {#if look.pattern === 'seas'}
@@ -1214,6 +1244,21 @@
                 {#each selected.colonies.filter((c) => gs?.colonies.find((x) => x.id === c.id)?.planetId === p.id) as c (c.id)}
                   <circle cx={px} cy="46" r={10 + p.sizeClass * 1.8} fill="none" stroke={playerColor(c.owner)} stroke-width="1.8" />
                 {/each}
+                {#if canOpenPlanet}
+                  <circle
+                    cx={px}
+                    cy="46"
+                    r={pr + 3}
+                    fill="transparent"
+                    role="button"
+                    tabindex="0"
+                    onclick={() => openPlanetColony(p.id)}
+                    onkeydown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') openPlanetColony(p.id);
+                    }}
+                  />
+                {/if}
+                </g>
               {/if}
             {/each}
           {/each}
@@ -1233,9 +1278,19 @@
       {/if}
       <ul class="planets">
         {#each selected.planets as p (p.id)}
-          <li data-testid="planet-{p.id}">
-            <span class="orbit">{p.orbit}</span>
-            {p.body === 'planet' ? `${p.climate} · size ${p.sizeClass} · ${prettify(p.minerals)} · ${p.gravity}-g` : prettify(p.body)}
+          {@const hasColony = selected.colonies.some((c) => gs?.colonies.find((x) => x.id === c.id)?.planetId === p.id)}
+          <li data-testid="planet-{p.id}" class:planetrow={hasColony}>
+            {#if hasColony}
+            <button class="planetrowbtn" onclick={() => openPlanetColony(p.id)}>
+              <span class="orbit">{p.orbit}</span>
+              {p.body === 'planet' ? `${p.climate} · size ${p.sizeClass} · ${prettify(p.minerals)} · ${p.gravity}-g` : prettify(p.body)}
+            </button>
+            {:else}
+            <span class="planetrowlabel">
+              <span class="orbit">{p.orbit}</span>
+              {p.body === 'planet' ? `${p.climate} · size ${p.sizeClass} · ${prettify(p.minerals)} · ${p.gravity}-g` : prettify(p.body)}
+            </span>
+            {/if}
             {#each selected.colonies.filter((c) => gs?.colonies.find((x) => x.id === c.id)?.planetId === p.id) as c (c.id)}
               <b style="color:{playerColor(c.owner)}"> — {c.name}</b>
               {#if c.owner === me() && c.outpost}
@@ -1338,6 +1393,10 @@
       {/if}
     {/if}
   </aside>
+
+  {#if colonyModal}
+    <PlanetModalScreen colonyId={colonyModal.id} onSelectPlanet={openPlanetColony} onClose={closePlanetColony} />
+  {/if}
 </div>
 
 <style>
@@ -1693,6 +1752,36 @@
     color: var(--text-dim);
     padding: 0.4rem 0.2rem 0;
     align-items: center;
+  }
+  .planetpick {
+    cursor: pointer;
+  }
+  .planetpick:hover {
+    filter: brightness(1.16);
+    stroke: #d9e8ff;
+    stroke-width: 1;
+  }
+  .planetrow {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+  }
+  .planetrow:hover {
+    background: rgba(110, 168, 255, 0.12);
+  }
+  .planetrowbtn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+  }
+  .planetrowlabel {
+    color: inherit;
   }
   .legend .monster,
   .legend .raid {

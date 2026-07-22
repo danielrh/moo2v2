@@ -26,6 +26,7 @@ import { areAtWar } from './battles';
 import { normalizeJobsForGroup } from './commands';
 import { ANDROID_RACE, type Colony, type GameState, type Ship, type TurnEvent } from './types';
 
+
 function groundStrength(state: GameState, empireId: number, defending: boolean, colony?: Colony): number {
   const empire = state.empires.find((e) => e.id === empireId);
   let str = 20;
