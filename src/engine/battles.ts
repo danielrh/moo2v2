@@ -2,12 +2,12 @@
 // applying outcomes (S9), and post-victory bombardment (S10).
 
 import { DEFAULT_ORDERS, runBattle, type BattleInput, type BattleOrders, type BattleResult, type CombatShipInit, type BattleTickFrame } from './combat';
-import { hullById, weaponById } from './data/index';
+import { hullById, weaponById, type WeaponRow } from './data/index';
 import { colonyPopUnits } from './economy';
 import { starDistance } from './galaxy';
 import { travelTurns } from './movement';
 import { leaderCombatBonuses } from './leaders';
-import { floorDiv } from './imath';
+import { floorDiv, roundDiv } from './imath';
 import { rngFor } from './rng';
 import { BASE_COMBAT_ID, MONSTER_COMBAT_ID } from './ids';
 import { baseDesign, designStats, knownWeapons, HULLS_BUILDABLE, BASE_HULLS, type ShipDesign } from './shipdesign';
@@ -654,8 +654,73 @@ export function resolveBattle(state: GameState, battle: PendingBattle, events: T
   return { battle, result, summary };
 }
 
-/** Simple bombardment: each 20 points of bomb damage kills one pop unit; every
- * other threshold destroys a building instead (documented combat-redesign rule). */
+/** Per-hit damage a colony's best planetary shield blocks from every
+ * individual bombardment run (MOO2 rule: a shield outblocking a weapon's
+ * whole hit zeroes it no matter how many of that weapon the fleet mounts).
+ * The planetary_* tiers are deferred buildables today; their values are here
+ * so un-deferring them later needs no engine change. */
+const PLANET_SHIELD_BLOCK: Record<string, number> = {
+  stellar_safety_shield: 5,
+  planetary_stellar_safety_shield: 5,
+  planetary_flux_shield: 10,
+  planetary_barrier_shield: 20,
+};
+
+export function planetShieldBlock(colony: Colony): number {
+  let block = 0;
+  for (const b of colony.buildings) block = Math.max(block, PLANET_SHIELD_BLOCK[b] ?? 0);
+  return block;
+}
+
+/** 2× the expected bombardment damage of one weapon mount across all its
+ * runs (half-points keep the .5 averages in integer math). MOO2 rules:
+ * every mounted weapon attacks the planet with its STRATEGIC damage —
+ * bombs and missiles at full strength with one run per point of ammo,
+ * beams and torpedoes at half strength, strike craft not at all (no bombing
+ * ability on the strategic screen), specials not at all except the stellar
+ * converter. The planetary shield blocks its strength from each individual
+ * run; sp/emg munitions pierce it entirely and ap skips the flat block,
+ * mirroring ship-combat shield semantics. */
+function bombardMount2(row: WeaponRow, mods: string[], shieldBlock: number): number {
+  const { min, max } = row.strategicDamage;
+  if (min + max <= 0) return 0;
+  if (row.classId === 4) return 0;
+  if (row.classId === 5 && row.id !== 'stellar_converter') return 0;
+  const all = row.naturalMods.length > 0 ? [...new Set([...mods, ...row.naturalMods])] : mods;
+  let dmg2 = min + max;
+  if (all.includes('hv')) dmg2 = roundDiv(dmg2 * 150, 100);
+  if (all.includes('ovr')) dmg2 = roundDiv(dmg2 * 150, 100);
+  if (all.includes('env')) dmg2 *= 2; // enveloping: wraps the shields
+  if (row.classId === 0 || row.classId === 2) dmg2 = floorDiv(dmg2, 2); // beams/torpedoes: half damage vs planets
+  if (!all.includes('sp') && !all.includes('emg') && !all.includes('ap')) dmg2 = Math.max(0, dmg2 - shieldBlock * 2);
+  let runs = row.ammo > 0 ? row.ammo : 1;
+  if (row.classId === 1 && all.includes('mv')) runs *= 4; // MIRV: 4 warheads per launch
+  return dmg2 * runs;
+}
+
+/** Expected orbital-bombardment damage (whole points) the empire's fleet at
+ * this star lands through a planetary shield of the given strength. */
+export function fleetBombardDamage(state: GameState, empireId: number, starId: number, shieldBlock: number): number {
+  const empire = state.empires.find((e) => e.id === empireId);
+  if (!empire) return 0;
+  let total2 = 0;
+  for (const ship of state.ships) {
+    if (ship.owner !== empireId || ship.location.kind !== 'star' || ship.location.starId !== starId) continue;
+    if (ship.designId === null) continue;
+    const design = empire.designs.find((d) => d.id === ship.designId);
+    if (!design) continue;
+    for (const w of design.weapons) {
+      const row = weaponById.get(w.weapon);
+      if (row) total2 += w.count * bombardMount2(row, w.mods, shieldBlock);
+    }
+  }
+  return floorDiv(total2, 2);
+}
+
+/** Simple bombardment: each 20 points of bombardment damage kills one pop
+ * unit; every other threshold destroys a building instead (documented
+ * combat-redesign rule). Damage follows the MOO2 strategic model — see
+ * fleetBombardDamage. */
 function bombard(state: GameState, battle: PendingBattle, events: TurnEvent[]): Record<string, unknown> {
   const holdings = state.colonies.filter(
     (c) => c.owner === battle.defender && state.planets.some((p) => p.id === c.planetId && p.starId === battle.starId),
@@ -663,23 +728,8 @@ function bombard(state: GameState, battle: PendingBattle, events: TurnEvent[]): 
   // a populated colony absorbs the barrage before any outpost dome does
   const colony = holdings.find((c) => !c.outpost) ?? holdings[0];
   if (!colony) return { skipped: true };
-  const attacker = state.empires.find((e) => e.id === battle.attacker)!;
-  let bombDamage = 0;
-  for (const ship of state.ships) {
-    if (ship.owner !== battle.attacker || ship.location.kind !== 'star' || ship.location.starId !== battle.starId) continue;
-    if (ship.designId === null) continue;
-    const design = attacker.designs.find((d) => d.id === ship.designId);
-    if (!design) continue;
-    for (const w of design.weapons) {
-      const row = weaponById.get(w.weapon);
-      if (row && row.classId === 3) {
-        bombDamage += ((row.tacticalDamage.min + row.tacticalDamage.max) / 2) * w.count * 10; // 10 bombing runs per ammo load
-      }
-    }
-  }
-  bombDamage = Math.floor(bombDamage);
-  // stellar safety shield: half of the barrage is deflected
-  if (colony.buildings.includes('stellar_safety_shield')) bombDamage = Math.floor(bombDamage / 2);
+  const shieldBlock = planetShieldBlock(colony);
+  const bombDamage = fleetBombardDamage(state, battle.attacker, battle.starId, shieldBlock);
   // an undefended outpost has no population to protect it: ANY victorious
   // fleet levels the dome — gating this on bomb hardpoints let a cheap
   // outpost deny the planet forever to bomb-less fleets. One dome falls per
@@ -730,7 +780,7 @@ function bombard(state: GameState, battle: PendingBattle, events: TurnEvent[]): 
       else g.farmers--;
     }
   }
-  const report = { colonyId: colony.id, bombDamage, popKilled, buildingsDestroyed };
+  const report = { colonyId: colony.id, bombDamage, popKilled, buildingsDestroyed, ...(shieldBlock > 0 ? { shieldBlock } : {}) };
   events.push({ visibleTo: -1, kind: 'bombardment', payload: report });
   return report;
 }

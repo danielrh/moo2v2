@@ -4,7 +4,7 @@
 
 import { ALWAYS_KNOWN_ITEMS, applicationById, buildableById, FIELD_ROWS, FIELD_SUBJECTS } from './data/index';
 import type { Colony, Empire, GameState, Planet } from './types';
-import { androidUnitsOf, planetOf } from './economy';
+import { androidUnitsOf, MARINE_TRAIN_TURNS, MARINES_PER_TRANSPORT, marinesOf, planetOf } from './economy';
 import { designStats } from './shipdesign';
 import { canTerraform, convertiblePlanetsInSystem, terraformCost, unsettledPlanetsInSystem } from './terraform';
 
@@ -240,6 +240,14 @@ export function canQueue(state: GameState, colony: Colony, itemId: string): stri
   if (itemId === 'spy') {
     const queued = colony.queue.filter((q) => q.item === 'spy').length;
     if (empire.spies.count + queued >= 10) return 'agent roster is full (10)';
+  }
+  if (itemId === 'transport') {
+    // a transport boards a full marine squad at launch: the colony must have
+    // one trained (and not already promised to a queued transport)
+    const queued = colony.queue.filter((q) => q.item === 'transport').length;
+    if (marinesOf(colony) - MARINES_PER_TRANSPORT * queued < MARINES_PER_TRANSPORT) {
+      return `a transport needs ${MARINES_PER_TRANSPORT} trained marines to board (a barracks trains 1 per ${MARINE_TRAIN_TURNS} turns)`;
+    }
   }
   if ((ANDROID_ITEMS as readonly string[]).includes(itemId)) {
     const cap = androidCap(planet);

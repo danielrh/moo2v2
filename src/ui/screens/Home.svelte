@@ -33,7 +33,7 @@
     }
   }
 
-  let botMode = $state<'parity' | 'fair'>('parity');
+  let botMode = $state<'parity' | 'fair' | 'onion'>('parity');
 
   // per-bot scenario config: play style, race (archetype or stock preset),
   // fleet silhouette and banner color — 'auto' keeps the seat defaults
@@ -178,9 +178,10 @@
       title="offline game against local bots — no server needed. The room code names the campaign (blank = SOLO): use different codes to keep several bot games going in different tabs, and re-enter a code to resume that campaign">
       🤖 Single player vs {botRows.length > 1 ? `${botRows.length} bots` : 'bot'}{code.trim() ? ` · ${code.trim()}` : ''}
     </button>
-    <select data-testid="bot-mode" bind:value={botMode} title="parity: bots keep up via visible logged grants · fair: bots play with no help at all">
+    <select data-testid="bot-mode" bind:value={botMode} title="parity: bots keep up via visible logged grants · fair: bots play with no help at all · onion: the constraint-driven Masters-of-Onions doctrine, no help either">
       <option value="parity">parity bots (keep up)</option>
       <option value="fair">fair bots (no cheats)</option>
+      <option value="onion">🧅 OnionAI (constraint bot)</option>
     </select>
   </span>
   {#each botRows as bot, i (i)}

@@ -15,16 +15,18 @@
 // to parity, that bot built RANDOM items and never sailed the colony ships it
 // happened to build, so it sat on one system all game.)
 
-import { selectors, starDistance } from '@engine/index';
+import { marinesOf, selectors, shipMarines, starDistance } from '@engine/index';
 import { itemCost, SHIP_BUILDABLES, PROJECT_BUILDABLES } from '@engine/items';
 import type { GameState } from '@engine/types';
 import type { GameSession } from '@protocol/session';
 import { botRaceById, botRacePicks } from './botRaces';
+import { freshOnionMemory, onionBattleOrders, onionTurn, type OnionMemory } from './onionBot';
 
 export type BotMode = 'parity' | 'fair';
 /** fair-bot strategy generation: v1 = the original random-build brain (kept
- * as the self-play benchmark), v2 = the tuned brain that beats it */
-export type BotBrain = 'v1' | 'v2';
+ * as the self-play benchmark), v2 = the tuned brain that beats it, onion =
+ * the constraint-driven Tech Fortress doctrine (onionBot.ts, bugs/ai_plan.md) */
+export type BotBrain = 'v1' | 'v2' | 'onion';
 /** deterministic play-style profiles so the bots don't all play the same */
 export type BotPersonality = 'balanced' | 'techer' | 'rusher' | 'industrialist' | 'expander' | 'militarist';
 
@@ -43,11 +45,17 @@ interface Profile {
 
 const PROFILES: Record<BotPersonality, Profile> = {
   balanced: { scienceBias: 1, fleetRatio: 1, expand: 3, warlike: false, buyEager: false },
+  // (onion round 5 tried techer scienceBias 2 — the bias-≥2 blend flip at 3
+  // buildings starves the opening, techer fell another −38; reverted)
   techer: { scienceBias: 1, fleetRatio: 0.6, expand: 3, warlike: false, buyEager: false },
-  rusher: { scienceBias: 0, fleetRatio: 1.5, expand: 1, warlike: true, buyEager: true },
+  // rusher/militarist expand raised 1→2 / 2→3 after the onion round-1
+  // tournament: both war personalities lost every mirror to the OnionAI by
+  // colony starvation (7-10c vs 12-15c) while their aggression achieved no
+  // conquest — a war economy still needs settlers
+  rusher: { scienceBias: 0, fleetRatio: 1.5, expand: 2, warlike: true, buyEager: true },
   industrialist: { scienceBias: 0, fleetRatio: 1, expand: 2, warlike: false, buyEager: true },
   expander: { scienceBias: 1, fleetRatio: 0.7, expand: 6, warlike: false, buyEager: true },
-  militarist: { scienceBias: 0, fleetRatio: 2, expand: 2, warlike: true, buyEager: true },
+  militarist: { scienceBias: 0, fleetRatio: 2, expand: 3, warlike: true, buyEager: true },
 };
 
 const PERSONALITIES: BotPersonality[] = ['techer', 'rusher', 'industrialist', 'expander', 'militarist'];
@@ -116,6 +124,8 @@ export class SoloBot {
   private readonly color: string | null;
   private readonly shipStyle: string | null;
   private styleSubmitted = false;
+  /** cross-turn plan/commitment state for the onion brain */
+  private onionMemory: OnionMemory = freshOnionMemory();
 
   constructor(opts: SoloBotOptions) {
     this.session = opts.session;
@@ -188,6 +198,11 @@ export class SoloBot {
 
   isAggressive(): boolean {
     return this.aggressive;
+  }
+
+  /** diagnostic peek for probes/tests: the onion brain's current plan */
+  get onionPlan(): string | null {
+    return this.brain === 'onion' ? this.onionMemory.plan : null;
   }
 
   /** Play the current turn once: issue orders, then commit. */
@@ -282,6 +297,23 @@ export class SoloBot {
       for (const app of human.knownApps) {
         if (!bot.knownApps.includes(app)) this.submit('debug_grant_app', { appId: app });
       }
+    }
+
+    // ---- onion brain: the constraint-driven doctrine owns the whole turn
+    // (research, colonies, expansion, military) — shared shell above (lobby,
+    // commit, concession hygiene, parity grants) stays identical for A/B
+    // fairness against the v2 brain ----
+    if (this.brain === 'onion') {
+      onionTurn({
+        session: this.session,
+        state,
+        planned: this.session.getPlanned() ?? state,
+        me,
+        personality: this.personality,
+        alwaysWar,
+        memory: this.onionMemory,
+      });
+      return;
     }
     // keep the labs pointed somewhere so banked RP is not wasted. Re-pick
     // whenever the current selection has nothing left to teach — the old
@@ -622,6 +654,11 @@ export class SoloBot {
       (n, c) => n + (c.owner === me ? c.queue.filter((q) => q.item === 'colony_ship').length : 0),
       0,
     );
+    // (onion round 6 tried scaling this depth by global free-planet count —
+    // it measured −41 on balanced/expander: v2 counts ALL free planets, so
+    // deep pipelines built 500-cost settlers for worlds a faster rival had
+    // already claimed. A port of the onion's reachable-and-worthwhile
+    // counting is the right future version; the flat cap stands until then.)
     const wantPipeline = this.brain === 'v2' ? Math.min(this.profile.expand, freePlanets.length) : 1;
     let pipeline = colonyShips.length + queued;
     if (freePlanets.length && pipeline < wantPipeline) {
@@ -725,9 +762,10 @@ export class SoloBot {
     if (yard) this.submit('set_build_queue', { colonyId: yard.id, items: ['outpost_ship', ...yard.queue] });
   }
 
-  /** Ground war: keep a small troop lift, load 2-unit marine detachments at
-   * big rear colonies, and land them wherever the warfleet has cleared the
-   * sky over an enemy colony (landings resolve automatically). */
+  /** Ground war: keep a small marine lift (transports launch pre-boarded
+   * with a 4-marine squad) and send it wherever the warfleet has cleared the
+   * sky over an enemy colony; the battle-orders hook lands them via the
+   * invade order (and S10 auto-lands naked-convoy arrivals). */
   private invade(planned: GameState, me: number, enemyId: number, myWarships: number): void {
     const starOf = (planetId: number) => planned.planets.find((p) => p.id === planetId)?.starId ?? null;
     const enemyColonies = planned.colonies.filter((c) => c.owner === enemyId && !c.outpost);
@@ -739,63 +777,37 @@ export class SoloBot {
       if (s.owner === me && s.shipKind === 'design') myWarAt.add(s.location.starId);
       if (s.owner === enemyId && (s.shipKind === 'design' || s.shipKind === 'scout')) theirGuardAt.add(s.location.starId);
     }
-    // cleared targets, weakest militia first — landings must arrive as ONE
-    // wave big enough to win (piecemeal 2-troop drops just get repelled and
+    // cleared targets, weakest garrison first — landings must arrive as ONE
+    // wave big enough to win (piecemeal squad drops just get repelled and
     // burn the marines; the 600-turn mirror took 100 turns per colony that way)
     const clearedTargets = enemyColonies
       .map((c) => {
         const sid = starOf(c.planetId);
         const pop = c.groups.reduce((n, g) => n + Math.floor(g.popK / 1000), 0);
-        const militia = Math.ceil(pop / 2) + (c.buildings.includes('marine_barracks') ? 2 : 0);
+        const militia = marinesOf(c) + Math.ceil(pop / 2);
         return { starId: sid, militia };
       })
       .filter((t): t is { starId: number; militia: number } => t.starId !== null && myWarAt.has(t.starId!) && !theirGuardAt.has(t.starId!))
       .sort((a, b) => a.militia - b.militia || a.starId - b.starId);
-    const targetStars = new Set(clearedTargets.map((t) => t.starId));
     const best = clearedTargets[0] ?? null;
 
-    const transports = planned.ships.filter((s) => s.owner === me && s.shipKind === 'transport');
-    const loadedIdle = transports.filter(
-      (t) => t.cargoPopUnits > 0 && t.location.kind === 'star' && !targetStars.has(t.location.starId),
-    );
-    const waveTroops = loadedIdle.reduce((n, t) => n + t.cargoPopUnits, 0);
+    const transports = planned.ships.filter((s) => s.owner === me && s.shipKind === 'transport' && shipMarines(s) > 0);
+    const readyWave = transports.filter((t) => t.location.kind === 'star');
+    const waveTroops = readyWave.reduce((n, t) => n + shipMarines(t), 0);
     if (best && waveTroops > best.militia + 2) {
       // launch the whole wave at the weakest cleared colony
-      for (const t of loadedIdle) {
+      for (const t of readyWave) {
         if (t.location.kind === 'star' && t.location.starId === best.starId) continue;
         this.submit('move_ships', { shipIds: [t.id], destStarId: best.starId });
       }
     }
-    for (const t of transports) {
-      if (t.location.kind !== 'star') continue;
-      const here = t.location.starId;
-      if (t.cargoPopUnits > 0) continue; // loaded lifts wait for the wave
-      // empty lift: draft marines from a big colony here, else head home
-      const source = planned.colonies.find((c) => {
-        if (c.owner !== me || c.outpost || starOf(c.planetId) !== here) return false;
-        const own = c.groups.find((g) => g.race === me && !g.unrest);
-        return !!own && Math.floor(own.popK / 1000) > 6;
-      });
-      if (source) {
-        this.submit('load_transports', { colonyId: source.id, shipId: t.id });
-        continue;
-      }
-      const dest = selectors.moveOptions(planned, me, here).find(
-        (o) =>
-          o.reachable &&
-          planned.colonies.some((c) => {
-            if (c.owner !== me || c.outpost || starOf(c.planetId) !== o.starId) return false;
-            const own = c.groups.find((g) => g.race === me && !g.unrest);
-            return !!own && Math.floor(own.popK / 1000) > 6;
-          }),
-      );
-      if (dest) this.submit('move_ships', { shipIds: [t.id], destStarId: dest.starId });
-    }
 
-    // troop-lift pipeline: sized to storm the weakest cleared target in one
-    // wave (2 troops per hull), only once a real fleet exists (transports
-    // are helpless alone), appended so it never starves the slipway
-    const wantLift = Math.min(8, Math.max(3, Math.ceil(((best?.militia ?? 8) + 3) / 2)));
+    // marine-lift pipeline: sized to storm the weakest cleared target in one
+    // wave (4 marines per hull), only once a real fleet exists (transports
+    // are helpless alone), appended so it never starves the slipway. The
+    // transport buildable is marine-gated, so yards without a trained squad
+    // simply don't offer it.
+    const wantLift = Math.min(8, Math.max(2, Math.ceil(((best?.militia ?? 8) + 3) / 4)));
     const queued = planned.colonies.reduce(
       (n, c) => n + (c.owner === me ? c.queue.filter((q) => q.item === 'transport').length : 0),
       0,
@@ -902,6 +914,13 @@ export class SoloBot {
       const mine = b.attacker === me ? b.ordersA : b.ordersD;
       if (mine !== null || this.orderedBattles.has(b.id)) continue;
       this.orderedBattles.add(b.id); // once — resubmitting on every event would echo forever
+      if (this.brain === 'onion') {
+        this.submit('battle_orders', {
+          battleId: b.id,
+          orders: onionBattleOrders(state, me, b, this.personality),
+        });
+        continue;
+      }
       const foe = b.attacker === me ? b.defender : b.attacker;
       const hullsAt = (owner: number) =>
         state.ships.filter(
@@ -917,6 +936,8 @@ export class SoloBot {
           priority: this.profile.fleetRatio >= 1.5 ? 'deadliest' : 'nearest',
           retreatThresholdPct: this.profile.warlike ? 15 : 25,
           bombard: !doomed && (this.aggressive || this.profile.warlike) && b.attacker === me,
+          // marines in orbit always land on a win — the lift was sent to invade
+          invade: !doomed && b.attacker === me,
         },
       });
     }

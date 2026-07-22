@@ -567,6 +567,9 @@
           {#if !row.outpost}
             <span class="growth" class:neg={row.growthK < 0}>{growthLabel(row.growthK)}</span>
           {/if}
+          {#if row.marineCap > 0}
+            <span class="growth" title="marine garrison (barracks trains 1 per 5 turns; a transport boards 4)">🪖{row.marines}/{row.marineCap}</span>
+          {/if}
         </td>
         <td>{row.output.moralePct}%</td>
         {#each ['farmers', 'workers', 'scientists'] as const as job (job)}

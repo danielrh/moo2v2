@@ -23,6 +23,7 @@
   import { SHIP_STYLES } from '@engine/index';
   import { appForWeapon, APPLICATION_ROWS, FIELD_ROWS, WEAPON_ROWS, hullById } from '@engine/data/index';
   import BattleViewer from '../battle/BattleViewer.svelte';
+  import GroundBattleDialog from '../battle/GroundBattleDialog.svelte';
   import ShipPreview from '../battle/ShipPreview.svelte';
   import ShipLoadoutEditor from '../components/ShipLoadoutEditor.svelte';
   import {
@@ -36,7 +37,7 @@
   import { variantsFor, wrapVariant, type ArtClass } from '../battle/shipart';
   import { playerColor } from '../colors';
   import { takeLabSeed } from '../labSeed';
-  import type { ReplayEntry } from '../state.svelte';
+  import type { GroundBattleEntry, ReplayEntry } from '../state.svelte';
 
   // a laboratory empire that has researched absolutely everything
   function labEmpire(id: number): Empire {
@@ -288,6 +289,58 @@
   const specialName = (id: string) => specialSystemInfo(id).name;
   const specialDescription = (id: string) => specialSystemInfo(id).description;
   const specialSpacePct = (id: string) => specialSystemInfo(id).spacePct;
+
+  // ---- 🪖 ground assault preview: stage an invasion playback (win or loss)
+  // without needing a real game. Pure UI — the dialog renders whatever rounds
+  // it is handed, so a quick biased coin-flip sim stands in for the engine. ----
+  let labGround = $state<GroundBattleEntry | null>(null);
+  let gScene = $state<'ocean' | 'farm' | 'domes'>('domes');
+  let gTroops = $state(20);
+  let gGarrison = $state(6);
+  let gMilitia = $state(8);
+  function watchGround(captured: boolean) {
+    const t0 = Math.max(1, Math.min(400, Math.round(gTroops)));
+    const gar = Math.max(0, Math.min(100, Math.round(gGarrison)));
+    const mil = Math.max(1, Math.min(400, Math.round(gMilitia)));
+    const m0 = gar + mil;
+    let rounds: Array<{ t: number; m: number }> = [];
+    for (let tries = 0; tries < 60; tries++) {
+      let t = t0;
+      let m = m0;
+      rounds = [{ t, m }];
+      while (t > 0 && m > 0) {
+        if (Math.random() < (captured ? 0.64 : 0.38)) m--;
+        else t--;
+        rounds.push({ t, m });
+      }
+      if ((rounds[rounds.length - 1]!.t > 0) === captured) break;
+    }
+    if (rounds.length > 60) {
+      const keep = Math.ceil(rounds.length / 60);
+      rounds = rounds.filter((_, i) => i % keep === 0 || i === rounds.length - 1);
+    }
+    const last = rounds[rounds.length - 1]!;
+    const civilianLosses = Math.max(0, m0 - last.m - gar);
+    labGround = {
+      turn: 0,
+      watched: true,
+      payload: {
+        colonyId: -1,
+        colonyName: gScene === 'ocean' ? 'Meridian Deep' : gScene === 'farm' ? 'Harvest Home' : 'Dome City Alpha',
+        starId: -1,
+        attacker: 0,
+        defender: 1,
+        captured: last.t > 0,
+        civilianLosses,
+        startTroops: t0,
+        startMilitia: m0,
+        startGarrison: gar,
+        climate: gScene === 'ocean' ? 'ocean' : gScene === 'farm' ? 'terran' : 'barren',
+        farming: gScene === 'farm',
+        rounds,
+      },
+    };
+  }
 </script>
 
 <div class="lab">
@@ -302,6 +355,21 @@
       <button class="primary" data-testid="lab-run" onclick={run}>▶ Run battle</button>
       {#if error}<span class="error">{error}</span>{/if}
       <a href="#top" onclick={(e) => { e.preventDefault(); location.hash = ''; }}>← back</a>
+    </div>
+    <div class="runbar groundbar" data-testid="lab-ground">
+      <span title="stage the animated invasion playback without needing a real invasion">🪖 ground assault preview</span>
+      <label>backdrop
+        <select bind:value={gScene} data-testid="lab-ground-scene">
+          <option value="ocean">ocean world</option>
+          <option value="farm">farm world</option>
+          <option value="domes">domed city</option>
+        </select>
+      </label>
+      <label>marines <input type="number" min="1" max="400" bind:value={gTroops} /></label>
+      <label>garrison <input type="number" min="0" max="100" bind:value={gGarrison} /></label>
+      <label>militia <input type="number" min="1" max="400" bind:value={gMilitia} /></label>
+      <button data-testid="lab-ground-win" onclick={() => watchGround(true)}>🏳 watch a capture</button>
+      <button data-testid="lab-ground-loss" onclick={() => watchGround(false)}>🛡 watch a repulse</button>
     </div>
   </header>
 
@@ -389,6 +457,10 @@
   <BattleViewer replay={viewing} onclose={() => (viewing = null)} />
 {/if}
 
+{#if labGround}
+  <GroundBattleDialog battle={labGround} onclose={() => (labGround = null)} />
+{/if}
+
 {#if editing}
   {@const s = sides[editing.side]}
   {@const g = s.groups[editing.gi]}
@@ -463,6 +535,15 @@
     gap: 0.8rem;
     align-items: center;
     margin: 0.6rem 0 1rem;
+  }
+  .groundbar {
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+    opacity: 0.95;
+    margin-top: -0.4rem;
+  }
+  .groundbar input[type='number'] {
+    width: 4.2rem;
   }
   .runbar .primary {
     background: linear-gradient(180deg, #1f6a38, #175028);

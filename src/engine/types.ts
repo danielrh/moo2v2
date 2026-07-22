@@ -109,6 +109,9 @@ export interface Colony {
   /** housing production applied last resolution (drives next growth) */
   housingPPPrev: number;
   outpost: boolean;
+  /** trained marine garrison (counters, no food/jobs). Absent in older saves:
+   * defaults to a full first squad when a barracks stands (economy.marinesOf) */
+  marines?: number;
 }
 
 export interface EmpireResearch {
@@ -214,6 +217,9 @@ export interface Ship {
   /** transports carry colonists (units) */
   cargoPopUnits: number;
   cargoRace: number;
+  /** transports: marine squad boarded at build time (absent in older saves =
+   * none aboard). Invasions land marines, never colonists. */
+  marines?: number;
   /** battle damage carried between fights (0 = undamaged) */
   dmgStructure: number;
   dmgArmor: number;

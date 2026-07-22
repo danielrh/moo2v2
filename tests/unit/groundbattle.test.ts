@@ -29,7 +29,7 @@ function newGame(): GameState {
   });
 }
 
-/** land a big invasion force on player 1's homeworld */
+/** land a big marine invasion force on player 1's homeworld */
 function stageInvasion(state: GameState, troops: number) {
   setRelation(state, 0, 1, 'war');
   const target = state.colonies.find((c) => c.owner === 1 && !c.outpost)!;
@@ -42,10 +42,11 @@ function stageInvasion(state: GameState, troops: number) {
     shipKind: 'transport',
     designId: null,
     location: { kind: 'star', starId: star },
-    cargoPopUnits: troops,
+    cargoPopUnits: 0,
     cargoRace: 0,
     dmgStructure: 0,
     dmgArmor: 0,
+    marines: troops,
   });
   return { target, star };
 }

@@ -65,7 +65,19 @@
       }
       case 'battle_pending': return `battle brewing: ${nameOf(p['attacker'])} vs ${nameOf(p['defender'])}`;
       case 'battle_resolved': return `battle at ${starOf(p['starId'])}: winner ${p['winner'] === null ? 'none' : nameOf(p['winner'])}`;
-      case 'bombardment': return p['outpostDestroyed'] ? `an outpost was destroyed by orbital bombardment` : `${colonyOf(p['colonyId'])} was bombarded (${p['popKilled']} pop lost)`;
+      case 'bombardment': {
+        if (p['outpostDestroyed']) return `an outpost was destroyed by orbital bombardment`;
+        const pop = Number(p['popKilled'] ?? 0);
+        const bld = Array.isArray(p['buildingsDestroyed']) ? p['buildingsDestroyed'].length : 0;
+        // zero-effect barrages need a reason, not a silent "0 pop lost"
+        if (Number(p['bombDamage'] ?? 0) === 0) {
+          return Number(p['shieldBlock'] ?? 0) > 0
+            ? `${colonyOf(p['colonyId'])} was bombarded, but its planetary shield absorbed every hit`
+            : `${colonyOf(p['colonyId'])} was bombarded, but the fleet mounts no weapons capable of orbital bombardment`;
+        }
+        if (pop === 0 && bld === 0) return `${colonyOf(p['colonyId'])} weathered the bombardment — the last population unit cannot be wiped out from orbit (invade to capture)`;
+        return `${colonyOf(p['colonyId'])} was bombarded (${pop} pop lost${bld > 0 ? `, ${bld} building${bld === 1 ? '' : 's'} destroyed` : ''})`;
+      }
       case 'colony_captured': return `${colonyOf(p['colonyId'])} captured by ${nameOf(p['to'])}`;
       case 'invasion_repelled': return `invasion repelled at ${colonyOf(p['colonyId'])}`;
       case 'assimilated': return `conquered citizens of ${colonyOf(p['colonyId'])} have settled in`;

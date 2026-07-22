@@ -305,9 +305,9 @@
           <div class="statItem" title={row.farmable ? 'This world can grow food.' : 'Current tech cannot grow food here.'}>
             <span class="statIcon">{row.farmable ? '🌱' : '🚫'}</span>
           </div>
-          <div class="statItem" title="Ground defense: militia raised from population, plus barracks garrison.">
+          <div class="statItem" title="Trained marine garrison (barracks cap shown when you have barracks).">
             <span class="statIcon">🛡</span>
-            <strong>{row.militia}</strong>
+            <strong>{row.marines}{row.marineCap > 0 ? `/${row.marineCap}` : ''}</strong>
           </div>
         </div>
       </ColonyPanel>

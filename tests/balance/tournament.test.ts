@@ -32,7 +32,7 @@ import type { EngineAdapter } from '@protocol/engineAdapter';
 import { gameEngine } from '@engine/adapter';
 import type { GameState } from '@engine/types';
 import { decodeSaveFile } from '@storage/savefile';
-import { SoloBot, type BotPersonality } from '@ui/soloBot';
+import { SoloBot, type BotBrain, type BotPersonality } from '@ui/soloBot';
 
 const enabled = process.env['MOO2_TOURNEY'] === '1';
 
@@ -55,6 +55,8 @@ const PERSONALITIES: BotPersonality[] = ['balanced', 'techer', 'rusher', 'indust
 interface SeatCfg {
   personality: BotPersonality;
   race: string; // stock preset id OR bot archetype id (botRaces.ts)
+  /** strategy brain (default v2); 'onion' = the constraint-driven OnionAI */
+  brain?: BotBrain;
 }
 
 interface SeatStats {
@@ -137,14 +139,14 @@ async function runMatch(phase: string, seed: string, a: SeatCfg, b: SeatCfg): Pr
   const botA = new SoloBot({
     session: hosted.session,
     mode: 'fair',
-    brain: 'v2',
+    brain: a.brain ?? 'v2',
     personality: a.personality,
     race: a.race,
   });
   const botB = new SoloBot({
     session: client,
     mode: 'fair',
-    brain: 'v2',
+    brain: b.brain ?? 'v2',
     personality: b.personality,
     race: b.race,
   });
@@ -220,7 +222,7 @@ describe.runIf(enabled)('AI tournament', () => {
         results.push(r);
         appendFileSync(jsonl, JSON.stringify(r) + '\n');
         console.log(
-          `[${phase}] ${a.personality}/${a.race} vs ${b.personality}/${b.race} seed=${seed.slice(0, 8)} ` +
+          `[${phase}] ${a.brain ?? 'v2'}:${a.personality}/${a.race} vs ${b.brain ?? 'v2'}:${b.personality}/${b.race} seed=${seed.slice(0, 8)} ` +
             `t${r.finalTurn}${r.stalled ? ' STALL' : ''} winner=${r.winner ?? '-'} ` +
             `A=${fmt(r.final[0])} B=${fmt(r.final[1])} map=${r.mapFullPct}% ${(r.ms / 1000).toFixed(0)}s`,
         );
@@ -244,6 +246,22 @@ describe.runIf(enabled)('AI tournament', () => {
             const cfg: SeatCfg = { personality: 'balanced', race: arch };
             await play('arch', seed, cfg, baseline);
             if (SEATINGS > 1) await play('arch', seed, baseline, cfg);
+          }
+        }
+      }
+      if (PHASES.includes('onion')) {
+        // OnionAI vs the v2 brain: mirror personalities and races so the
+        // BRAIN is the only variable; both seatings cancel seat bias
+        const pers = (process.env['TOURNEY_ONION_PERS'] ?? PERSONALITIES.join(','))
+          .split(',')
+          .filter((p): p is BotPersonality => (PERSONALITIES as string[]).includes(p));
+        const race = process.env['TOURNEY_ONION_RACE'] ?? 'solari';
+        for (const seed of SEEDS) {
+          for (const p of pers) {
+            const onion: SeatCfg = { personality: p, race, brain: 'onion' };
+            const v2: SeatCfg = { personality: p, race };
+            await play('onion', seed, onion, v2);
+            if (SEATINGS > 1) await play('onion', seed, v2, onion);
           }
         }
       }
@@ -304,6 +322,42 @@ describe.runIf(enabled)('AI tournament', () => {
             violations.push(`arch: ${arch} (seat ${archSeat}) underdeveloped at t200: ${fmt(mid)}`);
           }
           if (r.stalled) violations.push(`arch: ${arch} (seat ${archSeat}) match stalled at t${r.finalTurn}`);
+        }
+        lines.push('');
+      }
+      if (PHASES.includes('onion')) {
+        lines.push('## OnionAI vs v2 (mirror personalities)', '');
+        lines.push('| personality | seat | onion | v2 | winner | map |', '|---|---|---|---|---|---|');
+        const tally = { onion: { pts: 0, wins: 0, games: 0, score: 0 }, v2: { pts: 0, wins: 0, games: 0, score: 0 } };
+        for (const r of results.filter((x) => x.phase === 'onion')) {
+          const onionSeat = r.a.brain === 'onion' ? 0 : 1;
+          const oFin = r.final[onionSeat as 0 | 1];
+          const vFin = r.final[(1 - onionSeat) as 0 | 1];
+          const winner = r.winner === null ? (oFin.score >= vFin.score ? 'onion (pts)' : 'v2 (pts)') : r.winner === onionSeat ? 'ONION' : 'V2';
+          lines.push(`| ${r.a.personality} | onion=${onionSeat} | ${fmt(oFin)} | ${fmt(vFin)} | ${winner} | ${r.mapFullPct}% |`);
+          for (const [brain, fin, won] of [
+            ['onion', oFin, r.winner === onionSeat],
+            ['v2', vFin, r.winner !== null && r.winner !== onionSeat],
+          ] as const) {
+            const row = tally[brain];
+            row.games++;
+            row.score += fin.score;
+            if (won) {
+              row.wins++;
+              row.pts += 2;
+            } else if (r.winner === null) {
+              row.pts += fin.score >= (brain === 'onion' ? vFin : oFin).score ? 1 : 0;
+            }
+          }
+          if (r.stalled) violations.push(`onion: ${r.a.personality} mirror stalled at t${r.finalTurn}`);
+          const mid = r.checkpoints[200]?.[onionSeat as 0 | 1];
+          if (mid && (mid.colonies < 3 || mid.apps < 20)) {
+            violations.push(`onion: OnionAI (${r.a.personality}) underdeveloped at t200: ${fmt(mid)}`);
+          }
+        }
+        for (const [brain, s] of Object.entries(tally)) {
+          lines.push('');
+          lines.push(`**${brain}**: ${s.pts} pts, ${s.wins} wins over ${s.games} games, avg score ${Math.round(s.score / Math.max(1, s.games))}`);
         }
         lines.push('');
       }
